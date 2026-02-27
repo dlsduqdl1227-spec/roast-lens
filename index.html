@@ -438,12 +438,12 @@ body.unlocked .gate{display:none}
 
 <!-- DEPLOY NOTICE (shown only on file://) -->
 <div class="deploy-notice" id="deployNotice" style="display:none">
-  <div class="dn-icon"></div></div>
+  <div class="dn-icon">⚠️</div>
   <div class="dn-body">
     <b>라이브 측정을 사용하려면 배포가 필요합니다</b>
     <span>카메라 API는 HTTPS에서만 동작합니다.<br>
-    <a href="https://app.netlify.com/drop" target="_blank">Netlify Drop</a>에 이 파일을 드래그하면 1분 내 HTTPS URL을 받을 수 있습니다.<br>
-    아래 HTTPS 배포 후 라이브 측정을 이용하세요.</span>
+    <a href="https://tiiny.host" target="_blank">tiiny.host</a>에서 이 파일을 드래그하면 1분 내 HTTPS URL을 받을 수 있습니다.<br>
+    배포 후 받은 HTTPS URL로 접속하면 라이브 측정을 이용할 수 있습니다.</span>
   </div>
 </div>
 <div class="upzone" id="upzone">
@@ -894,7 +894,7 @@ function doShare(){
   var url = window.location.href;
   if(url === 'about:srcdoc' || url === 'about:blank' ||
      url.startsWith('blob:') || url.indexOf('srcdoc') !== -1){
-    showToast('Claude 실행 환경입니다.\nHTML 파일 저장 후 카톡·에어드랍으로 공유하거나\nNetlify Drop으로 배포하세요.');
+    showToast('Claude 실행 환경입니다.\nHTML 파일 저장 후 카톡·에어드랍으로 공유하거나\ntiiny.host에 파일을 드래그해 배포하세요.');
     return;
   }
   if(url.startsWith('file://')){
@@ -948,7 +948,7 @@ function startLive(beanMode){
     var isFile   = location.protocol === 'file:';
     var isHttp   = location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
     if(isFile){
-      showToast('로컬 파일에서는 카메라를 사용할 수 없습니다.\n아래 방법 중 하나를 사용하세요:\n① Netlify Drop에 파일 드래그 → 공유 URL로 열기\n② 폰으로 파일 전송 후 Safari/Chrome으로 직접 열기');
+      showToast('로컬 파일에서는 카메라를 사용할 수 없습니다.\n아래 방법 중 하나를 사용하세요:\n① tiiny.host에 파일 드래그 → 받은 URL로 열기\n② 폰으로 파일 전송 후 Safari/Chrome으로 직접 열기');
     } else {
       showToast('카메라 API를 사용할 수 없습니다.\nHTTPS 환경에서 실행해주세요.');
     }
