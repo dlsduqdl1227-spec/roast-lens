@@ -322,43 +322,96 @@ body.unlocked .gate{display:none}
 .rbtn:active{background:var(--tag)}
 
 /* ── STEP NAVIGATOR (bottom-fixed) ── */
-/* ── MEASUREMENT SELECTOR BAR (bottom-fixed) ── */
-.step-nav{position:fixed;bottom:0;left:0;right:0;z-index:900;background:#0e0e0e;border-top:1px solid #222;box-shadow:0 -4px 24px rgba(0,0,0,.5)}
-.step-nav-top{display:flex;align-items:center;justify-content:space-between;padding:6px 14px 0;gap:8px}
-.step-nav-status{font-family:var(--m);font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#555;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.step-nav-guide{font-family:var(--m);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:4px 9px;background:transparent;border:1px solid #2a2a2a;color:#555;border-radius:2px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}
-.step-nav-guide:active{background:#1a1a1a}
-.step-tiles{display:flex;border-top:1px solid #1a1a1a;margin-top:6px}
-.step-tile{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 4px 11px;gap:3px;cursor:pointer;border-right:1px solid #1a1a1a;-webkit-tap-highlight-color:transparent;transition:background .15s;position:relative;min-width:0}
+.step-nav{position:fixed;bottom:0;left:0;right:0;z-index:900;background:#111;border-top:2px solid #2a2a2a;box-shadow:0 -6px 28px rgba(0,0,0,.7)}
+.step-nav-top{display:flex;align-items:center;justify-content:space-between;padding:7px 14px 0;gap:8px}
+.step-nav-status{font-family:var(--m);font-size:10px;letter-spacing:.06em;color:#888;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-nav-guide{font-family:var(--m);font-size:10px;letter-spacing:.06em;padding:5px 11px;background:transparent;border:1px solid #333;color:#777;border-radius:3px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.step-nav-guide:active{background:#1a1a1a;color:#aaa}
+.step-tiles{display:flex;border-top:1px solid #222;margin-top:7px}
+
+/* ── TILE BASE ── */
+.step-tile{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  padding:12px 6px 14px;gap:5px;
+  cursor:pointer;border-right:1px solid #222;
+  -webkit-tap-highlight-color:transparent;
+  transition:background .15s;
+  position:relative;min-width:0;
+  border-top:3px solid transparent;
+}
 .step-tile:last-child{border-right:none}
-.step-tile:active{background:#141414}
-.step-tile-label{font-family:var(--m);font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#555;transition:color .2s}
-.step-tile-value{font-family:var(--m);font-size:11px;letter-spacing:.04em;color:#888;min-height:16px;transition:color .2s}
-.step-tile-state{width:6px;height:6px;border-radius:50%;background:#2a2a2a;transition:background .2s;margin-top:1px}
-/* idle */
-.step-tile.idle .step-tile-label{color:#555}
-.step-tile.idle .step-tile-value{color:#3a3a3a}
-.step-tile.idle .step-tile-state{background:#2a2a2a}
-/* active */
-.step-tile.active-mode{background:#0e0e10}
-.step-tile.active-mode .step-tile-label{color:var(--t1)}
-.step-tile.active-mode .step-tile-value{color:var(--t1)}
-.step-tile.active-mode .step-tile-state{background:var(--t1);box-shadow:0 0 6px rgba(210,165,90,.5)}
-/* done */
-.step-tile.done .step-tile-label{color:#3a6a48}
-.step-tile.done .step-tile-value{color:#5dda88}
-.step-tile.done .step-tile-state{background:#2a8a48}
-/* tap hint on idle tiles */
-.step-tile.idle::after{content:'측정';font-family:var(--m);font-size:8px;letter-spacing:.07em;color:#3a3a3a;margin-top:1px}
-.step-tile.done::after{content:'재측정';font-family:var(--m);font-size:8px;letter-spacing:.07em;color:#2a5a38;margin-top:1px}
-.step-tile.active-mode::after{content:'중단';font-family:var(--m);font-size:8px;letter-spacing:.07em;color:#a08040;margin-top:1px}
-.step-tile.pending-confirm{background:#0c0c08}
-.step-tile.pending-confirm .step-tile-label{color:#a08040}
-.step-tile.pending-confirm .step-tile-value{color:#d4a820}
-.step-tile.pending-confirm .step-tile-state{background:#a08040}
-.step-tile.pending-confirm::after{content:'확인 대기';font-family:var(--m);font-size:8px;letter-spacing:.07em;color:#a08040;margin-top:1px}
+.step-tile:active{background:#1a1a1a}
+
+/* icon row */
+.step-tile-icon{
+  width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--m);font-size:10px;font-weight:700;
+  letter-spacing:.02em;
+  background:#222;color:#555;
+  transition:background .2s, color .2s;
+  flex-shrink:0;
+}
+
+/* label */
+.step-tile-label{
+  font-family:var(--m);font-size:11px;
+  letter-spacing:.06em;font-weight:600;
+  text-transform:uppercase;
+  color:#aaa;
+  transition:color .2s;
+}
+
+/* value (Agtron / µm) */
+.step-tile-value{
+  font-family:var(--m);font-size:13px;
+  font-weight:700;letter-spacing:.02em;
+  color:#666;min-height:18px;
+  transition:color .2s;
+}
+
+/* status chip */
+.step-tile-chip{
+  font-family:var(--m);font-size:9px;
+  letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 7px;border-radius:10px;
+  background:#1e1e1e;color:#555;
+  transition:background .2s, color .2s;
+  white-space:nowrap;
+}
+
+/* ── IDLE ── */
+.step-tile.idle{border-top-color:transparent}
+.step-tile.idle .step-tile-icon{background:#1e1e1e;color:#555}
+.step-tile.idle .step-tile-label{color:#888}
+.step-tile.idle .step-tile-value{color:#444}
+.step-tile.idle .step-tile-chip{background:#1a1a1a;color:#555}
+
+/* ── ACTIVE (measuring) ── */
+.step-tile.active-mode{background:#0d0d0a;border-top-color:#c8a040}
+.step-tile.active-mode .step-tile-icon{background:#2a2000;color:#e8c060;animation:iconpulse 1.4s ease-in-out infinite}
+.step-tile.active-mode .step-tile-label{color:#e8c060;font-weight:700}
+.step-tile.active-mode .step-tile-value{color:#e8c060}
+.step-tile.active-mode .step-tile-chip{background:#2a2200;color:#c8a040}
+@keyframes iconpulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── DONE ── */
+.step-tile.done{border-top-color:#2a8a48}
+.step-tile.done .step-tile-icon{background:#0d2e18;color:#5dda88}
+.step-tile.done .step-tile-label{color:#5dda88;font-weight:700}
+.step-tile.done .step-tile-value{color:#5dda88;font-size:14px}
+.step-tile.done .step-tile-chip{background:#0d2e18;color:#3ab865}
+
+/* ── PENDING CONFIRM ── */
+.step-tile.pending-confirm{background:#0c0c06;border-top-color:#b08020;animation:tilepulse 2s ease-in-out infinite}
+.step-tile.pending-confirm .step-tile-icon{background:#2a2000;color:#f0c840}
+.step-tile.pending-confirm .step-tile-label{color:#d4a820;font-weight:700}
+.step-tile.pending-confirm .step-tile-value{color:#f0c840;font-size:14px}
+.step-tile.pending-confirm .step-tile-chip{background:#2a2000;color:#d4a820}
+@keyframes tilepulse{0%,100%{border-top-color:#b08020}50%{border-top-color:#f0c840}}
+
 /* push page content above the step nav */
-.wrap{padding-bottom:90px}
+.wrap{padding-bottom:108px}
 
 /* ── VALIDATION BLOCK OVERLAY ── */
 .val-block{display:none;background:#1a0a0a;border:1px solid #5a2a2a;border-radius:3px;padding:16px 14px;margin-bottom:14px}
@@ -422,7 +475,7 @@ body.unlocked .gate{display:none}
   <div class="guide-grid">
     <div class="gc"><div class="gc-n">01</div><div class="gc-t">흰 내벽 종이컵에 원두 담기<small>입구까지 충분히</small></div></div>
     <div class="gc"><div class="gc-n">02</div><div class="gc-t">카메라 라이트(손전등) ON<small>플래시 아님 — 지속광</small></div></div>
-    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컵 위 10–15cm, 수직 촬영<small>컵 림을 원형 가이드에 맞추고 수평 유지</small></div></div>
+    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컵 위 5–10cm, 수직 촬영<small>가까울수록 정확 — 컵 림을 원형 가이드에 맞추고 수평 유지</small></div></div>
     <div class="gc"><div class="gc-n">04</div><div class="gc-t">같은 거리·각도 유지<small>일관성이 정확도의 핵심</small></div></div>
     <div class="gc"><div class="gc-n">05</div><div class="gc-t">분쇄도 측정 시 컵에 분쇄 원두 담고 5–8cm 근접 촬영<small>림 맞춤 불필요 — 원두가 화면을 채우면 됩니다</small></div></div>
     <div class="gc"><div class="gc-n">+</div><div class="gc-t">각 단계는 독립 측정 — 필요한 항목만 수행하세요<small>3단계 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
@@ -438,7 +491,7 @@ body.unlocked .gate{display:none}
 
 <!-- DEPLOY NOTICE (shown only on file://) -->
 <div class="deploy-notice" id="deployNotice" style="display:none">
-  <div class="dn-icon">⚠️</div>
+  <div class="dn-icon" style="width:20px;height:20px;border-radius:50%;background:#f0d060;color:#443300;font-family:var(--m);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">!</div>
   <div class="dn-body">
     <b>라이브 측정을 사용하려면 배포가 필요합니다</b>
     <span>카메라 API는 HTTPS에서만 동작합니다.<br>
@@ -458,81 +511,94 @@ body.unlocked .gate{display:none}
   <div class="mode-badge" id="modeBadge">자유 배경 모드</div>
   <div class="up-ph" id="upph" style="padding:0;width:100%;height:100%;display:flex;align-items:stretch">
     <svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block">
-      <rect width="400" height="300" fill="#1c1c1c"/>
+      <defs>
+        <!-- subtle vignette -->
+        <radialGradient id="vgn" cx="50%" cy="50%" r="70%">
+          <stop offset="0%" stop-color="#1a1a1a" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#000" stop-opacity=".6"/>
+        </radialGradient>
+        <!-- centre glow -->
+        <radialGradient id="cgl" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#c8a040" stop-opacity=".06"/>
+          <stop offset="100%" stop-color="#c8a040" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
 
-      <!-- ── TOP-DOWN: white cup, beans, torch hotspot visible ── -->
+      <!-- background -->
+      <rect width="400" height="300" fill="#141414"/>
+      <rect width="400" height="300" fill="url(#vgn)"/>
+      <rect width="400" height="300" fill="url(#cgl)"/>
 
-      <!-- outer cup shadow -->
-      <ellipse cx="200" cy="152" rx="118" ry="118" fill="#2a2a2a"/>
-      <!-- cup outer wall -->
-      <ellipse cx="200" cy="150" rx="118" ry="118" fill="#ddd7cc"/>
-      <!-- cup inner wall (white) -->
-      <ellipse cx="200" cy="150" rx="104" ry="104" fill="#f0ece4"/>
-      <!-- torch hotspot glow — upper-left (torch position matches camera corner) -->
-      <radialGradient id="fg" cx="35%" cy="32%" r="55%">
-        <stop offset="0%" stop-color="#fff" stop-opacity=".45"/>
-        <stop offset="55%" stop-color="#fff" stop-opacity=".06"/>
-        <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
-      </radialGradient>
-      <ellipse cx="200" cy="150" rx="104" ry="104" fill="url(#fg)"/>
-      <!-- cup rim lines -->
-      <ellipse cx="200" cy="150" rx="118" ry="118" fill="none" stroke="#c8c0b4" stroke-width="1.5"/>
-      <ellipse cx="200" cy="150" rx="104" ry="104" fill="none" stroke="#bab2a8" stroke-width="1"/>
-
-      <!-- beans -->
-      <g transform="translate(182,120) rotate(-65)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M0,-15 C9,-15 12,-6 12,0 C12,6 9,15 0,15 C-9,15 -12,6 -12,0 C-12,-6 -9,-15 0,-15Z" stroke="#2a1f18" stroke-width="1.5"/>
-        <path d="M0,-15 C-7,-8 -5,-2 0,0 C5,2 7,8 0,15" stroke="#3a2e26" stroke-width="1.1"/>
-      </g>
-      <g transform="translate(220,128) rotate(-40)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M0,-14 C8,-14 12,-6 12,0 C12,6 8,14 0,14 C-8,14 -12,6 -12,0 C-12,-6 -8,-14 0,-14Z" stroke="#2a1f18" stroke-width="1.5"/>
-        <path d="M0,-14 C-5,-9 -6,-3 0,0 C6,3 5,9 0,14" stroke="#3a2e26" stroke-width="1.1"/>
-      </g>
-      <g transform="translate(196,155) rotate(-75)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M0,-17 C10,-17 14,-7 14,0 C14,7 10,17 0,17 C-10,17 -14,7 -14,0 C-14,-7 -10,-17 0,-17Z" stroke="#1e1510" stroke-width="1.7"/>
-        <path d="M0,-17 C-8,-9 -7,-3 0,0 C7,3 8,9 0,17" stroke="#2e2318" stroke-width="1.2"/>
-      </g>
-      <g transform="translate(168,163) rotate(-50)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M0,-14 C8,-14 12,-6 12,0 C12,6 8,14 0,14 C-8,14 -12,6 -12,0 C-12,-6 -8,-14 0,-14Z" stroke="#2a1f18" stroke-width="1.5"/>
-        <path d="M0,-14 C-9,-6 -4,-2 0,0 C4,2 9,6 0,14" stroke="#3a2e26" stroke-width="1.1"/>
-      </g>
-      <g transform="translate(222,170) rotate(-85)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M0,-15 C9,-15 12,-6 12,0 C12,6 9,15 0,15 C-9,15 -12,6 -12,0 C-12,-6 -9,-15 0,-15Z" stroke="#2a1f18" stroke-width="1.5"/>
-        <path d="M0,-15 C-6,-10 -7,-3 0,0 C7,3 6,10 0,15" stroke="#3a2e26" stroke-width="1.1"/>
+      <!-- fine grid -->
+      <g stroke="#242424" stroke-width=".5" opacity="1">
+        <line x1="80"  y1="0" x2="80"  y2="300"/>
+        <line x1="160" y1="0" x2="160" y2="300"/>
+        <line x1="240" y1="0" x2="240" y2="300"/>
+        <line x1="320" y1="0" x2="320" y2="300"/>
+        <line x1="0" y1="75"  x2="400" y2="75"/>
+        <line x1="0" y1="150" x2="400" y2="150"/>
+        <line x1="0" y1="225" x2="400" y2="225"/>
       </g>
 
-      <!-- phone above with torch indicator -->
-      <g opacity=".55">
-        <rect x="173" y="4" width="54" height="32" rx="5" fill="#444"/>
-        <rect x="176" y="7" width="48" height="26" rx="3" fill="#666"/>
-        <!-- lens -->
-        <circle cx="194" cy="20" r="5" fill="#333"/>
-        <circle cx="194" cy="20" r="3" fill="#222"/>
-        <!-- torch LED — steady glow, offset from lens -->
-        <circle cx="184" cy="12" r="3.5" fill="#ffe080"/>
-        <circle cx="184" cy="12" r="5.5" fill="rgba(255,220,80,.25)"/>
-        <!-- torch rays -->
-        <line x1="184" y1="4"  x2="184" y2="1"  stroke="#ffe080" stroke-width="1" opacity=".6"/>
-        <line x1="178" y1="6"  x2="176" y2="4"  stroke="#ffe080" stroke-width="1" opacity=".6"/>
-        <line x1="190" y1="6"  x2="192" y2="4"  stroke="#ffe080" stroke-width="1" opacity=".6"/>
-        <!-- TORCH label -->
-        <rect x="208" y="8" width="36" height="12" rx="3" fill="#ffe080" opacity=".9"/>
-        <text x="226" y="17.5" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#443300" font-weight="bold">TORCH</text>
+      <!-- outer measurement ring -->
+      <circle cx="200" cy="150" r="108" fill="none" stroke="#2e2e2e" stroke-width="1"/>
+      <!-- tick marks -->
+      <g stroke="#383838" stroke-width="1">
+        <line x1="200" y1="42"  x2="200" y2="34"/>
+        <line x1="200" y1="258" x2="200" y2="266"/>
+        <line x1="92"  y1="150" x2="84"  y2="150"/>
+        <line x1="308" y1="150" x2="316" y2="150"/>
+        <line x1="124" y1="74"  x2="119" y2="69"/>
+        <line x1="276" y1="74"  x2="281" y2="69"/>
+        <line x1="124" y1="226" x2="119" y2="231"/>
+        <line x1="276" y1="226" x2="281" y2="231"/>
       </g>
 
-      <!-- distance arrow -->
-      <g opacity=".45">
-        <line x1="236" y1="36" x2="236" y2="66" stroke="#aaa" stroke-width="1" stroke-dasharray="2,2"/>
-        <polygon points="233,63 239,63 236,69" fill="#aaa"/>
-        <rect x="242" y="43" width="42" height="14" rx="4" fill="#333"/>
-        <text x="263" y="53.5" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#ccc">10–15cm</text>
+      <!-- inner target ring — golden -->
+      <circle cx="200" cy="150" r="76" fill="none" stroke="#c8a040" stroke-width="1" stroke-dasharray="4 4" opacity=".5"/>
+
+      <!-- corner brackets — scanning frame style -->
+      <g stroke="#c8a040" stroke-width="1.5" stroke-linecap="round" opacity=".7">
+        <!-- TL -->
+        <path d="M118,68 L118,82 M118,68 L132,68"/>
+        <!-- TR -->
+        <path d="M282,68 L282,82 M282,68 L268,68"/>
+        <!-- BL -->
+        <path d="M118,232 L118,218 M118,232 L132,232"/>
+        <!-- BR -->
+        <path d="M282,232 L282,218 M282,232 L268,232"/>
       </g>
 
-      <!-- tap hint -->
-      <g transform="translate(200,287)" opacity=".42">
-        <rect x="-52" y="-12" width="104" height="24" rx="12" fill="#2a1f18"/>
-        <text x="0" y="4.5" text-anchor="middle" font-family="'DM Mono',monospace" font-size="11" fill="#f0ece6" letter-spacing="0.5">탭하여 촬영</text>
+      <!-- centre crosshair -->
+      <g stroke="#c8a040" stroke-width="1" opacity=".55">
+        <line x1="200" y1="134" x2="200" y2="142"/>
+        <line x1="200" y1="158" x2="200" y2="166"/>
+        <line x1="184" y1="150" x2="192" y2="150"/>
+        <line x1="208" y1="150" x2="216" y2="150"/>
       </g>
+      <circle cx="200" cy="150" r="2" fill="#c8a040" opacity=".4"/>
+
+      <!-- top label: instrument header -->
+      <text x="200" y="22" text-anchor="middle"
+            font-family="'DM Mono',monospace" font-size="8.5"
+            fill="#444" letter-spacing="2.5">CIELAB · COLORIMETRY</text>
+
+      <!-- main CTA -->
+      <text x="200" y="149" text-anchor="middle"
+            font-family="'DM Mono',monospace" font-size="13"
+            fill="#888" letter-spacing=".5">원두를 카메라 앞에 위치시키세요</text>
+      <text x="200" y="167" text-anchor="middle"
+            font-family="'DM Mono',monospace" font-size="9"
+            fill="#484848" letter-spacing="1">하단 탭을 눌러 측정 시작</text>
+
+      <!-- bottom scale labels -->
+      <text x="94"  y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">WHOLE BEAN</text>
+      <text x="200" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">GROUND COLOR</text>
+      <text x="308" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">GRIND SIZE</text>
+
+      <!-- separator lines -->
+      <line x1="147" y1="272" x2="147" y2="286" stroke="#2a2a2a" stroke-width=".5"/>
+      <line x1="253" y1="272" x2="253" y2="286" stroke="#2a2a2a" stroke-width=".5"/>
     </svg>
   </div>
   <video id="liveVideo" autoplay playsinline muted></video>
@@ -676,7 +742,7 @@ body.unlocked .gate{display:none}
   </div>
 
   <!-- ── DECISION BAR — always visible after analysis ── -->
-  <div class="decision on" id="decisionBar">
+  <div class="decision" id="decisionBar">
     <div class="decision-q">이 결과를 사용하시겠습니까?</div>
     <div class="decision-btns">
       <button class="db retake" onclick="doRetake()">↩ 다시 측정</button>
@@ -737,19 +803,22 @@ body.unlocked .gate{display:none}
   </div>
   <div class="step-tiles">
     <div class="step-tile idle" id="tileWhole" onclick="tileAction('whole')">
-      <div class="step-tile-label">홀빈</div>
+      <div class="step-tile-icon">01</div>
+      <div class="step-tile-label">홀빈 색도</div>
       <div class="step-tile-value" id="tileWholeVal">—</div>
-      <div class="step-tile-state"></div>
+      <div class="step-tile-chip" id="tileWholeChip">탭하여 측정</div>
     </div>
     <div class="step-tile idle" id="tileGcol" onclick="tileAction('gcol')">
+      <div class="step-tile-icon">02</div>
       <div class="step-tile-label">그라운드</div>
       <div class="step-tile-value" id="tileGcolVal">—</div>
-      <div class="step-tile-state"></div>
+      <div class="step-tile-chip" id="tileGcolChip">탭하여 측정</div>
     </div>
     <div class="step-tile idle" id="tileGrind" onclick="tileAction('grind')">
+      <div class="step-tile-icon">03</div>
       <div class="step-tile-label">분쇄도</div>
       <div class="step-tile-value" id="tileGrindVal">—</div>
-      <div class="step-tile-state"></div>
+      <div class="step-tile-chip" id="tileGrindChip">탭하여 측정</div>
     </div>
   </div>
 </div>
@@ -880,8 +949,6 @@ window.addEventListener('DOMContentLoaded', function(){
   var noCamera = isFile || isHttp || !navigator.mediaDevices;
   if(noCamera){
     G('deployNotice').style.display = 'flex';
-    /* disable step main btn */
-    var smb=G('stepMainBtn'); if(smb){smb.disabled=true;smb.title='HTTPS 환경에서만 사용 가능';}
     setInst('HTTPS 환경에서 실행해야 카메라를 사용할 수 있습니다.');
   }
   renderStepNav();
@@ -1290,12 +1357,12 @@ function updateLiveReadout(r, smoothL, isShake){
   dom.lrCovFill.style.background = covColor;
   dom.lrCovVal.textContent    = covPct + '%' + (covPct < 35 ? ' 가까이' : covPct >= 60 ? ' 최적' : '');
 
-  /* ── Indicator 2: 조명 밝기 ── */
-  var lightPct = Math.round(clamp(r.wallL / 72, 0, 1) * 100);
-  var lightColor = lightPct >= 70 ? 'rgba(60,200,100,.9)' : lightPct >= 45 ? 'rgba(255,200,60,.9)' : '#e05050';
+  /* ── Indicator 2: 조명 밝기 ── (최적 refL≈40~55, peak=47) */
+  var lightPct = Math.round(clamp(1 - Math.abs(r.wallL - 47) / 35, 0, 1) * 100);
+  var lightColor = lightPct >= 65 ? 'rgba(60,200,100,.9)' : lightPct >= 40 ? 'rgba(255,200,60,.9)' : '#e05050';
   dom.lrLightFill.style.width   = lightPct + '%';
   dom.lrLightFill.style.background = lightColor;
-  dom.lrLightVal.textContent    = r.lowLight ? '부족' : lightPct >= 80 ? '충분' : lightPct + '%';
+  dom.lrLightVal.textContent    = r.lowLight ? '부족' : lightPct >= 75 ? '최적' : lightPct >= 50 ? '양호' : lightPct + '%';
 
   /* ── Indicator 3: 안정성 ── */
   var bs = computeBufSigma();
@@ -1314,7 +1381,7 @@ function updateLiveReadout(r, smoothL, isShake){
   } else if(isShake){
     status = '손떨림 감지 — 잠시 정지해주세요';
   } else if(covPct < 35){
-    status = '더 가까이 대주세요 — 원두가 화면을 채울수록 정확합니다';
+    status = '더 가까이 대주세요 — 5–10cm 근접 시 가장 정확합니다';
   } else if(frameBuffer.length < needed){
     status = '분석 중 ' + prog + ' / ' + needed + ' 프레임 — 정지 유지';
   } else if(bs >= AUTO_LOCK_SIGMA){
@@ -1414,7 +1481,8 @@ function autoLock(){
 
   var refL = lastR.wallL || 0;
   var cov  = lastR.beanCoverage !== undefined ? lastR.beanCoverage : 0.6;
-  var refScore  = clamp((refL-20)/40,0,1);
+  /* refScore: bell-curve, peak at refL≈47 (실측 최적 45-50) */
+  var refScore  = clamp(1 - Math.abs(refL - 47) / 28, 0, 1);
   var covScore  = clamp(cov*1.8,0,1);
   var stabScore = clamp(1-bufSigma/2.5,0,1);
   var conf = Math.round(clamp(refScore*0.40+covScore*0.25+stabScore*0.35,0,1)*100);
@@ -1618,12 +1686,12 @@ function analyzeFrame(context, W, H){
     if(!cleanPx.length) cleanPx=beanPx;
 
     /* Bean highlight reference (top 30% bright = well-lit surface) */
-    var BEAN_REF_TARGET=48;
+    var BEAN_REF_TARGET=44; /* calibrated: 실측 최적 refL≈45-50 기준 */
     var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
     var refR=median(hiPx,'r'), refG=median(hiPx,'g'), refB=median(hiPx,'b');
     var refLab=sRGBtoLab(clamp(refR,0,255),clamp(refG,0,255),clamp(refB,0,255));
     var refL=refLab.L;
-    var lowLight=refL<35;
+    var lowLight=refL<28;
 
     var tgtY=Math.pow((BEAN_REF_TARGET+16)/116,3);
     var refLinY=toLinear(refR/255)*0.2126+toLinear(refG/255)*0.7152+toLinear(refB/255)*0.0722;
@@ -1718,11 +1786,12 @@ function runAnalysis(W,H){
   if(cleanPx.length<10) cleanPx=beanPx;
 
   /* ── 4. BEAN HIGHLIGHT REFERENCE ───────────────────────
-     Brightest 30% of clean pixels = well-lit bean surface.
+     Brightest 12% of clean pixels = well-lit bean surface.
      Internal WB reference — completely cup-independent.
-     Target L*=72: bright bean surface under torch.
+     CALIBRATED: optimal refL ≈ 45–50 (close-up torch shot, 5–10cm).
+     At this distance gain ≈ 1.0 → minimal WB correction → best accuracy.
      Absorbs torch distance/angle variation automatically.     */
-  var BEAN_REF_TARGET = 48;
+  var BEAN_REF_TARGET = 44; /* ← calibrated: refL=45.8 실측 최적값 기준 */
   var hiStart = Math.floor(cleanPx.length * 0.88);
   var hiPx    = cleanPx.slice(hiStart);
   var refR = median(hiPx,'r');
@@ -1730,7 +1799,7 @@ function runAnalysis(W,H){
   var refB = median(hiPx,'b');
   var refLab = sRGBtoLab(clamp(refR,0,255), clamp(refG,0,255), clamp(refB,0,255));
   var refL   = refLab.L;
-  var lowLight = refL < 35;
+  var lowLight = refL < 28; /* ← 캘리브레이션: 5-10cm 근접 시 refL≈45 = 충분 */
 
   var tgtY    = Math.pow((BEAN_REF_TARGET+16)/116, 3);
   var refLinY = toLinear(refR/255)*0.2126 + toLinear(refG/255)*0.7152 + toLinear(refB/255)*0.0722;
@@ -1793,7 +1862,8 @@ function runAnalysis(W,H){
   var stabSigma=Math.sqrt(sVar);
   var isLocked=stabSigma<1.2&&!lowLight;
 
-  var refScore  = clamp((refL-20)/40,0,1);
+  /* refScore: bell-curve, peak at refL≈47 (실측 최적 45-50) */
+  var refScore  = clamp(1 - Math.abs(refL - 47) / 28, 0, 1);
   var beanCov   = clamp(beanPx.length/Math.max(allPx.length,1)*2.0,0,1);
   var stabScore = clamp(1-stabSigma/3.5,0,1);
   var conf = Math.round(clamp(refScore*0.45+beanCov*0.25+stabScore*0.30,0,1)*100);
@@ -1914,10 +1984,12 @@ function renderResult(r){
   cf.className='conf-fill '+(r.conf>=75?'cg':r.conf>=50?'cy':'cr');
   var cs = confStateLabel(r.conf);
   var cm='벽면 L*='+r.wallL.toFixed(1)+'  |  ';
-  if(r.lowLight)         cm+='광량 부족 — 컵에 더 밀착하세요';
+  var wallOpt = r.wallL >= 38 && r.wallL <= 58;
+  if(r.lowLight)         cm+='광량 부족 — 5–10cm 더 가까이 대주세요';
   else if(!r.isLocked)   cm+='편차 σ='+r.stabSigma.toFixed(2)+' — 재촬영 권장';
-  else if(r.conf>=70)    cm+='측정 조건 양호';
-  else                   cm+='측정 조건 개선 권장';
+  else if(wallOpt && r.conf>=65) cm+='최적 촬영 거리 (L*'+r.wallL.toFixed(0)+')';
+  else if(r.conf>=65)    cm+='측정 조건 양호';
+  else                   cm+='5–10cm 근접 촬영 권장 (현재 L*='+r.wallL.toFixed(0)+', 목표 38–58)';
   var confEl = G('confTxt');
   confEl.innerHTML = r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+cm;
 
@@ -2190,15 +2262,17 @@ var STEP_LABELS = {
 };
 
 /* tile id map */
-var TILE_IDS = {whole:'tileWhole', gcol:'tileGcol', grind:'tileGrind'};
-var TILE_VAL_IDS = {whole:'tileWholeVal', gcol:'tileGcolVal', grind:'tileGrindVal'};
+var TILE_IDS      = {whole:'tileWhole',     gcol:'tileGcol',     grind:'tileGrind'};
+var TILE_VAL_IDS  = {whole:'tileWholeVal',  gcol:'tileGcolVal',  grind:'tileGrindVal'};
+var TILE_CHIP_IDS = {whole:'tileWholeChip', gcol:'tileGcolChip', grind:'tileGrindChip'};
 
 function renderStepNav(){
   var statusEl = G('stepNavStatus');
 
   stepSequence.forEach(function(k){
-    var tile = G(TILE_IDS[k]);
-    var valEl = G(TILE_VAL_IDS[k]);
+    var tile   = G(TILE_IDS[k]);
+    var valEl  = G(TILE_VAL_IDS[k]);
+    var chipEl = G(TILE_CHIP_IDS[k]);
     if(!tile || !valEl) return;
 
     /* state class */
@@ -2219,22 +2293,35 @@ function renderStepNav(){
     /* value display */
     if(k === 'grind'){
       if(currentMode===k && liveRunning){
-        valEl.textContent = '분석 중';
+        valEl.textContent = '분석 중…';
       } else if(stepDone[k] && store.grind && store.grind.grindMicron){
-        valEl.textContent = store.grind.grindMicron + 'µm';
+        valEl.textContent = store.grind.grindMicron + ' µm';
       } else if(currentMode===k && pendingGrind){
-        valEl.textContent = (pendingGrind.grindMicron||'—') + 'µm';
+        valEl.textContent = (pendingGrind.grindMicron||'—') + ' µm';
       } else {
         valEl.textContent = '—';
       }
     } else {
       var src = stepDone[k] ? store[k] : (currentMode===k ? pendingResult : null);
       if(currentMode===k && liveRunning){
-        valEl.textContent = '분석 중';
+        valEl.textContent = '분석 중…';
       } else if(src){
         valEl.textContent = 'Ag ' + src.agtron;
       } else {
         valEl.textContent = '—';
+      }
+    }
+
+    /* chip text */
+    if(chipEl){
+      if(currentMode===k && liveRunning){
+        chipEl.textContent = '● 측정 중 — 탭하면 중단';
+      } else if(hasPending){
+        chipEl.textContent = '⬆ 결과 확인';
+      } else if(stepDone[k]){
+        chipEl.textContent = '✓ 완료 — 재측정 가능';
+      } else {
+        chipEl.textContent = '탭하여 측정';
       }
     }
   });
