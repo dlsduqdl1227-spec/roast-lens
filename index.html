@@ -1168,43 +1168,54 @@ function drawGuideOverlay(){
     gx.fill('evenodd');
     gx.restore();
 
-    /* 원 (황금빛) */
+    /* 원 (흰색) */
     gx.beginPath();
     gx.arc(cx, cy, rGrind, 0, Math.PI * 2);
-    gx.strokeStyle = 'rgba(230,180,80,0.90)';
-    gx.lineWidth = 2;
+    gx.strokeStyle = 'rgba(255,255,255,0.92)';
+    gx.lineWidth = 2.5;
     gx.setLineDash([8, 5]);
     gx.stroke();
     gx.setLineDash([]);
 
     /* 십자선 */
     var arm = 14;
-    gx.strokeStyle = 'rgba(230,180,80,0.70)';
-    gx.lineWidth = 1;
+    gx.strokeStyle = 'rgba(255,255,255,0.75)';
+    gx.lineWidth = 1.5;
     gx.beginPath(); gx.moveTo(cx-arm, cy); gx.lineTo(cx-4, cy); gx.stroke();
     gx.beginPath(); gx.moveTo(cx+4, cy);  gx.lineTo(cx+arm, cy); gx.stroke();
     gx.beginPath(); gx.moveTo(cx, cy-arm); gx.lineTo(cx, cy-4); gx.stroke();
     gx.beginPath(); gx.moveTo(cx, cy+4);   gx.lineTo(cx, cy+arm); gx.stroke();
 
-    /* 라벨 */
+    /* 상단 라벨 — 흰 배경 + 흰색 큰 글자 */
     gx.save();
-    var lblY = cy - rGrind - 8;
-    gx.font = 'bold 11px -apple-system, sans-serif';
-    var lbl = '분쇄 원두를 5~8cm 거리에서 촬영';
+    var lblY = cy - rGrind - 12;
+    gx.font = 'bold 15px -apple-system, sans-serif';
+    var lbl = '분쇄 원두를 10~15cm 거리에서 촬영';
     var tw = gx.measureText(lbl).width;
-    gx.fillStyle = 'rgba(0,0,0,0.60)';
-    gx.fillRect(cx - tw/2 - 7, lblY - 14, tw + 14, 20);
-    gx.fillStyle = 'rgba(230,180,80,0.95)';
+    gx.fillStyle = 'rgba(0,0,0,0.70)';
+    gx.beginPath();
+    gx.roundRect ? gx.roundRect(cx - tw/2 - 10, lblY - 18, tw + 20, 26, 5)
+                 : gx.rect(cx - tw/2 - 10, lblY - 18, tw + 20, 26);
+    gx.fill();
+    gx.fillStyle = 'rgba(255,255,255,0.97)';
     gx.textAlign = 'center';
     gx.fillText(lbl, cx, lblY);
     gx.restore();
 
-    /* 하단 라벨 */
+    /* 하단 라벨 — 더 크고 밝게 */
     gx.save();
-    gx.font = '10px -apple-system, sans-serif';
-    gx.fillStyle = 'rgba(255,255,255,0.45)';
+    gx.font = 'bold 13px -apple-system, sans-serif';
+    var subLbl = '분쇄도 분석 영역';
+    var stw = gx.measureText(subLbl).width;
+    var subY = cy + rGrind + 22;
+    gx.fillStyle = 'rgba(0,0,0,0.55)';
+    gx.beginPath();
+    gx.roundRect ? gx.roundRect(cx - stw/2 - 8, subY - 15, stw + 16, 22, 4)
+                 : gx.rect(cx - stw/2 - 8, subY - 15, stw + 16, 22);
+    gx.fill();
+    gx.fillStyle = 'rgba(255,255,255,0.90)';
     gx.textAlign = 'center';
-    gx.fillText('분쇄도 분석 영역', cx, cy + rGrind + 16);
+    gx.fillText(subLbl, cx, subY);
     gx.restore();
 
   } else {
@@ -1604,9 +1615,9 @@ function _grindFromROI(context, rx, ry, rw, rh){
   var blendedLag=rangeLag*0.65+slopeLag*0.35;
 
   /* px → µm 변환
-     분쇄도 측정 시 5~8cm 근접 촬영 기준: 실측 기반 ~8.0 px/mm
-     (1px ≈ 125µm) */
-  var PX_PER_MM=8.0;
+     분쇄도 측정 시 10~15cm 촬영 기준: 실측 보정값 ~2.5 px/mm
+     (1px ≈ 400µm) — 실측: 5~8cm 기준 750µm→300µm(×2.5 과소추정) + 거리 여유 반영 */
+  var PX_PER_MM=2.5;
   var rawMicrons=(blendedLag/PX_PER_MM)*1000;
 
   /* 전역 텍스처 밀도 보정:
@@ -2397,7 +2408,7 @@ function validateBeanSubject(frames){
       return { ok: false, reason: '원두가 감지되지 않습니다. 배경이나 다른 물체가 아닌 원두를 직접 촬영해주세요.' };
     }
     if(currentMode === 'grind'){
-      return { ok: false, reason: '분쇄 원두가 충분히 감지되지 않습니다 (감지율 '+ Math.round(medCov*100) +'%). 컵에 분쇄 원두를 담고 5~8cm 거리에서 다시 촬영해주세요.' };
+      return { ok: false, reason: '분쇄 원두가 충분히 감지되지 않습니다 (감지율 '+ Math.round(medCov*100) +'%). 컵에 분쇄 원두를 담고 10~15cm 거리에서 다시 촬영해주세요.' };
     }
     return { ok: false, reason: '원두 감지율이 낮습니다 ('+Math.round(medCov*100)+'%). 원두를 화면 중앙에 위치시키고 더 가까이 촬영해주세요.' };
   }
