@@ -428,6 +428,17 @@ body.unlocked .gate{display:none}
 .grind-note-reliability.good{background:#1a4a28;color:#5dda88}
 .grind-note-reliability.med{background:#3a3000;color:#d4a820}
 .grind-note-reliability.low{background:#3a1010;color:#e05050}
+/* ── SHAKE PROMPT ── */
+.shake-prompt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(10,10,10,0.92);border:1px solid rgba(200,160,60,0.6);border-radius:12px;padding:22px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;z-index:50;min-width:240px;backdrop-filter:blur(4px)}
+.shake-prompt-icon{font-size:32px;line-height:1;animation:shakeit 1.2s ease-in-out infinite}
+@keyframes shakeit{0%,100%{transform:translateY(0)}25%{transform:translateY(-5px)}75%{transform:translateY(5px)}}
+.shake-prompt-title{font-family:var(--m);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#c8a040;font-weight:700}
+.shake-prompt-msg{font-family:var(--m);font-size:13px;color:rgba(255,255,255,.88);line-height:1.6}
+.shake-prompt-msg small{font-size:10px;color:rgba(255,255,255,.45);display:block;margin-top:3px}
+.shake-prompt-bar{width:100%;height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;margin-top:4px}
+.shake-prompt-fill{height:100%;width:0%;background:#c8a040;border-radius:2px;transition:width .3s linear}
+.lr-pass{font-family:var(--m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:10px;background:#2a2000;color:#c8a040;margin-top:4px;display:none}
+.lr-pass.on{display:inline-block}
 </style>
 </head>
 <body>
@@ -630,11 +641,19 @@ body.unlocked .gate{display:none}
       <div class="lr-grind-cat" id="lrGrindCat"></div>
     </div>
     <div class="lr-status" id="lrStatus">측정 준비 중...</div>
+    <div class="lr-pass" id="lrPass">1차 측정</div>
   </div>
   <div class="shake-warn" id="shakeWarn">손떨림 감지 — 재시작</div>
   <div class="live-badge" id="liveBadge">● LIVE</div>
   <div class="lock-flash" id="lockFlash"></div>
   <div class="torch-off-warn" id="torchWarn">라이트가 꺼져 있습니다</div>
+  <!-- 2차 측정 유도 오버레이 -->
+  <div class="shake-prompt" id="shakePrompt" style="display:none">
+    <div class="shake-prompt-icon">↕</div>
+    <div class="shake-prompt-title">1차 측정 완료</div>
+    <div class="shake-prompt-msg">샘플을 가볍게 흔들어 재배치하세요<br><small>감지 후 자동으로 2차 측정을 시작합니다</small></div>
+    <div class="shake-prompt-bar"><div class="shake-prompt-fill" id="shakePromptFill"></div></div>
+  </div>
   <div class="ao" id="ao">
     <div class="sp"></div>
     <div class="ao-t">CIELAB 분석 중...</div>
@@ -899,11 +918,18 @@ var AUTO_LOCK_SIGMA = 0.8;     /* strict: σ < 0.8 across buffer */
 var MIN_STABLE_RUN  = 20;      /* consecutive stable frames required */
 var SHAKE_DELTA     = 5.0;     /* |ΔL*| > 5 between frames = shake */
 var rafId           = null;
-var lastFrameL      = null;    /* previous frame L* for delta check */
-var emaL            = null;    /* EMA for display smoothing */
-var EMA_ALPHA       = 0.25;    /* EMA smoothing factor */
-var stableRun       = 0;       /* consecutive non-shake frames */
+var lastFrameL      = null;
+var emaL            = null;
+var EMA_ALPHA       = 0.25;
+var stableRun       = 0;
 var shakeTimeout    = null;
+
+/* ── DUAL-PASS STATE ── */
+var passPhase       = 1;      /* 1 = 1차, 2 = 2차 */
+var pass1Data       = null;   /* 1차 결과 보관 */
+var shakeDetected   = false;  /* 흔들기 감지 여부 */
+var postShakeSettle = 0;      /* 흔든 후 안정화 카운터 */
+var POST_SHAKE_SETTLE = 8;    /* 흔든 뒤 안정화까지 필요한 프레임 */
 
 function G(id){ return document.getElementById(id); }
 
@@ -919,7 +945,8 @@ var dom = {
   lrLightFill:G('lrLightFill'), lrLightVal:G('lrLightVal'),
   lrStabFill:G('lrStabFill'), lrStabVal:G('lrStabVal'),
   lrGrind:G('lrGrind'), lrGrindVal:G('lrGrindVal'), lrGrindCat:G('lrGrindCat'),
-  lrStatus:G('lrStatus'),
+  lrStatus:G('lrStatus'), lrPass:G('lrPass'),
+  shakePrompt:G('shakePrompt'), shakePromptFill:G('shakePromptFill'),
   ao:G('ao'), it:G('it'),
   stopBtns:G('stopBtns'),
   rp:G('rp'), crop:G('cropGuide'),
@@ -1026,6 +1053,10 @@ function startLive(beanMode){
   /* Reset pending */
   pendingResult = null;
   pendingGrind  = null;
+  passPhase     = 1;
+  pass1Data     = null;
+  shakeDetected = false;
+  postShakeSettle = 0;
   dom.rp.classList.remove('on');
   dom.decision.classList.remove('on');
 
@@ -1112,6 +1143,9 @@ function stopLive(){
   dom.liveBadge.style.display='none';
   dom.liveReadout.classList.remove('on');
   dom.torchWarn.style.display='none';
+  if(dom.shakePrompt) dom.shakePrompt.style.display='none';
+  if(dom.lrPass) dom.lrPass.classList.remove('on');
+  passPhase=1; pass1Data=null; shakeDetected=false; postShakeSettle=0;
   dom.upzone.classList.remove('loaded');
 
   dom.stopBtns.style.display='none';
@@ -1300,25 +1334,68 @@ function frameLoop(ts){
   var r = analyzeFrame(lvx, W, H);
   if(!r) return;
 
+  /* ── PASS 배지 표시 ── */
+  if(dom.lrPass){
+    dom.lrPass.classList.add('on');
+    dom.lrPass.textContent = passPhase === 1 ? '1차 측정' : '2차 측정';
+  }
+
   /* ── SHAKE DETECTION ── */
   var isShake = false;
-  if(lastFrameL !== null && Math.abs(r.Ls - lastFrameL) > SHAKE_DELTA){
+  var deltaL = lastFrameL !== null ? Math.abs(r.Ls - lastFrameL) : 0;
+  if(lastFrameL !== null && deltaL > SHAKE_DELTA){
     isShake = true;
-    /* Reset buffer and stable run on shake */
-    frameBuffer = [];
-    stableRun   = 0;
-    emaL        = null;
-    /* Show shake warning briefly */
-    dom.shakeWarn.classList.add('on');
-    if(shakeTimeout) clearTimeout(shakeTimeout);
-    shakeTimeout = setTimeout(function(){
-      dom.shakeWarn.classList.remove('on');
-    }, 700);
+
+    if(passPhase === 2 && !shakeDetected && deltaL > SHAKE_DELTA * 1.5){
+      /* 흔들기 감지: 2차 측정 준비 */
+      shakeDetected    = true;
+      postShakeSettle  = 0;
+      frameBuffer      = [];
+      stableRun        = 0;
+      emaL             = null;
+      if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
+      setInst('흔들기 감지 — 원두가 재배치되면 자동으로 2차 측정을 시작합니다.');
+    } else if(passPhase !== 2) {
+      /* 일반 흔들림 경고 */
+      frameBuffer = [];
+      stableRun   = 0;
+      emaL        = null;
+      dom.shakeWarn.classList.add('on');
+      if(shakeTimeout) clearTimeout(shakeTimeout);
+      shakeTimeout = setTimeout(function(){
+        dom.shakeWarn.classList.remove('on');
+      }, 700);
+    }
   }
   lastFrameL = r.Ls;
 
+  /* ── 2차 흔든 후 안정화 카운터 ── */
+  if(passPhase === 2 && shakeDetected && !isShake){
+    postShakeSettle++;
+    var settleProgress = Math.min(postShakeSettle / POST_SHAKE_SETTLE, 1);
+    if(dom.shakePromptFill) dom.shakePromptFill.style.width = '0%'; /* 숨긴 상태 */
+    /* 안정화 완료 → 2차 버퍼 수집 시작 */
+    if(postShakeSettle >= POST_SHAKE_SETTLE){
+      /* 이제 정상 수집 모드 */
+    }
+  }
+
   /* ── EMA SMOOTHING (display only) ── */
   emaL = (emaL === null) ? r.Ls : (EMA_ALPHA * r.Ls + (1-EMA_ALPHA) * emaL);
+
+  /* 2차 측정 대기 중(shakePrompt 표시) — 프레임 수집 안 함 */
+  if(passPhase === 2 && !shakeDetected){
+    updateLiveReadout(r, emaL, false);
+    /* 안정화 진행바 */
+    return;
+  }
+
+  /* 2차 흔든 후 안정화 기간 — 버퍼 수집 안 함 */
+  if(passPhase === 2 && shakeDetected && postShakeSettle < POST_SHAKE_SETTLE){
+    dom.lrStatus.textContent = '재배치 감지 — 안정화 중 (' + postShakeSettle + '/' + POST_SHAKE_SETTLE + ')';
+    updateLiveReadout(r, emaL, false);
+    return;
+  }
 
   if(!isShake && !r.lowLight){
     stableRun++;
@@ -1426,7 +1503,7 @@ function autoLock(){
   liveRunning = false;
   cancelAnimationFrame(rafId); rafId=null;
 
-  /* ── VALIDATION GATE: block non-bean images ── */
+  /* ── VALIDATION GATE ── */
   var validation = validateBeanSubject(frameBuffer);
   if(!validation.ok){
     if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
@@ -1440,140 +1517,135 @@ function autoLock(){
   }
 
   /* ────────────────────────────────────────
-     gcol 모드: 컬러 + 분쇄도 동시 추출 (ground forced)
+     데이터 추출 공통 함수
   ──────────────────────────────────────── */
-  if(currentMode === 'gcol'){
+  function extractData(buf, mode){
+    var avgLs = buf.reduce(function(a,r){return a+r.Ls;},0)/buf.length;
+    var avgAs = buf.reduce(function(a,r){return a+r.As;},0)/buf.length;
+    var avgBs = buf.reduce(function(a,r){return a+r.Bs;},0)/buf.length;
+    var lastR = buf[buf.length-1];
+    var vals  = buf.map(function(r){return r.Ls;});
+    var mean  = avgLs;
+    var sig   = Math.sqrt(vals.reduce(function(s,v){return s+Math.pow(v-mean,2);},0)/vals.length);
+
+    /* 분쇄도 */
+    var gVals = buf.map(function(fr){return fr.grindMicron;}).filter(function(v){return v!=null;});
+    var gMicron=null, gSpread=null, gCI=null;
+    if(gVals.length){
+      gVals.sort(function(a,b){return a-b;});
+      var tlo=Math.floor(gVals.length*0.15), thi=Math.ceil(gVals.length*0.85);
+      var tr=gVals.slice(tlo,thi); if(!tr.length) tr=gVals;
+      gMicron=tr[Math.floor(tr.length/2)];
+      if(tr.length>=4){
+        var q1=tr[Math.floor(tr.length*0.25)], q3=tr[Math.floor(tr.length*0.75)];
+        gSpread=q3-q1;
+        var hi2=gSpread/2;
+        gCI={lo:Math.max(tr[0],gMicron-Math.round(hi2*1.5)),hi:Math.min(tr[tr.length-1],gMicron+Math.round(hi2*1.5))};
+      }
+    }
+    var refL=lastR.wallL||0, cov=lastR.beanCoverage||0.6;
+    var conf=Math.round(clamp((clamp(1-Math.abs(refL-47)/28,0,1))*0.40+(clamp(cov*1.8,0,1))*0.25+(clamp(1-sig/2.5,0,1))*0.35,0,1)*100);
+    return {avgLs,avgAs,avgBs,sig,refL,conf,lastR,gMicron,gSpread,gCI,gFrames:gVals.length};
+  }
+
+  /* ────────────────────────────────────────
+     1차 잠금
+  ──────────────────────────────────────── */
+  if(passPhase === 1){
     dom.lockFlash.classList.add('on');
-    setTimeout(function(){ dom.lockFlash.classList.remove('on'); }, 500);
-    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
-    dom.shakeWarn.classList.remove('on');
-    dom.liveBadge.style.display='none';
-    dom.stopBtns.style.display='none';
+    setTimeout(function(){ dom.lockFlash.classList.remove('on'); }, 400);
 
-    /* ── 컬러 계산 ── */
-    var avgLsG = frameBuffer.reduce(function(a,r){return a+r.Ls;},0)/frameBuffer.length;
-    var avgAsG = frameBuffer.reduce(function(a,r){return a+r.As;},0)/frameBuffer.length;
-    var avgBsG = frameBuffer.reduce(function(a,r){return a+r.Bs;},0)/frameBuffer.length;
-    var lastRG = frameBuffer[frameBuffer.length-1];
-    var bufSigmaG = computeBufSigma();
-    var agtronG = Math.round(clamp((1.85*avgLsG)-1.2, 25, 95));
+    pass1Data = extractData(frameBuffer, currentMode);
 
-    /* ── 분쇄도 계산: 전체 프레임 → 통계 ── */
-    var grindValsG = frameBuffer.map(function(fr){return fr.grindMicron;}).filter(function(v){return v!==null&&v!==undefined;});
-    var grindMicronG = null, grindSpreadG = null, grindQ1 = null, grindQ3 = null, grindCI = null;
-    if(grindValsG.length){
-      grindValsG.sort(function(a,b){return a-b;});
-      grindMicronG = grindValsG[Math.floor(grindValsG.length/2)]; /* median */
-      if(grindValsG.length >= 4){
-        grindQ1 = grindValsG[Math.floor(grindValsG.length*0.25)];
-        grindQ3 = grindValsG[Math.floor(grindValsG.length*0.75)];
-        grindSpreadG = grindQ3 - grindQ1; /* IQR */
-        var halfIQR = (grindQ3 - grindQ1) / 2;
-        grindCI = { lo: Math.max(grindValsG[0], grindMicronG - Math.round(halfIQR*1.5)),
-                    hi: Math.min(grindValsG[grindValsG.length-1], grindMicronG + Math.round(halfIQR*1.5)) };
-      }
-    }
+    /* 카메라 유지, 버퍼 리셋, 흔들기 대기 상태로 전환 */
+    frameBuffer  = [];
+    stableRun    = 0;
+    emaL         = null;
+    passPhase    = 2;
+    shakeDetected = false;
+    postShakeSettle = 0;
 
-    /* 2차 정밀측정인 경우: 1차(40%) + 2차(60%) 가중평균 */
-    var passNum = 1;
-    if(grindPass1 && grindPass1.micron && grindMicronG){
-      var p1 = grindPass1.micron, p2 = grindMicronG;
-      grindMicronG = Math.round(p1 * 0.40 + p2 * 0.60);
-      /* CI 병합: 1차·2차 구간의 교집합 또는 가중 */
-      if(grindPass1.CI && grindCI){
-        grindCI = {
-          lo: Math.round(grindPass1.CI.lo * 0.40 + grindCI.lo * 0.60),
-          hi: Math.round(grindPass1.CI.hi * 0.40 + grindCI.hi * 0.60),
-        };
-      }
-      /* spread도 가중 */
-      if(grindPass1.spread != null && grindSpreadG != null){
-        grindSpreadG = Math.round(grindPass1.spread * 0.40 + grindSpreadG * 0.60);
-      }
-      passNum = 2;
-      grindPass1 = null; /* 소비 */
-    }
+    /* 토치 유지 (카메라 켜진 상태) */
+    liveRunning = true;
+    rafId = requestAnimationFrame(frameLoop);
 
-    /* ── 신뢰도 ── */
-    var refLG = lastRG.wallL || 0;
-    var covG  = lastRG.beanCoverage !== undefined ? lastRG.beanCoverage : 0.6;
-    var refScoreG = clamp(1 - Math.abs(refLG - 47) / 28, 0, 1);
-    var covScoreG = clamp(covG*1.8,0,1);
-    var stabScoreG = clamp(1-bufSigmaG/2.5,0,1);
-    var confG = Math.round(clamp(refScoreG*0.40+covScoreG*0.25+stabScoreG*0.35,0,1)*100);
-
-    pendingResult = {
-      agtron: agtronG, margin: 4,
-      Ls: avgLsG, As: avgAsG, Bs: avgBsG,
-      sigma: lastRG.sigma, conf: confG,
-      beanType: 'ground', isLocked: true, lowLight: false, stabSigma: bufSigmaG,
-      wallL: refLG,
-      bRGB: lastRG.bRGB, wRGB: lastRG.wRGB,
-      frameCount: frameBuffer.length,
-      grindMicron: grindMicronG,
-      grindSpread: grindSpreadG,
-      grindCI: grindCI,
-      grindFrames: grindValsG.length,
-      grindPass: passNum,
-    };
-
-    dom.lrStatus.textContent = '잠금 완료 — L*=' + avgLsG.toFixed(1) + '  Agtron ' + agtronG
-      + (grindMicronG ? '  분쇄도 ' + grindMicronG + 'µm' : '');
-    [dom.lrCovFill,dom.lrLightFill,dom.lrStabFill].forEach(function(el){
-      el.style.background='rgba(60,200,100,.9)'; el.style.width='100%';
-    });
-    renderResult(pendingResult);
-    renderStepNav();
+    /* 흔들기 프롬프트 표시 */
+    if(dom.shakePrompt) dom.shakePrompt.style.display = 'flex';
+    if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '1차 완료 — 흔들기 대기'; }
+    setInst('1차 측정 완료 — 샘플을 가볍게 흔들어 재배치해주세요.');
+    dom.stopBtns.style.display = 'flex';
     return;
   }
 
   /* ────────────────────────────────────────
-     컬러 단계: 기존 full result
+     2차 잠금 → 평균 합산
   ──────────────────────────────────────── */
-  var avgLs = frameBuffer.reduce(function(a,r){return a+r.Ls;},0)/frameBuffer.length;
-  var avgAs = frameBuffer.reduce(function(a,r){return a+r.As;},0)/frameBuffer.length;
-  var avgBs = frameBuffer.reduce(function(a,r){return a+r.Bs;},0)/frameBuffer.length;
-  var lastR  = frameBuffer[frameBuffer.length-1];
-  var bufSigma = computeBufSigma();
-
-  var agtron = Math.round(clamp((1.85*avgLs)-1.2, 25, 95));
-  if(lastR.beanType==='whole') agtron = Math.round(clamp(agtron-7, 25, 95));
-
-  var refL = lastR.wallL || 0;
-  var cov  = lastR.beanCoverage !== undefined ? lastR.beanCoverage : 0.6;
-  /* refScore: bell-curve, peak at refL≈47 (실측 최적 45-50) */
-  var refScore  = clamp(1 - Math.abs(refL - 47) / 28, 0, 1);
-  var covScore  = clamp(cov*1.8,0,1);
-  var stabScore = clamp(1-bufSigma/2.5,0,1);
-  var conf = Math.round(clamp(refScore*0.40+covScore*0.25+stabScore*0.35,0,1)*100);
+  var p2 = extractData(frameBuffer, currentMode);
 
   dom.lockFlash.classList.add('on');
   setTimeout(function(){ dom.lockFlash.classList.remove('on'); }, 500);
-
   if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
-
   dom.shakeWarn.classList.remove('on');
+  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
   dom.liveBadge.style.display='none';
   dom.stopBtns.style.display='none';
-  dom.lrStatus.textContent = '잠금 완료 — L*=' + avgLs.toFixed(1) + '  Agtron ' + agtron + '  ' + frameBuffer.length + '프레임';
-  [dom.lrCovFill, dom.lrLightFill, dom.lrStabFill].forEach(function(el){
+  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '2차 완료 — 평균 적용'; }
+
+  /* 1차+2차 단순 평균 */
+  var p1 = pass1Data;
+  var avgLsFinal = (p1.avgLs + p2.avgLs) / 2;
+  var avgAsFinal = (p1.avgAs + p2.avgAs) / 2;
+  var avgBsFinal = (p1.avgBs + p2.avgBs) / 2;
+  var sigFinal   = (p1.sig   + p2.sig)   / 2;
+  var confFinal  = Math.round((p1.conf + p2.conf) / 2);
+
+  /* 분쇄도: 둘 다 있으면 평균, 아니면 유효한 쪽 */
+  var gMicronFinal = null, gSpreadFinal = null, gCIFinal = null, gFramesFinal = 0;
+  if(p1.gMicron != null && p2.gMicron != null){
+    gMicronFinal  = Math.round((p1.gMicron + p2.gMicron) / 2);
+    gSpreadFinal  = p1.gSpread != null && p2.gSpread != null ? Math.round((p1.gSpread + p2.gSpread)/2) : null;
+    if(p1.gCI && p2.gCI) gCIFinal = {lo:Math.round((p1.gCI.lo+p2.gCI.lo)/2), hi:Math.round((p1.gCI.hi+p2.gCI.hi)/2)};
+    gFramesFinal = p1.gFrames + p2.gFrames;
+  } else {
+    gMicronFinal = p1.gMicron || p2.gMicron;
+    gSpreadFinal = p1.gSpread || p2.gSpread;
+    gCIFinal     = p1.gCI     || p2.gCI;
+    gFramesFinal = p1.gFrames + p2.gFrames;
+  }
+
+  var lastR = p2.lastR;
+  var isWhole = (currentMode === 'whole');
+  var agtronFinal = Math.round(clamp((1.85*avgLsFinal)-1.2, 25, 95));
+  if(isWhole) agtronFinal = Math.round(clamp(agtronFinal-7, 25, 95));
+
+  dom.lrStatus.textContent = '2차 측정 완료 — L*=' + avgLsFinal.toFixed(1) + '  Agtron ' + agtronFinal
+    + (gMicronFinal ? '  분쇄도 ' + gMicronFinal + 'µm' : '') + '  (1+2차 평균)';
+  [dom.lrCovFill,dom.lrLightFill,dom.lrStabFill].forEach(function(el){
     el.style.background='rgba(60,200,100,.9)'; el.style.width='100%';
   });
 
   pendingResult = {
-    agtron, margin: lastR.beanType==='whole'?7:4,
-    Ls:avgLs, As:avgAs, Bs:avgBs,
-    sigma:lastR.sigma, conf,
-    beanType:lastR.beanType,
-    isLocked:true, lowLight:false, stabSigma:bufSigma,
-    wallL:refL,
-    bRGB:lastR.bRGB, wRGB:lastR.wRGB,
-    frameCount:frameBuffer.length,
-    grindMicron: null, grindSpread: null,
+    agtron: agtronFinal,
+    margin: isWhole ? 5 : 3,  /* 2차 측정으로 오차범위 축소 */
+    Ls: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
+    sigma: sigFinal, conf: confFinal,
+    beanType: isWhole ? 'whole' : 'ground',
+    isLocked: true, lowLight: false, stabSigma: sigFinal,
+    wallL: p2.refL,
+    bRGB: lastR.bRGB, wRGB: lastR.wRGB,
+    frameCount: frameBuffer.length,
+    grindMicron: gMicronFinal,
+    grindSpread: gSpreadFinal,
+    grindCI:     gCIFinal,
+    grindFrames: gFramesFinal,
+    dualPass: true,
+    pass1L: p1.avgLs, pass2L: p2.avgLs,
   };
 
-  setInst('잠금 완료 — ' + frameBuffer.length + '프레임 평균  L*=' + avgLs.toFixed(1) + '  Agtron ' + agtron);
+  passPhase = 1; pass1Data = null;
+  setInst('2차 측정 완료 — 1+2차 평균  L*=' + avgLsFinal.toFixed(1) + '  Agtron ' + agtronFinal);
   renderResult(pendingResult);
+  renderStepNav();
 }
 
 /* ════════════════════════════════════════
@@ -1666,7 +1738,7 @@ function _grindFromROI(context, rx, ry, rw, rh){
   /* px → µm 변환
      분쇄도 측정 시 10~15cm 촬영 기준: 실측 보정값 ~2.5 px/mm
      (1px ≈ 400µm) — 실측: 5~8cm 기준 750µm→300µm(×2.5 과소추정) + 거리 여유 반영 */
-  var PX_PER_MM=2.5;
+  var PX_PER_MM=3.6; /* 실측 보정: 700µm 기준 1000µm 출력(×1.43 과대) → 2.5×1.43=3.57≈3.6 */
   var rawMicrons=(blendedLag/PX_PER_MM)*1000;
 
   /* 전역 텍스처 밀도 보정:
@@ -1680,27 +1752,30 @@ function _grindFromROI(context, rx, ry, rw, rh){
 
 function estimateGrindMicrons(context, W, H){
   try{
-    /* 3개 구역 독립 측정 → median (조명 불균일 · 부분 그림자 흡수) */
-    var rh=Math.round(H*0.50), rw=Math.round(W*0.30);
+    /* 5개 구역 독립 측정 → 이상치 제거 후 median (조명 불균일·부분 그림자 흡수) */
+    var rh=Math.round(H*0.50), rw=Math.round(W*0.18);
     var ry=Math.round(H*0.25);
     var regions=[
-      _grindFromROI(context, Math.round(W*0.10), ry, rw, rh),
-      _grindFromROI(context, Math.round(W*0.35), ry, rw, rh),
-      _grindFromROI(context, Math.round(W*0.60), ry, rw, rh)
+      _grindFromROI(context, Math.round(W*0.08), ry, rw, rh),
+      _grindFromROI(context, Math.round(W*0.27), ry, rw, rh),
+      _grindFromROI(context, Math.round(W*0.41), ry, rw, rh),
+      _grindFromROI(context, Math.round(W*0.55), ry, rw, rh),
+      _grindFromROI(context, Math.round(W*0.74), ry, rw, rh)
     ];
     var valid=regions.filter(function(r){return r&&r.microns>0;});
     if(!valid.length) return null;
 
-    /* Median 채택 */
+    /* 이상치 제거: 5개 중 최솟값·최댓값 제거 후 나머지 median */
     valid.sort(function(a,b){return a.microns-b.microns;});
-    var med=valid[Math.floor(valid.length/2)];
+    var trimmed = valid.length >= 4 ? valid.slice(1, valid.length-1) : valid;
+    var med=trimmed[Math.floor(trimmed.length/2)];
 
-    /* 구역 간 편차 (신뢰도 지표) */
-    var spread=valid.length>1
-      ? Math.round(valid[valid.length-1].microns - valid[0].microns)
+    /* 구역 간 편차 (신뢰도 지표) — trimmed 기준 */
+    var spread=trimmed.length>1
+      ? Math.round(trimmed[trimmed.length-1].microns - trimmed[0].microns)
       : 0;
 
-    return {microns:med.microns, spread:spread, regions:valid.length, detail:med};
+    return {microns:med.microns, spread:spread, regions:trimmed.length, detail:med};
   }catch(e){return null;}
 }
 
@@ -2024,7 +2099,12 @@ function renderResult(r){
   /* stability notice */
   var sn = G('stabNotice'), st = G('stabNoticeTxt');
   if(!r.lowLight){
-    if(r.isLocked){
+    if(r.dualPass){
+      sn.classList.add('on');
+      sn.style.background='#f0f8ff'; sn.style.borderColor='#90c0e0';
+      st.style.color='#1a5a8a';
+      st.textContent='1+2차 측정 평균 적용 (L* ' + r.pass1L.toFixed(1) + ' → ' + r.pass2L.toFixed(1) + ')  σ=' + r.stabSigma.toFixed(2) + ' — 오차범위 축소됨';
+    } else if(r.isLocked){
       sn.classList.add('on');
       sn.style.background='#f0fff6'; sn.style.borderColor='#a0d8b8';
       st.style.color='#1a7a46';
@@ -2105,20 +2185,9 @@ function renderResult(r){
       + '  <span class="grind-note-reliability '+grindRelClass+'">'+grindRelText+'</span>'
       + (r.grindFrames ? '  <small style="color:var(--tm)">'+r.grindFrames+'프레임</small>' : '');
 
-    /* 2차 정밀측정 버튼: 편차 큰 경우 또는 패스1인 경우 */
+    /* refine 버튼 영역 초기화 */
     var grindRefineBtnEl = G('grindRefineBtn');
-    if(!grindRefineBtnEl){
-      grindRefineBtnEl = document.createElement('div');
-      grindRefineBtnEl.id = 'grindRefineBtn';
-      grindRefineBtnEl.style.cssText = 'padding:8px 16px 14px';
-      grindSec.appendChild(grindRefineBtnEl);
-    }
-    var needRefine = r.grindPass !== 2 && (r.grindSpread == null || r.grindSpread > 80);
-    if(needRefine){
-      grindRefineBtnEl.innerHTML = '<button onclick="launchGrindRefine()" style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #3a3a3a;border-radius:4px;color:#e8c060;font-family:var(--m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">2차 정밀측정 — 더 가까이 대고 재촬영 (1차+2차 가중평균)</button>';
-    } else {
-      grindRefineBtnEl.innerHTML = r.grindPass === 2 ? '<div style="padding:6px 0;font-family:var(--m);font-size:10px;color:#5dda88;letter-spacing:.08em;text-transform:uppercase">✓ 2차 정밀측정 완료 — 가중평균 적용됨</div>' : '';
-    }
+    if(grindRefineBtnEl) grindRefineBtnEl.innerHTML = '';
   } else {
     grindSec.classList.remove('on');
     var grindRefineBtnEl2 = G('grindRefineBtn');
@@ -2165,29 +2234,6 @@ function launchMode(mode){
 /* ── stub for legacy refs ── */
 function grindPhaseActive_stub(){ return false; }
 var grindPhaseActive = false;
-
-/* 2차 정밀측정 상태 */
-var grindPass1 = null; /* { micron, spread, CI } — 1차 결과 보관 */
-
-function launchGrindRefine(){
-  /* 1차 결과 보관 */
-  if(store.grind && store.grind.grindMicron){
-    grindPass1 = {
-      micron: store.grind.grindMicron,
-      spread: store.grind.grindSpread,
-      CI:     store.grind.grindCI,
-    };
-  } else if(pendingResult && pendingResult.grindMicron){
-    grindPass1 = {
-      micron: pendingResult.grindMicron,
-      spread: pendingResult.grindSpread,
-      CI:     pendingResult.grindCI,
-    };
-  }
-  /* 2차는 gcol 모드 재실행 (더 가까이) */
-  setInst('2차 정밀측정 — 5~8cm 더 가까이 대고 촬영하세요.');
-  launchMode('gcol');
-}
 
 function doRetake(){
   pendingResult = null;
@@ -2250,7 +2296,6 @@ function doConfirm(){
           grindCI:     pendingResult.grindCI,
           grindFrames: pendingResult.grindFrames,
           frameCount:  pendingResult.frameCount,
-          pass: pendingResult.grindPass || 1,
         };
         stepDone.grind = true;
       }
@@ -2577,6 +2622,7 @@ function confStateLabel(conf){
 ════════════════════════════════════════ */
 function doReset(){
   measurements=[]; measureCount=0; pendingResult=null; pendingGrind=null;
+  passPhase=1; pass1Data=null; shakeDetected=false; postShakeSettle=0;
   store = { whole: null, gcol: null, grind: null };
   currentMode = null;
   dom.prev.style.display='none'; dom.prev.src='';
@@ -2594,6 +2640,8 @@ function doReset(){
   if(dom.exam) dom.exam.style.display='none';
   var gs=G('grindSec'); if(gs) gs.classList.remove('on');
   dom.lrGrind.classList.remove('on');
+  if(dom.shakePrompt) dom.shakePrompt.style.display='none';
+  if(dom.lrPass) dom.lrPass.classList.remove('on');
   var bmi=G('beanModeIndicator'); if(bmi) bmi.classList.remove('on');
   ['tabWhole','tabGcol','tabGrind','tabGuide'].forEach(function(id){ var el=G(id); if(el) el.classList.remove('active'); });
   forcedBeanType = null;
