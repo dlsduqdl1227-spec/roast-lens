@@ -242,10 +242,8 @@ body.unlocked .gate{display:none}
 .db{padding:13px 10px;border-radius:3px;font-family:var(--f);font-size:13px;font-weight:500;cursor:pointer;-webkit-appearance:none;border:1px solid;text-align:center;transition:all .15s}
 .db.retake{background:#fff;color:var(--red);border-color:#e0b0b0}
 .db.retake:active{background:#ffeaea}
-.db.retake::before{content:'↩ ';font-size:15px}
 .db.use{background:var(--t1);color:#fff;border-color:var(--t1)}
 .db.use:active{background:#333}
-.db.use::before{content:'';font-size:15px}
 
 /* ─── CTA ─── */
 .cta-box{margin-top:12px;background:var(--w);border:1px solid var(--b);border-radius:3px;overflow:hidden}
@@ -324,9 +322,9 @@ body.unlocked .gate{display:none}
 /* ── STEP NAVIGATOR (bottom-fixed) ── */
 .step-nav{position:fixed;bottom:0;left:0;right:0;z-index:900;background:#111;border-top:2px solid #2a2a2a;box-shadow:0 -6px 28px rgba(0,0,0,.7)}
 .step-nav-top{display:flex;align-items:center;justify-content:space-between;padding:7px 14px 0;gap:8px}
-.step-nav-status{font-family:var(--m);font-size:10px;letter-spacing:.06em;color:#888;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.step-nav-guide{font-family:var(--m);font-size:10px;letter-spacing:.06em;padding:5px 11px;background:transparent;border:1px solid #333;color:#777;border-radius:3px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}
-.step-nav-guide:active{background:#1a1a1a;color:#aaa}
+.step-nav-status{font-family:var(--m);font-size:10px;letter-spacing:.06em;color:#ddd;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-nav-guide{font-family:var(--m);font-size:10px;letter-spacing:.06em;padding:5px 11px;background:transparent;border:1px solid #555;color:#ccc;border-radius:3px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.step-nav-guide:active{background:#1a1a1a;color:#fff}
 .step-tiles{display:flex;border-top:1px solid #222;margin-top:7px}
 
 /* ── TILE BASE ── */
@@ -348,7 +346,7 @@ body.unlocked .gate{display:none}
   display:flex;align-items:center;justify-content:center;
   font-family:var(--m);font-size:10px;font-weight:700;
   letter-spacing:.02em;
-  background:#222;color:#555;
+  background:#2a2a2a;color:#999;
   transition:background .2s, color .2s;
   flex-shrink:0;
 }
@@ -358,7 +356,7 @@ body.unlocked .gate{display:none}
   font-family:var(--m);font-size:11px;
   letter-spacing:.06em;font-weight:600;
   text-transform:uppercase;
-  color:#aaa;
+  color:#fff;
   transition:color .2s;
 }
 
@@ -366,7 +364,7 @@ body.unlocked .gate{display:none}
 .step-tile-value{
   font-family:var(--m);font-size:13px;
   font-weight:700;letter-spacing:.02em;
-  color:#666;min-height:18px;
+  color:#bbb;min-height:18px;
   transition:color .2s;
 }
 
@@ -375,17 +373,17 @@ body.unlocked .gate{display:none}
   font-family:var(--m);font-size:9px;
   letter-spacing:.08em;text-transform:uppercase;
   padding:2px 7px;border-radius:10px;
-  background:#1e1e1e;color:#555;
+  background:#2a2a2a;color:#bbb;
   transition:background .2s, color .2s;
   white-space:nowrap;
 }
 
 /* ── IDLE ── */
 .step-tile.idle{border-top-color:transparent}
-.step-tile.idle .step-tile-icon{background:#1e1e1e;color:#555}
-.step-tile.idle .step-tile-label{color:#888}
-.step-tile.idle .step-tile-value{color:#444}
-.step-tile.idle .step-tile-chip{background:#1a1a1a;color:#555}
+.step-tile.idle .step-tile-icon{background:#2a2a2a;color:#bbb}
+.step-tile.idle .step-tile-label{color:#fff}
+.step-tile.idle .step-tile-value{color:#aaa}
+.step-tile.idle .step-tile-chip{background:#2a2a2a;color:#bbb}
 
 /* ── ACTIVE (measuring) ── */
 .step-tile.active-mode{background:#0d0d0a;border-top-color:#c8a040}
@@ -475,9 +473,9 @@ body.unlocked .gate{display:none}
   <div class="guide-grid">
     <div class="gc"><div class="gc-n">01</div><div class="gc-t">흰 내벽 종이컵에 원두 담기<small>입구까지 충분히</small></div></div>
     <div class="gc"><div class="gc-n">02</div><div class="gc-t">카메라 라이트(손전등) ON<small>플래시 아님 — 지속광</small></div></div>
-    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컵 위 5–10cm, 수직 촬영<small>가까울수록 정확 — 컵 림을 원형 가이드에 맞추고 수평 유지</small></div></div>
+    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컵 위 5–10cm, 수직 촬영<small>가까울수록 정확 — 원두가 화면 중앙을 채우도록 위치</small></div></div>
     <div class="gc"><div class="gc-n">04</div><div class="gc-t">같은 거리·각도 유지<small>일관성이 정확도의 핵심</small></div></div>
-    <div class="gc"><div class="gc-n">05</div><div class="gc-t">분쇄도 측정 시 컵에 분쇄 원두 담고 5–8cm 근접 촬영<small>림 맞춤 불필요 — 원두가 화면을 채우면 됩니다</small></div></div>
+    <div class="gc"><div class="gc-n">05</div><div class="gc-t">그라운드 컬러 & 분쇄도 측정 시 10~15cm 거리에서 촬영<small>컬러와 분쇄도를 동시에 측정 — 원두가 화면을 채우면 됩니다</small></div></div>
     <div class="gc"><div class="gc-n">+</div><div class="gc-t">각 단계는 독립 측정 — 필요한 항목만 수행하세요<small>3단계 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
   </div>
 </div>
@@ -745,7 +743,7 @@ body.unlocked .gate{display:none}
   <div class="decision" id="decisionBar">
     <div class="decision-q">이 결과를 사용하시겠습니까?</div>
     <div class="decision-btns">
-      <button class="db retake" onclick="doRetake()">↩ 다시 측정</button>
+      <button class="db retake" onclick="doRetake()">다시 측정</button>
       <button class="db use"    onclick="doConfirm()">이 결과 사용</button>
     </div>
   </div>
@@ -810,15 +808,9 @@ body.unlocked .gate{display:none}
     </div>
     <div class="step-tile idle" id="tileGcol" onclick="tileAction('gcol')">
       <div class="step-tile-icon">02</div>
-      <div class="step-tile-label">그라운드</div>
+      <div class="step-tile-label" style="letter-spacing:.04em;line-height:1.35;text-align:center">그라운드 컬러<br>&amp; 분쇄도</div>
       <div class="step-tile-value" id="tileGcolVal">—</div>
       <div class="step-tile-chip" id="tileGcolChip">탭하여 측정</div>
-    </div>
-    <div class="step-tile idle" id="tileGrind" onclick="tileAction('grind')">
-      <div class="step-tile-icon">03</div>
-      <div class="step-tile-label">분쇄도</div>
-      <div class="step-tile-value" id="tileGrindVal">—</div>
-      <div class="step-tile-chip" id="tileGrindChip">탭하여 측정</div>
     </div>
   </div>
 </div>
@@ -894,7 +886,7 @@ var forcedBeanType = null;
 
 /* ── 독립 측정 저장소 ── */
 var store = { whole: null, gcol: null, grind: null };
-var currentMode = null; /* 'whole' | 'gcol' | 'grind' */
+var currentMode = null; /* 'whole' | 'gcol' */
 var ctx = null, htx = null, lvx = null;
 
 /* live video state */
@@ -1003,12 +995,11 @@ function showToast(msg){
 /* ── START ── */
 function startLive(beanMode){
   if(liveRunning) return;
-  /* currentMode: 'whole' | 'gcol' | 'grind' */
-  /* beanMode maps to forcedBeanType for CIELAB analysis */
-  var isGrindOnly = (currentMode === 'grind');
+  /* currentMode: 'whole' | 'gcol' — gcol includes grind */
+  var isGrindOnly = false; /* no longer a separate mode */
   var isGcol      = (currentMode === 'gcol');
-  /* Internal: whole+gcol use 'whole' CIELAB path, grind uses 'ground' path for texture */
-  forcedBeanType = isGrindOnly ? 'ground' : 'whole';
+  /* gcol mode forces ground type so grind texture is always computed */
+  forcedBeanType = isGcol ? 'ground' : 'whole';
 
   /* ── Pre-flight checks ── */
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -1068,9 +1059,9 @@ function startLive(beanMode){
       liveRunning  = true;
       var bmi = G('beanModeIndicator');
       if(bmi){
-        var lbl = currentMode==='whole'?'홀빈 — 색도 측정': currentMode==='gcol'?'그라운드 컬러 — 색도 측정':'분쇄도 측정';
+        var lbl = currentMode==='whole'?'홀빈 — 색도 측정':'그라운드 컬러 & 분쇄도 측정';
         bmi.textContent = lbl;
-        bmi.className = 'bean-mode-indicator on '+(isGrindOnly?'ground':'whole');
+        bmi.className = 'bean-mode-indicator on '+(isGcol?'ground':'whole');
       }
       dom.liveVideo.addEventListener('loadedmetadata', function(){
         enableTorch();
@@ -1268,12 +1259,15 @@ function drawGuideOverlay(){
 
     gx.save();
     var lblY = cy - rRim - 8;
-    gx.font = 'bold 11px -apple-system, sans-serif';
-    var lbl1 = '컵 흰 테두리(림)를 이 선에 맞추세요';
+    gx.font = 'bold 13px -apple-system, sans-serif';
+    var lbl1 = '원두를 화면 중앙에 위치시키세요';
     var tw1 = gx.measureText(lbl1).width;
-    gx.fillStyle = 'rgba(0,0,0,0.55)';
-    gx.fillRect(cx - tw1/2 - 7, lblY - 14, tw1 + 14, 20);
-    gx.fillStyle = 'rgba(255,255,255,0.95)';
+    gx.fillStyle = 'rgba(0,0,0,0.60)';
+    gx.beginPath();
+    gx.roundRect ? gx.roundRect(cx - tw1/2 - 8, lblY - 16, tw1 + 16, 24, 4)
+                 : gx.rect(cx - tw1/2 - 8, lblY - 16, tw1 + 16, 24);
+    gx.fill();
+    gx.fillStyle = 'rgba(255,255,255,0.97)';
     gx.textAlign = 'center';
     gx.fillText(lbl1, cx, lblY);
     gx.restore();
@@ -1392,7 +1386,7 @@ function updateLiveReadout(r, smoothL, isShake){
   } else if(isShake){
     status = '손떨림 감지 — 잠시 정지해주세요';
   } else if(covPct < 35){
-    status = '더 가까이 대주세요 — 5–10cm 근접 시 가장 정확합니다';
+    status = '원두가 화면 중앙을 채우도록 위치시키세요';
   } else if(frameBuffer.length < needed){
     status = '분석 중 ' + prog + ' / ' + needed + ' 프레임 — 정지 유지';
   } else if(bs >= AUTO_LOCK_SIGMA){
@@ -1446,9 +1440,9 @@ function autoLock(){
   }
 
   /* ────────────────────────────────────────
-     분쇄도 모드: 컬러 계산 없이 분쇄도만 추출
+     gcol 모드: 컬러 + 분쇄도 동시 추출 (ground forced)
   ──────────────────────────────────────── */
-  if(currentMode === 'grind'){
+  if(currentMode === 'gcol'){
     dom.lockFlash.classList.add('on');
     setTimeout(function(){ dom.lockFlash.classList.remove('on'); }, 500);
     if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
@@ -1456,24 +1450,79 @@ function autoLock(){
     dom.liveBadge.style.display='none';
     dom.stopBtns.style.display='none';
 
-    var grindVals=frameBuffer.map(function(fr){return fr.grindMicron;}).filter(function(v){return v!==null&&v!==undefined;});
-    var grindSpreadVal=null;
-    var grindMicronVal=null;
-    if(grindVals.length){
-      grindVals.sort(function(a,b){return a-b;});
-      grindMicronVal=grindVals[Math.floor(grindVals.length/2)];
-      if(grindVals.length>=3){
-        var q1=grindVals[Math.floor(grindVals.length*0.25)];
-        var q3=grindVals[Math.floor(grindVals.length*0.75)];
-        grindSpreadVal=q3-q1;
+    /* ── 컬러 계산 ── */
+    var avgLsG = frameBuffer.reduce(function(a,r){return a+r.Ls;},0)/frameBuffer.length;
+    var avgAsG = frameBuffer.reduce(function(a,r){return a+r.As;},0)/frameBuffer.length;
+    var avgBsG = frameBuffer.reduce(function(a,r){return a+r.Bs;},0)/frameBuffer.length;
+    var lastRG = frameBuffer[frameBuffer.length-1];
+    var bufSigmaG = computeBufSigma();
+    var agtronG = Math.round(clamp((1.85*avgLsG)-1.2, 25, 95));
+
+    /* ── 분쇄도 계산: 전체 프레임 → 통계 ── */
+    var grindValsG = frameBuffer.map(function(fr){return fr.grindMicron;}).filter(function(v){return v!==null&&v!==undefined;});
+    var grindMicronG = null, grindSpreadG = null, grindQ1 = null, grindQ3 = null, grindCI = null;
+    if(grindValsG.length){
+      grindValsG.sort(function(a,b){return a-b;});
+      grindMicronG = grindValsG[Math.floor(grindValsG.length/2)]; /* median */
+      if(grindValsG.length >= 4){
+        grindQ1 = grindValsG[Math.floor(grindValsG.length*0.25)];
+        grindQ3 = grindValsG[Math.floor(grindValsG.length*0.75)];
+        grindSpreadG = grindQ3 - grindQ1; /* IQR */
+        var halfIQR = (grindQ3 - grindQ1) / 2;
+        grindCI = { lo: Math.max(grindValsG[0], grindMicronG - Math.round(halfIQR*1.5)),
+                    hi: Math.min(grindValsG[grindValsG.length-1], grindMicronG + Math.round(halfIQR*1.5)) };
       }
     }
 
-    /* grind-only pending — 컬러 필드 없음 */
-    pendingGrind = { grindMicron: grindMicronVal, grindSpread: grindSpreadVal, frameCount: frameBuffer.length };
-    dom.lrStatus.textContent = '분쇄도 잠금 완료 — ' + (grindMicronVal||'—') + 'µm  ' + frameBuffer.length + '프레임';
-    [dom.lrCovFill, dom.lrLightFill, dom.lrStabFill].forEach(function(el){ el.style.background='rgba(60,200,100,.9)'; el.style.width='100%'; });
-    renderGrindOnly(pendingGrind);
+    /* 2차 정밀측정인 경우: 1차(40%) + 2차(60%) 가중평균 */
+    var passNum = 1;
+    if(grindPass1 && grindPass1.micron && grindMicronG){
+      var p1 = grindPass1.micron, p2 = grindMicronG;
+      grindMicronG = Math.round(p1 * 0.40 + p2 * 0.60);
+      /* CI 병합: 1차·2차 구간의 교집합 또는 가중 */
+      if(grindPass1.CI && grindCI){
+        grindCI = {
+          lo: Math.round(grindPass1.CI.lo * 0.40 + grindCI.lo * 0.60),
+          hi: Math.round(grindPass1.CI.hi * 0.40 + grindCI.hi * 0.60),
+        };
+      }
+      /* spread도 가중 */
+      if(grindPass1.spread != null && grindSpreadG != null){
+        grindSpreadG = Math.round(grindPass1.spread * 0.40 + grindSpreadG * 0.60);
+      }
+      passNum = 2;
+      grindPass1 = null; /* 소비 */
+    }
+
+    /* ── 신뢰도 ── */
+    var refLG = lastRG.wallL || 0;
+    var covG  = lastRG.beanCoverage !== undefined ? lastRG.beanCoverage : 0.6;
+    var refScoreG = clamp(1 - Math.abs(refLG - 47) / 28, 0, 1);
+    var covScoreG = clamp(covG*1.8,0,1);
+    var stabScoreG = clamp(1-bufSigmaG/2.5,0,1);
+    var confG = Math.round(clamp(refScoreG*0.40+covScoreG*0.25+stabScoreG*0.35,0,1)*100);
+
+    pendingResult = {
+      agtron: agtronG, margin: 4,
+      Ls: avgLsG, As: avgAsG, Bs: avgBsG,
+      sigma: lastRG.sigma, conf: confG,
+      beanType: 'ground', isLocked: true, lowLight: false, stabSigma: bufSigmaG,
+      wallL: refLG,
+      bRGB: lastRG.bRGB, wRGB: lastRG.wRGB,
+      frameCount: frameBuffer.length,
+      grindMicron: grindMicronG,
+      grindSpread: grindSpreadG,
+      grindCI: grindCI,
+      grindFrames: grindValsG.length,
+      grindPass: passNum,
+    };
+
+    dom.lrStatus.textContent = '잠금 완료 — L*=' + avgLsG.toFixed(1) + '  Agtron ' + agtronG
+      + (grindMicronG ? '  분쇄도 ' + grindMicronG + 'µm' : '');
+    [dom.lrCovFill,dom.lrLightFill,dom.lrStabFill].forEach(function(el){
+      el.style.background='rgba(60,200,100,.9)'; el.style.width='100%';
+    });
+    renderResult(pendingResult);
     renderStepNav();
     return;
   }
@@ -1969,7 +2018,7 @@ function renderResult(r){
   G('pA').textContent=r.agtron;
   G('rName').textContent=name;
   G('rRange').textContent='Agtron '+Math.max(25,r.agtron-r.margin)+'–'+Math.min(95,r.agtron+r.margin);
-  var modeLabel = currentMode==='whole'?'홀빈':currentMode==='gcol'?'그라운드 컬러':'분쇄도';
+  var modeLabel = currentMode==='whole'?'홀빈':currentMode==='gcol'?'그라운드 컬러 & 분쇄도':'측정';
   G('rhTag').textContent=modeLabel+'  σ='+r.sigma.toFixed(1);
   dom.flashA.classList.toggle('on', r.lowLight);
   /* stability notice */
@@ -2000,7 +2049,7 @@ function renderResult(r){
   else if(!r.isLocked)   cm+='편차 σ='+r.stabSigma.toFixed(2)+' — 재촬영 권장';
   else if(wallOpt && r.conf>=65) cm+='최적 촬영 거리 (L*'+r.wallL.toFixed(0)+')';
   else if(r.conf>=65)    cm+='측정 조건 양호';
-  else                   cm+='5–10cm 근접 촬영 권장 (현재 L*='+r.wallL.toFixed(0)+', 목표 38–58)';
+  else                   cm+='원두를 화면 중앙에 채워 촬영 권장 (현재 L*='+r.wallL.toFixed(0)+', 목표 38–58)';
   var confEl = G('confTxt');
   confEl.innerHTML = r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+cm;
 
@@ -2033,12 +2082,47 @@ function renderResult(r){
     /* Scale needle: map 100–2500µm → 2.5%–97.5% */
     var ndPct=clamp(((r.grindMicron-100)/(2500-100))*95+2.5, 2.5, 97.5);
     G('grindNd').style.left=ndPct+'%';
-    var grindRelClass = r.grindSpread != null ? (r.grindSpread<=60?'good':r.grindSpread<=120?'med':'low') : 'med';
-    var grindRelText  = r.grindSpread != null ? (r.grindSpread<=60?'신뢰도 양호':r.grindSpread<=120?'편차 보통':'균일도 낮음 — 재촬영 권장') : '';
-    G('grindNote').innerHTML = gi.note + ' (텍스처 기반 추정값)'
-      + (r.grindSpread != null ? '  |  구역 편차 ±' + Math.round(r.grindSpread/2) + 'µm  <span class="grind-note-reliability '+grindRelClass+'">'+grindRelText+'</span>' : '');
+
+    /* 신뢰도 + CI 계산 */
+    var grindRelClass, grindRelText, ciNote='';
+    if(r.grindCI){
+      ciNote = '  95% CI: ' + r.grindCI.lo + '–' + r.grindCI.hi + 'µm';
+    }
+    if(r.grindSpread != null){
+      if(r.grindSpread <= 60){
+        grindRelClass='good'; grindRelText='분쇄도 신뢰도 양호';
+      } else if(r.grindSpread <= 120){
+        grindRelClass='med'; grindRelText='편차 보통 (±' + Math.round(r.grindSpread/2) + 'µm)';
+      } else {
+        grindRelClass='low'; grindRelText='편차 큼 — 2차 정밀측정 권장';
+      }
+    } else {
+      grindRelClass='med'; grindRelText=''; ciNote='';
+    }
+    G('grindNote').innerHTML = gi.note
+      + ciNote
+      + (r.grindSpread != null ? '  |  IQR ±' + Math.round(r.grindSpread/2) + 'µm' : '')
+      + '  <span class="grind-note-reliability '+grindRelClass+'">'+grindRelText+'</span>'
+      + (r.grindFrames ? '  <small style="color:var(--tm)">'+r.grindFrames+'프레임</small>' : '');
+
+    /* 2차 정밀측정 버튼: 편차 큰 경우 또는 패스1인 경우 */
+    var grindRefineBtnEl = G('grindRefineBtn');
+    if(!grindRefineBtnEl){
+      grindRefineBtnEl = document.createElement('div');
+      grindRefineBtnEl.id = 'grindRefineBtn';
+      grindRefineBtnEl.style.cssText = 'padding:8px 16px 14px';
+      grindSec.appendChild(grindRefineBtnEl);
+    }
+    var needRefine = r.grindPass !== 2 && (r.grindSpread == null || r.grindSpread > 80);
+    if(needRefine){
+      grindRefineBtnEl.innerHTML = '<button onclick="launchGrindRefine()" style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #3a3a3a;border-radius:4px;color:#e8c060;font-family:var(--m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">2차 정밀측정 — 더 가까이 대고 재촬영 (1차+2차 가중평균)</button>';
+    } else {
+      grindRefineBtnEl.innerHTML = r.grindPass === 2 ? '<div style="padding:6px 0;font-family:var(--m);font-size:10px;color:#5dda88;letter-spacing:.08em;text-transform:uppercase">✓ 2차 정밀측정 완료 — 가중평균 적용됨</div>' : '';
+    }
   } else {
     grindSec.classList.remove('on');
+    var grindRefineBtnEl2 = G('grindRefineBtn');
+    if(grindRefineBtnEl2) grindRefineBtnEl2.innerHTML='';
   }
 
   /* Decision bar — ALWAYS shown while result is pending */
@@ -2079,8 +2163,31 @@ function launchMode(mode){
 }
 
 /* ── stub for legacy refs ── */
-function grindPhaseActive_stub(){ return currentMode==='grind'; }
-var grindPhaseActive = false; /* kept for autoLock compat — driven by currentMode */
+function grindPhaseActive_stub(){ return false; }
+var grindPhaseActive = false;
+
+/* 2차 정밀측정 상태 */
+var grindPass1 = null; /* { micron, spread, CI } — 1차 결과 보관 */
+
+function launchGrindRefine(){
+  /* 1차 결과 보관 */
+  if(store.grind && store.grind.grindMicron){
+    grindPass1 = {
+      micron: store.grind.grindMicron,
+      spread: store.grind.grindSpread,
+      CI:     store.grind.grindCI,
+    };
+  } else if(pendingResult && pendingResult.grindMicron){
+    grindPass1 = {
+      micron: pendingResult.grindMicron,
+      spread: pendingResult.grindSpread,
+      CI:     pendingResult.grindCI,
+    };
+  }
+  /* 2차는 gcol 모드 재실행 (더 가까이) */
+  setInst('2차 정밀측정 — 5~8cm 더 가까이 대고 촬영하세요.');
+  launchMode('gcol');
+}
 
 function doRetake(){
   pendingResult = null;
@@ -2105,7 +2212,7 @@ function doRetake(){
     dom.stopBtns.style.display = 'flex';
     enableTorch();
     rafId = requestAnimationFrame(frameLoop);
-    setInst('다시 측정합니다 — 컵을 카메라 앞에 대주세요.');
+    setInst('다시 측정합니다 — 원두를 카메라 앞에 대주세요.');
   } else {
     setInst('탭을 선택해 다시 측정하세요.');
   }
@@ -2132,10 +2239,25 @@ function doConfirm(){
     setInst('분쇄도 저장 완료.');
   } else if(pendingResult !== null){
     if(currentMode === 'whole'){ store.whole = pendingResult; stepDone.whole = true; }
-    else if(currentMode === 'gcol'){ store.gcol = pendingResult; stepDone.gcol = true; }
+    else if(currentMode === 'gcol'){
+      store.gcol = pendingResult;
+      stepDone.gcol = true;
+      /* 분쇄도 동시 저장 */
+      if(pendingResult.grindMicron !== null && pendingResult.grindMicron !== undefined){
+        store.grind = {
+          grindMicron: pendingResult.grindMicron,
+          grindSpread: pendingResult.grindSpread,
+          grindCI:     pendingResult.grindCI,
+          grindFrames: pendingResult.grindFrames,
+          frameCount:  pendingResult.frameCount,
+          pass: pendingResult.grindPass || 1,
+        };
+        stepDone.grind = true;
+      }
+    }
     pendingResult = null;
-    var m = currentMode==='whole'?'홀빈':'그라운드 컬러';
-    setInst(m + ' 색도 저장 완료.');
+    var m = currentMode==='whole'?'홀빈':'그라운드 컬러 & 분쇄도';
+    setInst(m + ' 저장 완료.');
   }
 
   currentMode = null;
@@ -2263,19 +2385,18 @@ function setInst(t){dom.it.textContent=t;}
    STEP NAVIGATOR
 ════════════════════════════════════════ */
 /* stepState tracks what the user should do next */
-var stepSequence = ['whole','gcol','grind'];
+var stepSequence = ['whole','gcol'];
 var stepDone     = {whole:false, gcol:false, grind:false};
 
 var STEP_LABELS = {
   whole: '홀빈 색도',
-  gcol:  '그라운드 컬러',
-  grind: '분쇄도',
+  gcol:  '그라운드 컬러 & 분쇄도',
 };
 
 /* tile id map */
-var TILE_IDS      = {whole:'tileWhole',     gcol:'tileGcol',     grind:'tileGrind'};
-var TILE_VAL_IDS  = {whole:'tileWholeVal',  gcol:'tileGcolVal',  grind:'tileGrindVal'};
-var TILE_CHIP_IDS = {whole:'tileWholeChip', gcol:'tileGcolChip', grind:'tileGrindChip'};
+var TILE_IDS      = {whole:'tileWhole',     gcol:'tileGcol'};
+var TILE_VAL_IDS  = {whole:'tileWholeVal',  gcol:'tileGcolVal'};
+var TILE_CHIP_IDS = {whole:'tileWholeChip', gcol:'tileGcolChip'};
 
 function renderStepNav(){
   var statusEl = G('stepNavStatus');
@@ -2288,8 +2409,7 @@ function renderStepNav(){
 
     /* state class */
     var cls = 'step-tile ';
-    var hasPending = (k !== 'grind' && currentMode===k && pendingResult !== null) ||
-                     (k === 'grind' && currentMode===k && pendingGrind !== null);
+    var hasPending = (currentMode===k && (pendingResult !== null || pendingGrind !== null));
     if(currentMode === k && liveRunning){
       cls += 'active-mode';
     } else if(hasPending){
@@ -2302,22 +2422,21 @@ function renderStepNav(){
     tile.className = cls;
 
     /* value display */
-    if(k === 'grind'){
-      if(currentMode===k && liveRunning){
-        valEl.textContent = '분석 중…';
-      } else if(stepDone[k] && store.grind && store.grind.grindMicron){
-        valEl.textContent = store.grind.grindMicron + ' µm';
-      } else if(currentMode===k && pendingGrind){
-        valEl.textContent = (pendingGrind.grindMicron||'—') + ' µm';
+    if(currentMode===k && liveRunning){
+      valEl.textContent = '분석 중…';
+    } else if(k === 'gcol'){
+      var src = stepDone[k] ? store.gcol : (currentMode===k ? pendingResult : null);
+      if(src){
+        var grindPart = (store.grind && store.grind.grindMicron) ? '  |  '+store.grind.grindMicron+'µm' : 
+                        (src.grindMicron ? '  |  '+src.grindMicron+'µm' : '');
+        valEl.textContent = 'Ag ' + src.agtron + grindPart;
       } else {
         valEl.textContent = '—';
       }
     } else {
-      var src = stepDone[k] ? store[k] : (currentMode===k ? pendingResult : null);
-      if(currentMode===k && liveRunning){
-        valEl.textContent = '분석 중…';
-      } else if(src){
-        valEl.textContent = 'Ag ' + src.agtron;
+      var src2 = stepDone[k] ? store[k] : (currentMode===k ? pendingResult : null);
+      if(src2){
+        valEl.textContent = 'Ag ' + src2.agtron;
       } else {
         valEl.textContent = '—';
       }
@@ -2328,7 +2447,7 @@ function renderStepNav(){
       if(currentMode===k && liveRunning){
         chipEl.textContent = '● 측정 중 — 탭하면 중단';
       } else if(hasPending){
-        chipEl.textContent = '⬆ 결과 확인';
+        chipEl.textContent = '▲ 결과 확인';
       } else if(stepDone[k]){
         chipEl.textContent = '✓ 완료 — 재측정 가능';
       } else {
@@ -2339,15 +2458,15 @@ function renderStepNav(){
 
   /* status line */
   if(!statusEl) return;
-  var doneCount = (stepDone.whole?1:0)+(stepDone.gcol?1:0)+(stepDone.grind?1:0);
+  var doneCount = (stepDone.whole?1:0)+(stepDone.gcol?1:0);
   if(liveRunning){
-    statusEl.textContent = STEP_LABELS[currentMode] + ' — 분석 중  (타일 탭하면 중단)';
+    statusEl.textContent = (STEP_LABELS[currentMode]||currentMode) + ' — 분석 중  (타일 탭하면 중단)';
   } else if(pendingResult !== null || pendingGrind !== null){
-    statusEl.textContent = STEP_LABELS[currentMode] + ' — 결과 확인 후 저장 또는 재측정';
-  } else if(doneCount === 3){
-    statusEl.textContent = '3항목 완료  |  정밀검사 패널 확인';
+    statusEl.textContent = (STEP_LABELS[currentMode]||currentMode) + ' — 결과 확인 후 저장 또는 재측정';
+  } else if(doneCount === 2){
+    statusEl.textContent = '측정 완료  |  정밀검사 패널 확인';
   } else if(doneCount > 0){
-    statusEl.textContent = doneCount + '/3 완료  |  원하는 항목을 탭해 측정';
+    statusEl.textContent = doneCount + '/2 완료  |  원하는 항목을 탭해 측정';
   } else {
     statusEl.textContent = '측정 항목을 선택하세요  |  필요한 항목만 선택 가능';
   }
@@ -2400,25 +2519,22 @@ function validateBeanSubject(frames){
   var medCov = covs[Math.floor(covs.length/2)];
 
   var minCov = currentMode==='whole' ? MIN_BEAN_COV_WHOLE
-             : currentMode==='gcol'  ? MIN_BEAN_COV_GCOL
-             :                         MIN_BEAN_COV_GRIND;
+             : currentMode==='gcol'  ? MIN_BEAN_COV_GRIND  /* ground분쇄 기준 */
+             :                         MIN_BEAN_COV_GCOL;
 
   if(medCov < minCov){
     if(medCov < 0.05){
       return { ok: false, reason: '원두가 감지되지 않습니다. 배경이나 다른 물체가 아닌 원두를 직접 촬영해주세요.' };
     }
-    if(currentMode === 'grind'){
+    if(currentMode === 'gcol'){
       return { ok: false, reason: '분쇄 원두가 충분히 감지되지 않습니다 (감지율 '+ Math.round(medCov*100) +'%). 컵에 분쇄 원두를 담고 10~15cm 거리에서 다시 촬영해주세요.' };
     }
     return { ok: false, reason: '원두 감지율이 낮습니다 ('+Math.round(medCov*100)+'%). 원두를 화면 중앙에 위치시키고 더 가까이 촬영해주세요.' };
   }
 
-  /* Check chromatic consistency: if R-B difference is too small (gray/white bg) */
-  /* Use existing chromatic filter data — if beanCoverage passes, it's already chromatic */
-  /* Additional check: sigma variance — if extremely uniform, it may be background */
   var sigmas = frames.map(function(r){ return r.sigma; });
   var medSigma = sigmas.slice().sort(function(a,b){return a-b;})[Math.floor(sigmas.length/2)];
-  if(currentMode !== 'grind' && medSigma < 3.0 && medCov < 0.30){
+  if(currentMode !== 'gcol' && medSigma < 3.0 && medCov < 0.30){
     return { ok: false, reason: '이미지가 너무 균일합니다 (σ='+medSigma.toFixed(1)+'). 원두를 직접 촬영하고 있는지 확인해주세요.' };
   }
 
