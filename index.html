@@ -670,6 +670,7 @@ body.unlocked .gate{display:none}
   <div class="rh">
     <div class="rh-t">분석 결과</div>
     <div class="rh-tag" id="rhTag">—</div>
+    <span id="rhDelta" style="display:none;font-family:var(--m);font-size:10px;font-weight:700;letter-spacing:.06em;margin-left:8px"></span>
   </div>
   <div class="flash-alert" id="lowlightAlert">
     <div class="flash-alert-t">광량 부족 — 카메라 라이트(손전등)가 켜져 있는지 확인하고, 컵을 더 가까이 대주세요.</div>
@@ -1470,15 +1471,28 @@ function autoLock(){
      데이터 추출 공통 함수
   ──────────────────────────────────────── */
   function extractData(buf, mode){
-    var avgLs = buf.reduce(function(a,r){return a+r.Ls;},0)/buf.length;
-    var avgAs = buf.reduce(function(a,r){return a+r.As;},0)/buf.length;
-    var avgBs = buf.reduce(function(a,r){return a+r.Bs;},0)/buf.length;
-    var lastR = buf[buf.length-1];
-    var vals  = buf.map(function(r){return r.Ls;});
-    var mean  = avgLs;
-    var sig   = Math.sqrt(vals.reduce(function(s,v){return s+Math.pow(v-mean,2);},0)/vals.length);
+    /* ── 1. 다중 프레임 중앙값 구조 ─────────────────────────
+       mean 대신 median 채택 — 이상 프레임(손떨림 잔재, 조명 spike) 내성  */
+    var lsArr  = buf.map(function(r){return r.Ls;}).sort(function(a,b){return a-b;});
+    var asArr  = buf.map(function(r){return r.As;}).sort(function(a,b){return a-b;});
+    var bsArr  = buf.map(function(r){return r.Bs;}).sort(function(a,b){return a-b;});
+    var n=lsArr.length;
+    var avgLs = lsArr[Math.floor(n/2)];
+    var avgAs = asArr[Math.floor(n/2)];
+    var avgBs = bsArr[Math.floor(n/2)];
 
-    /* 분쇄도 */
+    /* ── 2. std 기반 신뢰도 ───────────────────────────────────
+       Ls 표준편차가 낮을수록 측정이 안정적.
+       std < 0.8 → 신뢰, std 0.8–1.5 → 보통, std > 1.5 → 재촬영 권장  */
+    var lsMean=lsArr.reduce(function(a,b){return a+b;},0)/n;
+    var lsStd=Math.sqrt(lsArr.reduce(function(s,v){return s+Math.pow(v-lsMean,2);},0)/n);
+    var stabOk = lsStd < 1.5;
+    var stabGrade = lsStd < 0.8 ? 'high' : lsStd < 1.5 ? 'med' : 'low';
+
+    var lastR = buf[buf.length-1];
+    var sig   = lsStd;  /* sigma = std of Ls across frames */
+
+    /* 분쇄도: 상하 15% 이상치 제거 후 중앙값 */
     var gVals = buf.map(function(fr){return fr.grindMicron;}).filter(function(v){return v!=null;});
     var gMicron=null, gSpread=null, gCI=null;
     if(gVals.length){
@@ -1495,7 +1509,7 @@ function autoLock(){
     }
     var refL=lastR.wallL||0, cov=lastR.beanCoverage||0.6;
     var conf=Math.round(clamp((clamp(1-Math.abs(refL-47)/28,0,1))*0.40+(clamp(cov*1.8,0,1))*0.25+(clamp(1-sig/2.5,0,1))*0.35,0,1)*100);
-    return {avgLs,avgAs,avgBs,sig,refL,conf,lastR,gMicron,gSpread,gCI,gFrames:gVals.length};
+    return {avgLs,avgAs,avgBs,sig,lsStd,stabOk,stabGrade,refL,conf,lastR,gMicron,gSpread,gCI,gFrames:gVals.length};
   }
 
   /* ────────────────────────────────────────
@@ -1570,11 +1584,16 @@ function autoLock(){
 
   pendingResult = {
     agtron: agtronFinal,
-    margin: isWhole ? 5 : 3,  /* 2차 측정으로 오차범위 축소 */
+    margin: isWhole ? 5 : 3,
     Ls: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
     sigma: sigFinal, conf: confFinal,
     beanType: isWhole ? 'whole' : 'ground',
     isLocked: true, lowLight: false, stabSigma: sigFinal,
+    /* std 기반 신뢰도 */
+    lsStd: Math.round(((p1.lsStd + p2.lsStd)/2)*100)/100,
+    stabGrade: (p1.stabGrade==='low'||p2.stabGrade==='low') ? 'low'
+             : (p1.stabGrade==='med'||p2.stabGrade==='med') ? 'med' : 'high',
+    needsRetake: (p1.stabGrade==='low' || p2.stabGrade==='low'),
     wallL: p2.refL,
     bRGB: lastR.bRGB, wRGB: lastR.wRGB,
     frameCount: frameBuffer.length,
@@ -1737,11 +1756,21 @@ function grindInfo(µm){
 function analyzeFrame(context, W, H){
   try{
     var step = Math.max(3, Math.floor(Math.min(W,H)/120));
-    var bx0=Math.round(W*0.25), by0=Math.round(H*0.25);
-    var bx1=Math.round(W*0.75), by1=Math.round(H*0.75);
+
+    /* ── ROI: 중앙 60% 원형 제한 ─────────────────────────────
+       사각형 박스(25–75%) 대신 원형 마스크 적용.
+       반지름 = min(W,H)*0.30 → 지름 = 60% 영역
+       코너 노이즈(컵 테두리·배경) 자동 배제               */
+    var cx=W/2, cy=H/2;
+    var rLimit=Math.min(W,H)*0.30;
+    var rLim2=rLimit*rLimit;
+    var bx0=Math.round(W*0.20), by0=Math.round(H*0.20);
+    var bx1=Math.round(W*0.80), by1=Math.round(H*0.80);
     var allPx=[];
     for(var y=by0;y<by1;y+=step)
       for(var x=bx0;x<bx1;x+=step){
+        var dx=x-cx, dy=y-cy;
+        if(dx*dx+dy*dy > rLim2) continue;   /* 원형 밖 제거 */
         var d=context.getImageData(x,y,1,1).data;
         allPx.push({r:d[0],g:d[1],b:d[2],lum:lum(d[0],d[1],d[2])});
       }
@@ -1759,13 +1788,15 @@ function analyzeFrame(context, W, H){
     if(beanPx.length<15) beanPx=allPx.filter(function(p){return p.lum>10&&p.lum<240;});
     if(beanPx.length<8) return null;
 
+    /* ── 픽셀 극단값 제거: 하위 5%(그림자) + 상위 10%(반사광) ─
+       기존 하위10%/상위5%에서 조정 — 반사광이 더 많으므로 상위를 더 넓게 제거 */
     beanPx.sort(function(a,b){return a.lum-b.lum;});
     var bn=beanPx.length;
-    var cleanPx=beanPx.slice(Math.floor(bn*0.10),Math.floor(bn*0.95));
-    if(!cleanPx.length) cleanPx=beanPx;
+    var cleanPx=beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.90));
+    if(cleanPx.length<8) cleanPx=beanPx;
 
-    /* Bean highlight reference (top 30% bright = well-lit surface) */
-    var BEAN_REF_TARGET=44; /* calibrated: 실측 최적 refL≈45-50 기준 */
+    /* Bean highlight reference (top 12% bright = well-lit surface) */
+    var BEAN_REF_TARGET=44;
     var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
     var refR=median(hiPx,'r'), refG=median(hiPx,'g'), refB=median(hiPx,'b');
     var refLab=sRGBtoLab(clamp(refR,0,255),clamp(refG,0,255),clamp(refB,0,255));
@@ -1785,7 +1816,17 @@ function analyzeFrame(context, W, H){
     var wbB=clamp(Math.round(medPx.b*chB),0,255);
     var lab=sRGBtoLab(wbR,wbG,wbB);
     var Ls=clamp(lab.L,0,100);
-    var agtron=Math.round(clamp((1.85*Ls)-1.2,25,95));
+
+    /* ── 프레임 단위 밝기 정규화 ─────────────────────────────
+       refL이 목표(BEAN_REF_TARGET=44)와 다를 때 Ls를 선형 보정.
+       토치 각도·거리 프레임 간 미세 변동을 흡수.
+       보정 범위 ±15% 이내로 clamp하여 과보정 방지.          */
+    var normGain = (refL > 10)
+      ? clamp(BEAN_REF_TARGET / refL, 0.85, 1.15)
+      : 1.0;
+    var LsNorm = clamp(Ls * normGain, 0, 100);
+
+    var agtron=Math.round(clamp((1.85*LsNorm)-1.2,25,95));
 
     var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
     var lMean=lSum/cleanPx.length, lVar=0;
@@ -1801,8 +1842,8 @@ function analyzeFrame(context, W, H){
     }
 
     return {
-      Ls, As:lab.a, Bs:lab.b, agtron, sigma, beanType,
-      lowLight, wallL:refL, beanCoverage,
+      Ls:LsNorm, LsRaw:Ls, As:lab.a, Bs:lab.b, agtron, sigma, beanType,
+      lowLight, wallL:refL, beanCoverage, normGain,
       bRGB:{r:medPx.r,g:medPx.g,b:medPx.b},
       wRGB:{r:refR,g:refG,b:refB},
       grindMicron: grindResult ? grindResult.microns : null,
@@ -1858,10 +1899,12 @@ function runAnalysis(W,H){
   }
   if(beanPx.length < 20) beanPx = allPx.filter(function(p){ return p.lum>10&&p.lum<240; });
 
-  /* ── 3. REMOVE SHADOWS + SPECULAR ──────────────────────── */
+  /* ── 3. REMOVE SHADOWS + SPECULAR ──────────────────────────
+     하위 5%(그림자) + 상위 10%(반사광) 제거
+     반사광이 더 많으므로 상위를 더 넓게 제거                   */
   beanPx.sort(function(a,b){return a.lum-b.lum;});
   var bn=beanPx.length;
-  var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.95));
+  var cleanPx=beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.90));
   if(cleanPx.length<10) cleanPx=beanPx;
 
   /* ── 4. BEAN HIGHLIGHT REFERENCE ───────────────────────
@@ -2039,22 +2082,37 @@ function renderResult(r){
   G('rRange').textContent='Agtron '+Math.max(25,r.agtron-r.margin)+'–'+Math.min(95,r.agtron+r.margin);
   var modeLabel = currentMode==='whole'?'홀빈':currentMode==='gcol'?'그라운드 컬러 & 분쇄도':'측정';
   G('rhTag').textContent=modeLabel+'  σ='+r.sigma.toFixed(1);
+
+  /* 홀빈-분쇄 delta 인라인 표시 */
+  var deltaEl = G('rhDelta');
+  if(store.whole && store.gcol && deltaEl){
+    var dA = store.whole.agtron - store.gcol.agtron;
+    var dColor = Math.abs(dA)<=7?'#5dda88':Math.abs(dA)<=12?'#d4a820':'#e05050';
+    deltaEl.textContent = 'Δ'+(dA>0?'+':'')+dA+'pt';
+    deltaEl.style.color = dColor;
+    deltaEl.style.display = 'inline';
+  } else if(deltaEl){
+    deltaEl.style.display='none';
+  }
   dom.flashA.classList.toggle('on', r.lowLight);
   /* stability notice */
   var sn = G('stabNotice'), st = G('stabNoticeTxt');
   if(!r.lowLight){
+    sn.classList.add('on');
     if(r.dualPass){
-      sn.classList.add('on');
-      sn.style.background='#f0f8ff'; sn.style.borderColor='#90c0e0';
-      st.style.color='#1a5a8a';
-      st.textContent='1+2차 측정 평균 적용 (L* ' + r.pass1L.toFixed(1) + ' → ' + r.pass2L.toFixed(1) + ')  σ=' + r.stabSigma.toFixed(2) + ' — 오차범위 축소됨';
+      var gradeLabel = r.stabGrade==='high'?'신뢰도 높음':r.stabGrade==='med'?'신뢰도 보통':'⚠ 재촬영 권장';
+      var gc = r.stabGrade==='high'?{bg:'#f0fff6',bd:'#a0d8b8',tc:'#1a7a46'}
+             : r.stabGrade==='med' ?{bg:'#fffbf0',bd:'#f0d890',tc:'#8a6800'}
+             :                      {bg:'#fff0f0',bd:'#e8a0a0',tc:'#8a1a1a'};
+      sn.style.background=gc.bg; sn.style.borderColor=gc.bd; st.style.color=gc.tc;
+      st.textContent='1+2차 평균  L*'+r.pass1L.toFixed(1)+'→'+r.pass2L.toFixed(1)
+        +'  std='+r.lsStd.toFixed(2)+'  ['+gradeLabel+']'
+        +(r.needsRetake?' — 재측정하면 정확도가 높아집니다':'');
     } else if(r.isLocked){
-      sn.classList.add('on');
       sn.style.background='#f0fff6'; sn.style.borderColor='#a0d8b8';
       st.style.color='#1a7a46';
       st.textContent='측정 안정 (σ='+r.stabSigma.toFixed(2)+') — 결과를 신뢰할 수 있습니다.';
     } else {
-      sn.classList.add('on');
       sn.style.background='#fffbf0'; sn.style.borderColor='#f0d890';
       st.style.color='#8a6800';
       st.textContent='측정 편차 감지 (σ='+r.stabSigma.toFixed(2)+') — 재촬영하면 정확도가 높아집니다.';
@@ -2353,19 +2411,34 @@ function updateExamPanel(){
     G('examGrindNote').textContent = '';
   }
 
-  /* 오차 분석 (홀빈 + 그라운드 컬러 둘 다 있을 때) */
+  /* ── 홀빈-분쇄 delta feature ────────────────────────────
+     두 측정이 모두 있을 때 발달 균일도 분석.
+     ΔAgtron = whole - ground (양수 = 표면이 더 밝음 = 정상)
+     ΔL*     = whole.Ls - gcol.Ls
+     균일도 지수 = 1 - |ΔAgtron| / 20 (0–1 스케일)            */
   var ed = G('examDelta');
   if(store.whole && store.gcol){
     ed.style.display='block';
     var dAg = store.whole.agtron - store.gcol.agtron;
     var dLs = +(store.whole.Ls - store.gcol.Ls).toFixed(1);
+    var uIdx = Math.round(clamp((1 - Math.abs(dAg)/20)*100, 0, 100)); /* 균일도 0–100 */
     G('examDAg').textContent = (dAg>0?'+':'')+dAg;
     G('examDLs').textContent = (dLs>0?'+':'')+dLs;
-    var ab=Math.abs(dAg), txt;
-    if(ab<=5)       txt='Agtron 차이 '+ab+'pt — 내외부 로스팅 균일도 양호.';
-    else if(ab<=10) txt='Agtron '+ab+'pt 차이 — 일반적 범위. 홀빈 표면 곡률 특성상 정상.';
-    else            txt='Agtron '+ab+'pt 이상 차이 — 촬영 조건 또는 표면/내부 발달 불균형 확인.';
-    G('examInterp').textContent=txt;
+    var ab=Math.abs(dAg), txt, uTxt;
+    if(ab<=3){
+      txt='ΔAgtron '+dAg+'pt — 표면/내부 발달 매우 균일.';
+      uTxt='균일도 '+uIdx+'% (우수)';
+    } else if(ab<=7){
+      txt='ΔAgtron '+dAg+'pt — 일반적 범위. 홀빈 표면 곡률 특성상 정상.';
+      uTxt='균일도 '+uIdx+'%';
+    } else if(ab<=12){
+      txt='ΔAgtron '+dAg+'pt 차이 — 표면과 내부 발달에 차이 있음.';
+      uTxt='균일도 '+uIdx+'% (확인 권장)';
+    } else {
+      txt='ΔAgtron '+ab+'pt — 촬영 조건 또는 표면/내부 발달 불균형 확인.';
+      uTxt='균일도 '+uIdx+'% (주의)';
+    }
+    G('examInterp').textContent = txt + '  ' + uTxt;
   } else {
     ed.style.display='none';
   }
