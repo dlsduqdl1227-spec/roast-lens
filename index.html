@@ -429,14 +429,11 @@ body.unlocked .gate{display:none}
 .grind-note-reliability.med{background:#3a3000;color:#d4a820}
 .grind-note-reliability.low{background:#3a1010;color:#e05050}
 /* ── SHAKE PROMPT ── */
-.shake-prompt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(10,10,10,0.92);border:1px solid rgba(200,160,60,0.6);border-radius:12px;padding:22px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;z-index:50;min-width:240px;backdrop-filter:blur(4px)}
-.shake-prompt-icon{font-size:32px;line-height:1;animation:shakeit 1.2s ease-in-out infinite}
-@keyframes shakeit{0%,100%{transform:translateY(0)}25%{transform:translateY(-5px)}75%{transform:translateY(5px)}}
+.shake-prompt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(10,10,10,0.93);border:1px solid rgba(200,160,60,0.7);border-radius:12px;padding:22px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;z-index:50;min-width:230px;backdrop-filter:blur(4px)}
 .shake-prompt-title{font-family:var(--m);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#c8a040;font-weight:700}
-.shake-prompt-msg{font-family:var(--m);font-size:13px;color:rgba(255,255,255,.88);line-height:1.6}
-.shake-prompt-msg small{font-size:10px;color:rgba(255,255,255,.45);display:block;margin-top:3px}
-.shake-prompt-bar{width:100%;height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;margin-top:4px}
-.shake-prompt-fill{height:100%;width:0%;background:#c8a040;border-radius:2px;transition:width .3s linear}
+.shake-prompt-msg{font-family:var(--m);font-size:13px;color:rgba(255,255,255,.88);line-height:1.65}
+.shake-prompt-btn{margin-top:4px;width:100%;padding:13px 0;background:#c8a040;border:none;border-radius:6px;color:#111;font-family:var(--m);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.shake-prompt-btn:active{background:#a07e28}
 .lr-pass{font-family:var(--m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:10px;background:#2a2000;color:#c8a040;margin-top:4px;display:none}
 .lr-pass.on{display:inline-block}
 </style>
@@ -649,10 +646,9 @@ body.unlocked .gate{display:none}
   <div class="torch-off-warn" id="torchWarn">라이트가 꺼져 있습니다</div>
   <!-- 2차 측정 유도 오버레이 -->
   <div class="shake-prompt" id="shakePrompt" style="display:none">
-    <div class="shake-prompt-icon">↕</div>
     <div class="shake-prompt-title">1차 측정 완료</div>
-    <div class="shake-prompt-msg">샘플을 가볍게 흔들어 재배치하세요<br><small>감지 후 자동으로 2차 측정을 시작합니다</small></div>
-    <div class="shake-prompt-bar"><div class="shake-prompt-fill" id="shakePromptFill"></div></div>
+    <div class="shake-prompt-msg">샘플을 가볍게 흔들어 재배치한 뒤<br>버튼을 누르세요</div>
+    <button class="shake-prompt-btn" onclick="startPass2()">2차 측정 시작</button>
   </div>
   <div class="ao" id="ao">
     <div class="sp"></div>
@@ -925,11 +921,8 @@ var stableRun       = 0;
 var shakeTimeout    = null;
 
 /* ── DUAL-PASS STATE ── */
-var passPhase       = 1;      /* 1 = 1차, 2 = 2차 */
-var pass1Data       = null;   /* 1차 결과 보관 */
-var shakeDetected   = false;  /* 흔들기 감지 여부 */
-var postShakeSettle = 0;      /* 흔든 후 안정화 카운터 */
-var POST_SHAKE_SETTLE = 8;    /* 흔든 뒤 안정화까지 필요한 프레임 */
+var passPhase   = 1;    /* 1 = 1차, 2 = 2차 */
+var pass1Data   = null; /* 1차 결과 보관 */
 
 function G(id){ return document.getElementById(id); }
 
@@ -1055,8 +1048,6 @@ function startLive(beanMode){
   pendingGrind  = null;
   passPhase     = 1;
   pass1Data     = null;
-  shakeDetected = false;
-  postShakeSettle = 0;
   dom.rp.classList.remove('on');
   dom.decision.classList.remove('on');
 
@@ -1145,7 +1136,7 @@ function stopLive(){
   dom.torchWarn.style.display='none';
   if(dom.shakePrompt) dom.shakePrompt.style.display='none';
   if(dom.lrPass) dom.lrPass.classList.remove('on');
-  passPhase=1; pass1Data=null; shakeDetected=false; postShakeSettle=0;
+  passPhase=1; pass1Data=null;
   dom.upzone.classList.remove('loaded');
 
   dom.stopBtns.style.display='none';
@@ -1342,60 +1333,19 @@ function frameLoop(ts){
 
   /* ── SHAKE DETECTION ── */
   var isShake = false;
-  var deltaL = lastFrameL !== null ? Math.abs(r.Ls - lastFrameL) : 0;
-  if(lastFrameL !== null && deltaL > SHAKE_DELTA){
+  if(lastFrameL !== null && Math.abs(r.Ls - lastFrameL) > SHAKE_DELTA){
     isShake = true;
-
-    if(passPhase === 2 && !shakeDetected && deltaL > SHAKE_DELTA * 1.5){
-      /* 흔들기 감지: 2차 측정 준비 */
-      shakeDetected    = true;
-      postShakeSettle  = 0;
-      frameBuffer      = [];
-      stableRun        = 0;
-      emaL             = null;
-      if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
-      setInst('흔들기 감지 — 원두가 재배치되면 자동으로 2차 측정을 시작합니다.');
-    } else if(passPhase !== 2) {
-      /* 일반 흔들림 경고 */
-      frameBuffer = [];
-      stableRun   = 0;
-      emaL        = null;
-      dom.shakeWarn.classList.add('on');
-      if(shakeTimeout) clearTimeout(shakeTimeout);
-      shakeTimeout = setTimeout(function(){
-        dom.shakeWarn.classList.remove('on');
-      }, 700);
-    }
+    frameBuffer = [];
+    stableRun   = 0;
+    emaL        = null;
+    dom.shakeWarn.classList.add('on');
+    if(shakeTimeout) clearTimeout(shakeTimeout);
+    shakeTimeout = setTimeout(function(){ dom.shakeWarn.classList.remove('on'); }, 700);
   }
   lastFrameL = r.Ls;
 
-  /* ── 2차 흔든 후 안정화 카운터 ── */
-  if(passPhase === 2 && shakeDetected && !isShake){
-    postShakeSettle++;
-    var settleProgress = Math.min(postShakeSettle / POST_SHAKE_SETTLE, 1);
-    if(dom.shakePromptFill) dom.shakePromptFill.style.width = '0%'; /* 숨긴 상태 */
-    /* 안정화 완료 → 2차 버퍼 수집 시작 */
-    if(postShakeSettle >= POST_SHAKE_SETTLE){
-      /* 이제 정상 수집 모드 */
-    }
-  }
-
-  /* ── EMA SMOOTHING (display only) ── */
+  /* ── EMA SMOOTHING ── */
   emaL = (emaL === null) ? r.Ls : (EMA_ALPHA * r.Ls + (1-EMA_ALPHA) * emaL);
-
-  /* 2차 측정 대기 중(shakePrompt 표시) — 프레임 수집 안 함 */
-  if(passPhase === 2 && !shakeDetected){
-    updateLiveReadout(r, emaL, false);
-    /* 안정화 진행바 */
-    return;
-  }
-
-  /* 2차 흔든 후 안정화 기간 — 버퍼 수집 안 함 */
-  if(passPhase === 2 && shakeDetected && postShakeSettle < POST_SHAKE_SETTLE){
-    dom.lrStatus.textContent = '재배치 감지 — 안정화 중 (' + postShakeSettle + '/' + POST_SHAKE_SETTLE + ')';
-    updateLiveReadout(r, emaL, false);
-    return;
-  }
 
   if(!isShake && !r.lowLight){
     stableRun++;
@@ -1557,23 +1507,17 @@ function autoLock(){
 
     pass1Data = extractData(frameBuffer, currentMode);
 
-    /* 카메라 유지, 버퍼 리셋, 흔들기 대기 상태로 전환 */
-    frameBuffer  = [];
-    stableRun    = 0;
-    emaL         = null;
-    passPhase    = 2;
-    shakeDetected = false;
-    postShakeSettle = 0;
+    /* 카메라 정지 — 버튼 대기 */
+    liveRunning = false;
+    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
+    dom.liveBadge.style.display='none';
+    dom.stopBtns.style.display='none';
 
-    /* 토치 유지 (카메라 켜진 상태) */
-    liveRunning = true;
-    rafId = requestAnimationFrame(frameLoop);
+    passPhase = 2;
 
-    /* 흔들기 프롬프트 표시 */
     if(dom.shakePrompt) dom.shakePrompt.style.display = 'flex';
-    if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '1차 완료 — 흔들기 대기'; }
-    setInst('1차 측정 완료 — 샘플을 가볍게 흔들어 재배치해주세요.');
-    dom.stopBtns.style.display = 'flex';
+    if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '1차 완료'; }
+    setInst('1차 측정 완료 — 샘플을 흔들어 재배치한 뒤 버튼을 누르세요.');
     return;
   }
 
@@ -2235,6 +2179,41 @@ function launchMode(mode){
 function grindPhaseActive_stub(){ return false; }
 var grindPhaseActive = false;
 
+/* 2차 측정 버튼 핸들러 */
+function startPass2(){
+  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
+  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '2차 측정'; }
+  /* 버퍼 초기화 후 카메라 재시작 */
+  frameBuffer = []; stableRun = 0; emaL = null; lastFrameL = null;
+  setInst('2차 측정 중 — 같은 위치, 같은 거리로 대주세요.');
+  /* 카메라 재오픈 (startLive는 passPhase 초기화하므로 직접 재시작) */
+  _restartCamera();
+}
+
+function _restartCamera(){
+  if(liveRunning) return;
+  var constraints = {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}}};
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then(function(stream){
+      liveStream = stream;
+      liveTrack  = stream.getVideoTracks()[0];
+      dom.liveVideo.srcObject = stream;
+      dom.liveVideo.style.display = 'block';
+      dom.guideOverlay.style.display = 'block';
+      dom.upph.style.display = 'none';
+      dom.upzone.classList.add('loaded');
+      dom.stopBtns.style.display = 'flex';
+      dom.liveBadge.style.display = 'block';
+      dom.liveReadout.classList.add('on');
+      liveRunning = true;
+      dom.liveVideo.addEventListener('loadedmetadata', function(){
+        enableTorch();
+        rafId = requestAnimationFrame(frameLoop);
+      }, {once:true});
+    })
+    .catch(function(err){ showToast('카메라 오류: ' + err.message); });
+}
+
 function doRetake(){
   pendingResult = null;
   pendingGrind  = null;
@@ -2622,7 +2601,7 @@ function confStateLabel(conf){
 ════════════════════════════════════════ */
 function doReset(){
   measurements=[]; measureCount=0; pendingResult=null; pendingGrind=null;
-  passPhase=1; pass1Data=null; shakeDetected=false; postShakeSettle=0;
+  passPhase=1; pass1Data=null;
   store = { whole: null, gcol: null, grind: null };
   currentMode = null;
   dom.prev.style.display='none'; dom.prev.src='';
