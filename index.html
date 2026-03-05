@@ -1878,37 +1878,37 @@ function analyzeFrame(context, W, H){
     var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
     if(cleanPx.length<8) cleanPx=beanPx;
 
-    /* ── Gray World 색 보정 (색 편차만 보정, 밝기 유지) ────────
-       기존: 하이라이트를 L*=44로 밝기 정규화 → 다크로스트도 압축됨
-       신규: 채널 평균 균형(R/G/B)만 보정 → 실제 L* 그대로 반영
-       Gray World: avgR=avgG=avgB=grayMean 이 되도록 gain 계산     */
-    var sumR2=0, sumG2=0, sumB2=0;
-    for(var ci=0;ci<cleanPx.length;ci++){ sumR2+=cleanPx[ci].r; sumG2+=cleanPx[ci].g; sumB2+=cleanPx[ci].b; }
-    var avgR_gw=sumR2/cleanPx.length, avgG_gw=sumG2/cleanPx.length, avgB_gw=sumB2/cleanPx.length;
-    var grayMean_gw=(avgR_gw+avgG_gw+avgB_gw)/3;
-    /* 색 편차 보정 gain — 밝기(전체 스케일)는 그대로 */
-    var gainR=clamp(grayMean_gw/Math.max(avgR_gw,1), 0.55, 1.90);
-    var gainG=clamp(grayMean_gw/Math.max(avgG_gw,1), 0.55, 1.90);
-    var gainB=clamp(grayMean_gw/Math.max(avgB_gw,1), 0.55, 1.90);
-
-    /* 저조도 감지 — 하이라이트 L* < 22 */
+    /* ── 하이라이트 기반 색 보정 (색상만, 밝기 유지) ──────────
+       하이라이트(상위 12%) = 가장 잘 조명된 원두 표면
+       각 채널 gain = 하이라이트 채널 간 비율 균등화
+       → 조명 색 편차(yellow cast 등) 제거, 밝기는 원본 유지   */
     var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
     var refR=median(hiPx,'r'), refG=median(hiPx,'g'), refB=median(hiPx,'b');
     var refLab=sRGBtoLab(clamp(refR,0,255),clamp(refG,0,255),clamp(refB,0,255));
     var refL=refLab.L;
     var lowLight=refL<22;
 
-    /* 중앙 픽셀에 Gray World 보정 적용 */
+    /* 색상 보정 gain: 채널 간 비율만 균등화, 전체 스케일은 유지
+       기준 = 세 채널 평균(hightlight median 기준)               */
+    var hiGrayMean=(refR+refG+refB)/3;
+    var gainR=clamp(hiGrayMean/Math.max(refR,1), 0.65, 1.60);
+    var gainG=clamp(hiGrayMean/Math.max(refG,1), 0.65, 1.60);
+    var gainB=clamp(hiGrayMean/Math.max(refB,1), 0.65, 1.60);
+
     var medPx=cleanPx[Math.floor(cleanPx.length/2)];
     var wbR=clamp(Math.round(medPx.r*gainR),0,255);
     var wbG=clamp(Math.round(medPx.g*gainG),0,255);
     var wbB=clamp(Math.round(medPx.b*gainB),0,255);
     var lab=sRGBtoLab(wbR,wbG,wbB);
     var Ls=clamp(lab.L,0,100);
-    /* 밝기 정규화(normGain) 제거 — L*가 실제 로스트 밝기를 그대로 반영해야 함 */
 
-    /* Agtron: spec 기반 룩업 Ag = 2*(L*-20), 범위 15-95 */
-    var agtron=Math.round(clamp(2.0*(Ls-20), 15, 95));
+    /* Agtron 캘리브레이션:
+       실측 기준 L*≈47 → Ag≈75 (Medium-Light, 사용자 실측)
+       공식: Ag = 1.85*L* - 11.5  (기존 -1.2 → -11.5로 조정)
+       L*=47 → 1.85*47-11.5 = 86.95-11.5 = 75.4 ≈ 75 ✓
+       L*=35 → 1.85*35-11.5 = 64.75-11.5 = 53.2 (Dark: 35-45 spec)
+       L*=55 → 1.85*55-11.5 = 101.75-11.5 = 90.2 (Light: 85-95 spec) */
+    var agtron=Math.round(clamp(1.85*Ls-11.5, 15, 95));
 
     var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
     var lMean=lSum/cleanPx.length, lVar=0;
@@ -1986,17 +1986,10 @@ function runAnalysis(W,H){
   var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
   if(cleanPx.length<10) cleanPx=beanPx;
 
-  /* ── 4. GRAY WORLD 색 보정 ──────────────────────────────────
-     채널 R/G/B 평균을 균등하게 → 색 편차 보정. 밝기 유지.   */
-  var BEAN_REF_TARGET = 44; /* 저조도 판단 기준용으로만 유지 */
-  var sumRs=0, sumGs=0, sumBs=0;
-  cleanPx.forEach(function(p){sumRs+=p.r; sumGs+=p.g; sumBs+=p.b;});
-  var avgRs=sumRs/cleanPx.length, avgGs=sumGs/cleanPx.length, avgBs=sumBs/cleanPx.length;
-  var grayMs=(avgRs+avgGs+avgBs)/3;
-  var gwR=clamp(grayMs/Math.max(avgRs,1),0.55,1.90);
-  var gwG=clamp(grayMs/Math.max(avgGs,1),0.55,1.90);
-  var gwB=clamp(grayMs/Math.max(avgBs,1),0.55,1.90);
-
+  /* ── 4. 하이라이트 기반 색 보정 (색상만, 밝기 유지) ─────────
+     Gray World는 커피(warm) 이미지에서 L*를 과소추정함.
+     하이라이트 채널 비율만 균등화 → 조명 색편차 제거, 밝기 원본 유지 */
+  var BEAN_REF_TARGET = 44; /* jitter 안정성 체크용으로만 사용 */
   var hiStart = Math.floor(cleanPx.length * 0.88);
   var hiPx    = cleanPx.slice(hiStart);
   var refR = median(hiPx,'r');
@@ -2006,9 +1999,14 @@ function runAnalysis(W,H){
   var refL   = refLab.L;
   var lowLight = refL < 22;
 
-  var tgtY    = Math.pow((BEAN_REF_TARGET+16)/116, 3); /* jitter에서만 사용 */
+  var hiGrayMean=(refR+refG+refB)/3;
+  var gwR=clamp(hiGrayMean/Math.max(refR,1), 0.65, 1.60);
+  var gwG=clamp(hiGrayMean/Math.max(refG,1), 0.65, 1.60);
+  var gwB=clamp(hiGrayMean/Math.max(refB,1), 0.65, 1.60);
 
-  /* ── 5. MEDIAN BEAN PIXEL → GW 보정 → CIELAB → AGTRON ───── */
+  var tgtY = Math.pow((BEAN_REF_TARGET+16)/116, 3); /* jitter에서만 사용 */
+
+  /* ── 5. MEDIAN BEAN PIXEL → 색보정 → CIELAB → AGTRON ──────── */
   var medPx = cleanPx[Math.floor(cleanPx.length/2)];
   var wbR=clamp(Math.round(medPx.r*gwR),0,255);
   var wbG=clamp(Math.round(medPx.g*gwG),0,255);
@@ -2016,8 +2014,8 @@ function runAnalysis(W,H){
   var lab = sRGBtoLab(wbR,wbG,wbB);
   var Ls  = clamp(lab.L, 0, 100);
   var As  = lab.a, Bs = lab.b;
-  /* Agtron: spec 룩업 Ag = 2*(L*-20) */
-  var agtron = Math.round(clamp(2.0*(Ls-20), 15, 95));
+  /* Agtron 캘리브레이션: L*=47 → Ag≈75 기준 */
+  var agtron = Math.round(clamp(1.85*Ls-11.5, 15, 95));
 
   var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
   var lMean=lSum/cleanPx.length, lVar=0;
@@ -2042,15 +2040,15 @@ function runAnalysis(W,H){
     var jb=jp.filter(function(p){return (p.r-p.b)>5&&p.r>=p.g*0.82&&p.lum>10&&p.lum<235;});
     if(jb.length<15) jb=jp;
     jb.sort(function(a,b){return a.lum-b.lum;});
-    var jc=jb.slice(Math.floor(jb.length*.05),Math.floor(jb.length*.90));
+    var jc=jb.slice(Math.floor(jb.length*.10),Math.floor(jb.length*.90));
     if(!jc.length) jc=jb;
-    /* Gray World gain for jitter */
-    var jsR=0,jsG=0,jsB=0;
-    jc.forEach(function(p){jsR+=p.r;jsG+=p.g;jsB+=p.b;});
-    var jgm=(jsR+jsG+jsB)/(jc.length*3);
-    var jcR=clamp(jgm/Math.max(jsR/jc.length,1),0.55,1.90);
-    var jcG=clamp(jgm/Math.max(jsG/jc.length,1),0.55,1.90);
-    var jcB=clamp(jgm/Math.max(jsB/jc.length,1),0.55,1.90);
+    /* 하이라이트 기반 색 보정 (색상만) */
+    var jhi2=jc.slice(Math.floor(jc.length*0.88));
+    var jrR=median(jhi2,'r'), jrG=median(jhi2,'g'), jrB=median(jhi2,'b');
+    var jhiM=(jrR+jrG+jrB)/3;
+    var jcR=clamp(jhiM/Math.max(jrR,1),0.65,1.60);
+    var jcG=clamp(jhiM/Math.max(jrG,1),0.65,1.60);
+    var jcB=clamp(jhiM/Math.max(jrB,1),0.65,1.60);
     var jm=jc[Math.floor(jc.length/2)];
     stabLs.push(sRGBtoLab(
       clamp(Math.round(jm.r*jcR),0,255),
@@ -2566,24 +2564,23 @@ function sRGBtoLab(r8,g8,b8){
   function f(t){return t>.008856?Math.cbrt(t):7.787*t+16/116;}
   return{L:116*f(Y/1)  -16, a:500*(f(X/.95047)-f(Y/1)), b:200*(f(Y/1)-f(Z/1.08883))};
 }
-/* ── Agtron 예상 범위: L* 기반 룩업 (spec §11) ── */
+/* ── Agtron 예상 범위: L* 기반 룩업 (캘리브레이션 Ag=1.85*L*-11.5 기준) ── */
 function agtronRangeFromL(L){
-  if(L>=60) return {lo:85, hi:95};
-  if(L>=55) return {lo:75, hi:85};
-  if(L>=50) return {lo:65, hi:75};
-  if(L>=45) return {lo:55, hi:65};
-  if(L>=40) return {lo:45, hi:55};
-  if(L>=35) return {lo:35, hi:45};
-  if(L>=30) return {lo:25, hi:35};
-  return      {lo:15, hi:25};
+  /* 공식 중간값 = 1.85*L-11.5, 범위 ±5 */
+  var mid = Math.round(clamp(1.85*L-11.5, 15, 95));
+  return {lo: Math.max(15, mid-5), hi: Math.min(95, mid+5), mid: mid};
 }
 
-/* ── 로스트 레벨 분류: spec §10 (5단계) ── */
+/* ── 로스트 레벨 분류 (Ag=1.85*L*-11.5 캘리브레이션 기준) ──
+   Ag≥85 → L*≥52.2 → Light
+   Ag≥65 → L*≥41.4 → Medium
+   Ag≥45 → L*≥30.5 → Medium-Dark
+   Ag≥25 → L*≥19.7 → Dark                                    */
 function roastName(L){
-  if(L>=60) return 'Light Roast';
-  if(L>=50) return 'Medium Roast';
-  if(L>=40) return 'Medium-Dark Roast';
-  if(L>=30) return 'Dark Roast';
+  if(L>=52) return 'Light Roast';
+  if(L>=41) return 'Medium Roast';
+  if(L>=31) return 'Medium-Dark Roast';
+  if(L>=20) return 'Dark Roast';
   return         'Very Dark Roast';
 }
 function setInst(t){dom.it.textContent=t;}
