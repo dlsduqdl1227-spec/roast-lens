@@ -786,15 +786,7 @@ body.unlocked .gate{display:none}
     <div class="exam-title">정밀검사</div>
     <div class="exam-sub" id="examSub">—</div>
   </div>
-  <div class="exam-grid">
-    <div class="exam-col" id="examWhole">
-      <div class="exam-col-lbl">홀빈</div>
-      <div class="exam-col-val" id="examWholeAg">—</div>
-      <div class="exam-col-sub" id="examWholeLs">L* —</div>
-      <div class="exam-col-roast" id="examWholeRoast">—</div>
-      <div class="exam-col-swatch" id="examWholeSw"></div>
-    </div>
-    <div class="exam-div"></div>
+  <div class="exam-grid" style="grid-template-columns:1fr 1px 1fr">
     <div class="exam-col" id="examGcol">
       <div class="exam-col-lbl">그라운드 컬러</div>
       <div class="exam-col-val" id="examGcolAg">—</div>
@@ -811,14 +803,7 @@ body.unlocked .gate{display:none}
       <div class="exam-col-swatch" id="examGrindBar" style="height:6px;border-radius:3px;background:var(--b);margin-top:4px;position:relative"><div id="examGrindNd" style="position:absolute;top:-4px;width:12px;height:12px;border-radius:50%;background:var(--t1);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateX(-50%)"></div></div>
     </div>
   </div>
-  <div class="exam-delta" id="examDelta" style="display:none">
-    <div class="exam-delta-lbl">홀빈 vs 그라운드 컬러 오차</div>
-    <div class="exam-delta-vals">
-      <span>ΔAgtron <b id="examDAg">—</b></span>
-      <span>ΔL* <b id="examDLs">—</b></span>
-    </div>
-    <div class="exam-interp" id="examInterp">—</div>
-  </div>
+  <!-- delta 패널 제거 (whole 없음) -->
 </div>
 
 <div class="rst"><button class="rbtn" onclick="doReset()">처음부터 다시</button></div>
@@ -830,16 +815,10 @@ body.unlocked .gate{display:none}
     <div class="step-nav-status" id="stepNavStatus">측정 항목을 선택하세요</div>
     <button class="step-nav-guide" onclick="toggleGuideTab()">촬영 안내</button>
   </div>
-  <div class="step-tiles">
-    <div class="step-tile idle" id="tileWhole" onclick="tileAction('whole')">
+  <div class="step-tiles" style="justify-content:center">
+    <div class="step-tile idle" id="tileGcol" onclick="tileAction('gcol')" style="min-width:200px;max-width:280px">
       <div class="step-tile-icon">01</div>
-      <div class="step-tile-label">홀빈 색도</div>
-      <div class="step-tile-value" id="tileWholeVal">—</div>
-      <div class="step-tile-chip" id="tileWholeChip">탭하여 측정</div>
-    </div>
-    <div class="step-tile idle" id="tileGcol" onclick="tileAction('gcol')">
-      <div class="step-tile-icon">02</div>
-      <div class="step-tile-label" style="letter-spacing:.04em;line-height:1.35;text-align:center">그라운드 컬러<br>&amp; 분쇄도</div>
+      <div class="step-tile-label">그라운드 컬러 &amp; 분쇄도</div>
       <div class="step-tile-value" id="tileGcolVal">—</div>
       <div class="step-tile-chip" id="tileGcolChip">탭하여 측정</div>
     </div>
@@ -916,7 +895,7 @@ var pendingGrind  = null; /* 분쇄도 단계 전용 */
 var forcedBeanType = null;
 
 /* ── 독립 측정 저장소 ── */
-var store = { whole: null, gcol: null, grind: null };
+var store    = { gcol: null, grind: null };
 var currentMode = null; /* 'whole' | 'gcol' */
 var ctx = null, htx = null, lvx = null;
 
@@ -1035,7 +1014,7 @@ function startLive(beanMode){
   var isGrindOnly = false; /* no longer a separate mode */
   var isGcol      = (currentMode === 'gcol');
   /* gcol mode forces ground type so grind texture is always computed */
-  forcedBeanType = isGcol ? 'ground' : 'whole';
+  forcedBeanType = 'ground'; /* gcol 전용 */
 
   /* ── Pre-flight checks ── */
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -1099,7 +1078,7 @@ function startLive(beanMode){
       liveRunning  = true;
       var bmi = G('beanModeIndicator');
       if(bmi){
-        var lbl = currentMode==='whole'?'홀빈 — 색도 측정':'그라운드 컬러 & 분쇄도 측정';
+        var lbl = '그라운드 컬러 & 분쇄도 측정';
         bmi.textContent = lbl;
         bmi.className = 'bean-mode-indicator on '+(isGcol?'ground':'whole');
       }
@@ -1185,144 +1164,104 @@ function drawGuideOverlay(){
   ov.width  = W;
   ov.height = H;
   var gx = ov.getContext('2d');
+  var cx = W/2, cy = H/2;
+  gx.clearRect(0,0,W,H);
 
-  var cx = W / 2, cy = H / 2;
-  gx.clearRect(0, 0, W, H);
+  /* ── 단일 원 가이드 — gcol 모드 ──────────────────────────────
+     컬러+분쇄도 동시 측정 최적 조건:
+     - 원 크기: 화면의 55% (뷰파인더 중심 채우기 기준)
+     - 촬영 거리: 10~15cm (컬러 정확도 + 분쇄 입자 가시성 균형)
+     - 분쇄도 정밀도를 높이려면 5~8cm로 더 가까이         */
 
-  if(currentMode === 'grind'){
-    /* ── GRIND MODE: 원두 클로즈업 가이드 (림 불필요) ── */
-    var rGrind = Math.min(W, H) * 0.38;
+  var r = Math.min(W,H) * 0.42;   /* 단일 원 반지름 */
 
-    /* 비네팅 */
-    gx.save();
+  /* 1. 비네팅 */
+  gx.save();
+  gx.beginPath();
+  gx.rect(0,0,W,H);
+  gx.arc(cx,cy,r,0,Math.PI*2,true);
+  gx.fillStyle='rgba(0,0,0,0.50)';
+  gx.fill('evenodd');
+  gx.restore();
+
+  /* 2. 원 테두리 — 라이브 상태에 따라 색상 변경 */
+  var ringColor = liveRunning ? 'rgba(200,160,64,0.95)' : 'rgba(255,255,255,0.90)';
+  gx.beginPath();
+  gx.arc(cx,cy,r,0,Math.PI*2);
+  gx.strokeStyle = ringColor;
+  gx.lineWidth   = 2.5;
+  gx.setLineDash([]);
+  gx.stroke();
+
+  /* 3. 코너 마커 (L자형) */
+  var angles=[0, Math.PI/2, Math.PI, Math.PI*3/2];
+  var arm=20, inset=8;
+  angles.forEach(function(a){
+    var px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r;
+    var nx=Math.cos(a), ny=Math.sin(a);
+    var tx=-Math.sin(a), ty=Math.cos(a);
     gx.beginPath();
-    gx.rect(0, 0, W, H);
-    gx.arc(cx, cy, rGrind, 0, Math.PI * 2, true);
-    gx.fillStyle = 'rgba(0,0,0,0.45)';
-    gx.fill('evenodd');
-    gx.restore();
-
-    /* 원 (흰색) */
-    gx.beginPath();
-    gx.arc(cx, cy, rGrind, 0, Math.PI * 2);
-    gx.strokeStyle = 'rgba(255,255,255,0.92)';
-    gx.lineWidth = 2.5;
-    gx.setLineDash([8, 5]);
+    gx.moveTo(px-tx*arm, py-ty*arm);
+    gx.lineTo(px+tx*arm, py+ty*arm);
+    gx.strokeStyle='rgba(255,255,255,0.95)';
+    gx.lineWidth=2;
     gx.stroke();
-    gx.setLineDash([]);
-
-    /* 십자선 */
-    var arm = 14;
-    gx.strokeStyle = 'rgba(255,255,255,0.75)';
-    gx.lineWidth = 1.5;
-    gx.beginPath(); gx.moveTo(cx-arm, cy); gx.lineTo(cx-4, cy); gx.stroke();
-    gx.beginPath(); gx.moveTo(cx+4, cy);  gx.lineTo(cx+arm, cy); gx.stroke();
-    gx.beginPath(); gx.moveTo(cx, cy-arm); gx.lineTo(cx, cy-4); gx.stroke();
-    gx.beginPath(); gx.moveTo(cx, cy+4);   gx.lineTo(cx, cy+arm); gx.stroke();
-
-    /* 상단 라벨 — 흰 배경 + 흰색 큰 글자 */
-    gx.save();
-    var lblY = cy - rGrind - 12;
-    gx.font = 'bold 15px -apple-system, sans-serif';
-    var lbl = '분쇄 원두를 10~15cm 거리에서 촬영';
-    var tw = gx.measureText(lbl).width;
-    gx.fillStyle = 'rgba(0,0,0,0.70)';
     gx.beginPath();
-    gx.roundRect ? gx.roundRect(cx - tw/2 - 10, lblY - 18, tw + 20, 26, 5)
-                 : gx.rect(cx - tw/2 - 10, lblY - 18, tw + 20, 26);
-    gx.fill();
-    gx.fillStyle = 'rgba(255,255,255,0.97)';
-    gx.textAlign = 'center';
-    gx.fillText(lbl, cx, lblY);
-    gx.restore();
+    gx.moveTo(px+nx*inset, py+ny*inset);
+    gx.lineTo(px+nx*(inset+14), py+ny*(inset+14));
+    gx.strokeStyle='rgba(255,255,255,0.55)';
+    gx.lineWidth=1.5;
+    gx.stroke();
+  });
 
-    /* 하단 라벨 — 더 크고 밝게 */
-    gx.save();
-    gx.font = 'bold 13px -apple-system, sans-serif';
-    var subLbl = '분쇄도 분석 영역';
-    var stw = gx.measureText(subLbl).width;
-    var subY = cy + rGrind + 22;
-    gx.fillStyle = 'rgba(0,0,0,0.55)';
-    gx.beginPath();
-    gx.roundRect ? gx.roundRect(cx - stw/2 - 8, subY - 15, stw + 16, 22, 4)
-                 : gx.rect(cx - stw/2 - 8, subY - 15, stw + 16, 22);
-    gx.fill();
-    gx.fillStyle = 'rgba(255,255,255,0.90)';
-    gx.textAlign = 'center';
-    gx.fillText(subLbl, cx, subY);
-    gx.restore();
+  /* 4. 중심 점 */
+  gx.beginPath();
+  gx.arc(cx,cy,3,0,Math.PI*2);
+  gx.fillStyle='rgba(255,255,255,0.70)';
+  gx.fill();
 
+  /* 5. 상단 안내 라벨 */
+  gx.save();
+  var topLbl = '원 안에 분쇄 원두를 가득 채우세요';
+  gx.font = 'bold 13px -apple-system, sans-serif';
+  var tw = gx.measureText(topLbl).width;
+  var lblY = cy - r - 14;
+  gx.fillStyle='rgba(0,0,0,0.65)';
+  gx.beginPath();
+  if(gx.roundRect) gx.roundRect(cx-tw/2-10, lblY-16, tw+20, 24, 5);
+  else gx.rect(cx-tw/2-10, lblY-16, tw+20, 24);
+  gx.fill();
+  gx.fillStyle='rgba(255,255,255,1.0)';
+  gx.textAlign='center'; gx.textBaseline='middle';
+  gx.fillText(topLbl, cx, lblY-4);
+  gx.restore();
+
+  /* 6. 하단 거리 안내 — 측정 상태에 따라 다른 메시지 */
+  gx.save();
+  var subMsg, subColor;
+  if(!liveRunning){
+    subMsg = '탭하여 측정 시작';
+    subColor = 'rgba(255,255,255,0.70)';
+  } else if(frameBuffer.length < 10){
+    subMsg = '컬러·분쇄도: 10~15cm  |  분쇄도 정밀: 5~8cm';
+    subColor = 'rgba(200,160,64,0.95)';
   } else {
-    /* ── COLOR MODE: 컵 림 가이드 (기존) ── */
-    var rRim  = Math.min(W, H) * 0.43;
-    var rInner = rRim * 0.72;
-
-    gx.save();
-    gx.beginPath();
-    gx.rect(0, 0, W, H);
-    gx.arc(cx, cy, rRim, 0, Math.PI * 2, true);
-    gx.fillStyle = 'rgba(0,0,0,0.40)';
-    gx.fill('evenodd');
-    gx.restore();
-
-    gx.beginPath();
-    gx.arc(cx, cy, rRim, 0, Math.PI * 2);
-    gx.strokeStyle = 'rgba(255,255,255,0.90)';
-    gx.lineWidth = 2;
-    gx.setLineDash([]);
-    gx.stroke();
-
-    var tick = 14;
-    [[cx, cy-rRim, 0,-1],[cx, cy+rRim, 0,1],[cx-rRim, cy,-1,0],[cx+rRim, cy,1,0]].forEach(function(pt){
-      gx.beginPath();
-      gx.moveTo(pt[0] + pt[2]*6, pt[1] + pt[3]*6);
-      gx.lineTo(pt[0] + pt[2]*(6+tick), pt[1] + pt[3]*(6+tick));
-      gx.strokeStyle = 'rgba(255,255,255,0.90)';
-      gx.lineWidth = 2;
-      gx.stroke();
-    });
-
-    gx.beginPath();
-    gx.arc(cx, cy, rInner, 0, Math.PI * 2);
-    gx.strokeStyle = 'rgba(255,255,255,0.40)';
-    gx.lineWidth = 1;
-    gx.setLineDash([5, 6]);
-    gx.stroke();
-    gx.setLineDash([]);
-
-    var arm = 18;
-    gx.strokeStyle = 'rgba(255,255,255,0.75)';
-    gx.lineWidth = 1;
-    gx.beginPath(); gx.moveTo(cx-arm, cy); gx.lineTo(cx-5, cy); gx.stroke();
-    gx.beginPath(); gx.moveTo(cx+5, cy);  gx.lineTo(cx+arm, cy); gx.stroke();
-    gx.beginPath(); gx.moveTo(cx, cy-arm); gx.lineTo(cx, cy-5); gx.stroke();
-    gx.beginPath(); gx.moveTo(cx, cy+5);   gx.lineTo(cx, cy+arm); gx.stroke();
-    gx.beginPath(); gx.arc(cx, cy, 2.5, 0, Math.PI*2);
-    gx.fillStyle = 'rgba(255,255,255,0.85)'; gx.fill();
-
-    gx.save();
-    var lblY = cy - rRim - 8;
-    gx.font = 'bold 13px -apple-system, sans-serif';
-    var lbl1 = '원두를 화면 중앙에 위치시키세요';
-    var tw1 = gx.measureText(lbl1).width;
-    gx.fillStyle = 'rgba(0,0,0,0.60)';
-    gx.beginPath();
-    gx.roundRect ? gx.roundRect(cx - tw1/2 - 8, lblY - 16, tw1 + 16, 24, 4)
-                 : gx.rect(cx - tw1/2 - 8, lblY - 16, tw1 + 16, 24);
-    gx.fill();
-    gx.fillStyle = 'rgba(255,255,255,0.97)';
-    gx.textAlign = 'center';
-    gx.fillText(lbl1, cx, lblY);
-    gx.restore();
-
-    gx.save();
-    var lblY2 = cy + rInner + 16;
-    gx.font = '10px -apple-system, sans-serif';
-    gx.fillStyle = 'rgba(255,255,255,0.45)';
-    gx.textAlign = 'center';
-    gx.fillText('원두 분석 영역', cx, lblY2);
-    gx.restore();
+    var liveL = frameBuffer.length > 0 ? frameBuffer[frameBuffer.length-1].Ls : 0;
+    subMsg = 'L*=' + (liveL||0).toFixed(1) + '  |  안정화 중...';
+    subColor = 'rgba(100,220,140,0.95)';
   }
+  gx.font = '11px -apple-system, sans-serif';
+  var stw = gx.measureText(subMsg).width;
+  var subY = cy + r + 20;
+  gx.fillStyle='rgba(0,0,0,0.55)';
+  gx.beginPath();
+  if(gx.roundRect) gx.roundRect(cx-stw/2-8, subY-13, stw+16, 20, 4);
+  else gx.rect(cx-stw/2-8, subY-13, stw+16, 20);
+  gx.fill();
+  gx.fillStyle=subColor;
+  gx.textAlign='center'; gx.textBaseline='middle';
+  gx.fillText(subMsg, cx, subY-3);
+  gx.restore();
 }
 
 function frameLoop(ts){
@@ -1588,18 +1527,15 @@ function autoLock(){
     gFramesFinal = p1.gFrames + p2.gFrames;
   }
 
-  var isWhole = (currentMode === 'whole');
-
-  /* ── Agtron: L* 기반 범위 룩업 (spec §11) ── */
+  /* gcol 전용 — whole 없음 */
   var agRange = agtronRangeFromL(avgLsFinal);
-  var agtronFinal = Math.round((agRange.lo + agRange.hi) / 2);
-  if(isWhole) agtronFinal = Math.max(15, agtronFinal - 5);
+  var agtronFinal = agRange.mid;
 
-  /* ── spec §8: |L1-L2| > 2 → 환경 불안정 → 재측정 강제 ── */
+  /* ── |L1-L2| > 2 → 환경 불안정 ── */
   var passDelta = Math.abs(p1.avgLs - p2.avgLs);
   var envUnstable = passDelta > 2.0;
 
-  /* ── 분쇄도 입력값 기반 L* 보정 (spec §7) ── */
+  /* ── 분쇄도 입력값 기반 L* 보정 ── */
   var gifEl = G('grindInputField');
   var userGrind = gifEl ? (parseInt(gifEl.value, 10) || 0) : 0;
   var grindLCorr = 0;
@@ -1608,11 +1544,9 @@ function autoLock(){
     else if(userGrind > 800) grindLCorr = -0.5;
   }
   var LsFinalCorr = clamp(avgLsFinal + grindLCorr, 0, 100);
-  /* 보정 후 Agtron 범위 재계산 */
   if(grindLCorr !== 0){
     agRange = agtronRangeFromL(LsFinalCorr);
-    agtronFinal = Math.round((agRange.lo + agRange.hi) / 2);
-    if(isWhole) agtronFinal = Math.max(15, agtronFinal - 5);
+    agtronFinal = agRange.mid;
   }
 
   /* ── 균일도 (spec §9): L* std ── */
@@ -1656,7 +1590,7 @@ function autoLock(){
     agRangeLo: agRange.lo, agRangeHi: agRange.hi,
     Ls: LsFinalCorr, LsRaw: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
     sigma: uniformity, conf: confFinal,
-    beanType: isWhole ? 'whole' : 'ground',
+    beanType: 'ground',
     isLocked: true, lowLight: false, stabSigma: uniformity,
     lsStd: uniformity, uniformity: uniformity,
     stabGrade: (p1.stabGrade==='low'||p2.stabGrade==='low') ? 'low'
@@ -1841,15 +1775,12 @@ function analyzeFrame(context, W, H){
   try{
     var step = Math.max(3, Math.floor(Math.min(W,H)/120));
 
-    /* ── ROI: 중앙 60% 원형 제한 ─────────────────────────────
-       사각형 박스(25–75%) 대신 원형 마스크 적용.
-       반지름 = min(W,H)*0.30 → 지름 = 60% 영역
-       코너 노이즈(컵 테두리·배경) 자동 배제               */
+    /* ── ROI: 가이드 원과 동일한 42% 반지름 원형 마스크 ────── */
     var cx=W/2, cy=H/2;
-    var rLimit=Math.min(W,H)*0.30;
+    var rLimit=Math.min(W,H)*0.42;
     var rLim2=rLimit*rLimit;
-    var bx0=Math.round(W*0.20), by0=Math.round(H*0.20);
-    var bx1=Math.round(W*0.80), by1=Math.round(H*0.80);
+    var bx0=Math.round(W*0.08), by0=Math.round(H*0.08);
+    var bx1=Math.round(W*0.92), by1=Math.round(H*0.92);
     var allPx=[];
     for(var y=by0;y<by1;y+=step)
       for(var x=bx0;x<bx1;x+=step){
@@ -1872,61 +1803,41 @@ function analyzeFrame(context, W, H){
     if(beanPx.length<15) beanPx=allPx.filter(function(p){return p.lum>10&&p.lum<240;});
     if(beanPx.length<8) return null;
 
-    /* ── 픽셀 극단값 제거: 상하 각 10% (spec §6) ── */
+    /* ── 픽셀 극단값 제거: 상하 각 10% ── */
     beanPx.sort(function(a,b){return a.lum-b.lum;});
     var bn=beanPx.length;
     var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
     if(cleanPx.length<8) cleanPx=beanPx;
 
-    /* ── 하이라이트 기반 색 보정 (색상만, 밝기 유지) ──────────
-       하이라이트(상위 12%) = 가장 잘 조명된 원두 표면
-       각 채널 gain = 하이라이트 채널 간 비율 균등화
-       → 조명 색 편차(yellow cast 등) 제거, 밝기는 원본 유지   */
-    var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
-    var refR=median(hiPx,'r'), refG=median(hiPx,'g'), refB=median(hiPx,'b');
-    var refLab=sRGBtoLab(clamp(refR,0,255),clamp(refG,0,255),clamp(refB,0,255));
-    var refL=refLab.L;
-    var lowLight=refL<22;
-
-    /* 색상 보정 gain: 채널 간 비율만 균등화, 전체 스케일은 유지
-       기준 = 세 채널 평균(hightlight median 기준)               */
-    var hiGrayMean=(refR+refG+refB)/3;
-    var gainR=clamp(hiGrayMean/Math.max(refR,1), 0.65, 1.60);
-    var gainG=clamp(hiGrayMean/Math.max(refG,1), 0.65, 1.60);
-    var gainB=clamp(hiGrayMean/Math.max(refB,1), 0.65, 1.60);
-
+    /* ── 중앙값 픽셀 → CIELAB 직접 변환 ──────────────────────
+       스마트폰 카메라 AWB를 그대로 신뢰.
+       추가 채널 보정 없음 — 커피(warm, R>G>B)에 Gray World 적용 시
+       B 채널 게인↑ → L* 왜곡 발생. Raw값이 가장 정확.          */
     var medPx=cleanPx[Math.floor(cleanPx.length/2)];
-    var wbR=clamp(Math.round(medPx.r*gainR),0,255);
-    var wbG=clamp(Math.round(medPx.g*gainG),0,255);
-    var wbB=clamp(Math.round(medPx.b*gainB),0,255);
-    var lab=sRGBtoLab(wbR,wbG,wbB);
+    var lab=sRGBtoLab(medPx.r, medPx.g, medPx.b);
     var Ls=clamp(lab.L,0,100);
 
-    /* Agtron 캘리브레이션:
-       실측 기준 L*≈47 → Ag≈75 (Medium-Light, 사용자 실측)
-       공식: Ag = 1.85*L* - 11.5  (기존 -1.2 → -11.5로 조정)
-       L*=47 → 1.85*47-11.5 = 86.95-11.5 = 75.4 ≈ 75 ✓
-       L*=35 → 1.85*35-11.5 = 64.75-11.5 = 53.2 (Dark: 35-45 spec)
-       L*=55 → 1.85*55-11.5 = 101.75-11.5 = 90.2 (Light: 85-95 spec) */
+    /* 저조도: 상위 12% 픽셀 밝기로 판단 */
+    var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
+    var hiLum=hiPx.reduce(function(a,p){return a+p.lum;},0)/hiPx.length;
+    var lowLight = hiLum < 40;  /* 픽셀 lum < 40 = 어두운 환경 */
+
     var agtron=Math.round(clamp(1.85*Ls-11.5, 15, 95));
 
     var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
     var lMean=lSum/cleanPx.length, lVar=0;
     cleanPx.forEach(function(p){lVar+=Math.pow(p.lum-lMean,2);});
     var sigma=Math.sqrt(lVar/cleanPx.length);
-    var beanType= forcedBeanType || (sigma>22?'whole':'ground');
+    var beanType='ground'; /* gcol 전용 — 항상 ground */
     var beanCoverage=clamp(beanPx.length/Math.max(allPx.length,1),0,1);
 
-    var grindResult=null;
-    if(beanType==='ground'){
-      grindResult=estimateGrindMicrons(context,W,H);
-    }
+    var grindResult=estimateGrindMicrons(context,W,H);
 
     return {
       Ls:Ls, As:lab.a, Bs:lab.b, agtron, sigma, beanType,
-      lowLight, wallL:refL, beanCoverage,
+      lowLight, wallL:hiLum, beanCoverage,
       bRGB:{r:medPx.r,g:medPx.g,b:medPx.b},
-      wRGB:{r:refR,g:refG,b:refB},
+      wRGB:{r:hiPx[0].r,g:hiPx[0].g,b:hiPx[0].b},
       grindMicron: grindResult ? grindResult.microns : null,
     };
   }catch(e){ return null; }
@@ -1986,44 +1897,31 @@ function runAnalysis(W,H){
   var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
   if(cleanPx.length<10) cleanPx=beanPx;
 
-  /* ── 4. 하이라이트 기반 색 보정 (색상만, 밝기 유지) ─────────
-     Gray World는 커피(warm) 이미지에서 L*를 과소추정함.
-     하이라이트 채널 비율만 균등화 → 조명 색편차 제거, 밝기 원본 유지 */
-  var BEAN_REF_TARGET = 44; /* jitter 안정성 체크용으로만 사용 */
+  /* ── 4. 중앙값 픽셀 → CIELAB 직접 변환 (WB 조작 없음) ──────
+     카메라 AWB 신뢰. 커피 warm 색상에 채널 보정 적용 시 L* 왜곡. */
+  var BEAN_REF_TARGET = 44; /* jitter 체크용 */
   var hiStart = Math.floor(cleanPx.length * 0.88);
-  var hiPx    = cleanPx.slice(hiStart);
-  var refR = median(hiPx,'r');
-  var refG = median(hiPx,'g');
-  var refB = median(hiPx,'b');
-  var refLab = sRGBtoLab(clamp(refR,0,255), clamp(refG,0,255), clamp(refB,0,255));
-  var refL   = refLab.L;
-  var lowLight = refL < 22;
+  var hiPx2   = cleanPx.slice(hiStart);
+  var hiLum2  = hiPx2.reduce(function(a,p){return a+p.lum;},0)/hiPx2.length;
+  var refL    = hiLum2;
+  var lowLight = hiLum2 < 40;
 
-  var hiGrayMean=(refR+refG+refB)/3;
-  var gwR=clamp(hiGrayMean/Math.max(refR,1), 0.65, 1.60);
-  var gwG=clamp(hiGrayMean/Math.max(refG,1), 0.65, 1.60);
-  var gwB=clamp(hiGrayMean/Math.max(refB,1), 0.65, 1.60);
+  var tgtY = Math.pow((BEAN_REF_TARGET+16)/116, 3); /* jitter용 */
 
-  var tgtY = Math.pow((BEAN_REF_TARGET+16)/116, 3); /* jitter에서만 사용 */
-
-  /* ── 5. MEDIAN BEAN PIXEL → 색보정 → CIELAB → AGTRON ──────── */
+  /* ── 5. MEDIAN PIXEL → LAB → AGTRON ── */
   var medPx = cleanPx[Math.floor(cleanPx.length/2)];
-  var wbR=clamp(Math.round(medPx.r*gwR),0,255);
-  var wbG=clamp(Math.round(medPx.g*gwG),0,255);
-  var wbB=clamp(Math.round(medPx.b*gwB),0,255);
-  var lab = sRGBtoLab(wbR,wbG,wbB);
+  var lab = sRGBtoLab(medPx.r, medPx.g, medPx.b);
   var Ls  = clamp(lab.L, 0, 100);
   var As  = lab.a, Bs = lab.b;
-  /* Agtron 캘리브레이션: L*=47 → Ag≈75 기준 */
   var agtron = Math.round(clamp(1.85*Ls-11.5, 15, 95));
 
   var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
   var lMean=lSum/cleanPx.length, lVar=0;
   cleanPx.forEach(function(p){lVar+=Math.pow(p.lum-lMean,2);});
   var sigma   = Math.sqrt(lVar/cleanPx.length);
-  var isWhole = forcedBeanType ? (forcedBeanType==='whole') : (sigma>22), beanType=isWhole?'whole':'ground';
-  var margin  = 5; /* spec 기준 ±5pt 균일 */
-  if(isWhole) agtron=Math.round(clamp(agtron-5,15,95)); /* 홀빈: 표면 곡률 -5 보정 */
+  var isWhole = false; /* gcol 전용 */
+  var beanType = 'ground';
+  var margin  = 5;
 
   /* ── 6. STABILITY: 5 jitter sub-samples ─────────────────  */
   var jShifts=[0,0.05,-0.05,0.03,-0.03];
@@ -2042,19 +1940,8 @@ function runAnalysis(W,H){
     jb.sort(function(a,b){return a.lum-b.lum;});
     var jc=jb.slice(Math.floor(jb.length*.10),Math.floor(jb.length*.90));
     if(!jc.length) jc=jb;
-    /* 하이라이트 기반 색 보정 (색상만) */
-    var jhi2=jc.slice(Math.floor(jc.length*0.88));
-    var jrR=median(jhi2,'r'), jrG=median(jhi2,'g'), jrB=median(jhi2,'b');
-    var jhiM=(jrR+jrG+jrB)/3;
-    var jcR=clamp(jhiM/Math.max(jrR,1),0.65,1.60);
-    var jcG=clamp(jhiM/Math.max(jrG,1),0.65,1.60);
-    var jcB=clamp(jhiM/Math.max(jrB,1),0.65,1.60);
     var jm=jc[Math.floor(jc.length/2)];
-    stabLs.push(sRGBtoLab(
-      clamp(Math.round(jm.r*jcR),0,255),
-      clamp(Math.round(jm.g*jcG),0,255),
-      clamp(Math.round(jm.b*jcB),0,255)
-    ).L);
+    stabLs.push(sRGBtoLab(jm.r, jm.g, jm.b).L);
   });
   var sMean=stabLs.reduce(function(a,b){return a+b;},0)/stabLs.length;
   var sVar=stabLs.reduce(function(s,v){return s+Math.pow(v-sMean,2);},0)/stabLs.length;
@@ -2068,22 +1955,21 @@ function runAnalysis(W,H){
   var conf = Math.round(clamp(refScore*0.45+beanCov*0.25+stabScore*0.30,0,1)*100);
   if(lowLight) conf=Math.min(conf,35);
 
-  /* Grind size (static mode) */
-  var grindStatic=null;
-  if(!isWhole){ grindStatic=estimateGrindMicrons(ctx,W,H); }
+  /* Grind size */
+  var grindStatic=estimateGrindMicrons(ctx,W,H);
 
   pendingResult={
     agtron,margin,Ls,As,Bs,sigma,conf,
-    beanType,isLocked,lowLight,stabSigma,
-    wallL:refL,
+    beanType:'ground',isLocked,lowLight,stabSigma,
+    wallL:hiLum2,
     bRGB:{r:medPx.r,g:medPx.g,b:medPx.b},
-    wRGB:{r:refR,g:refG,b:refB},
+    wRGB:{r:medPx.r,g:medPx.g,b:medPx.b},
     grindMicron: grindStatic ? grindStatic.microns : null,
     grindSpread: grindStatic ? grindStatic.spread : null,
   };
 
   dom.ao.classList.remove('on');
-  dom.badge.textContent=isWhole?'● Whole Bean':'● Ground Bean';
+  dom.badge.textContent='● Ground Bean';
   dom.badge.style.display='block';
 
   var sb=dom.stabBadge;
@@ -2177,20 +2063,12 @@ function renderResult(r){
       gcorrEl.style.display='block';
     } else { gcorrEl.style.display='none'; }
   }
-  var modeLabel = currentMode==='whole'?'홀빈':currentMode==='gcol'?'그라운드 컬러 & 분쇄도':'측정';
-  G('rhTag').textContent=modeLabel+'  σ='+r.sigma.toFixed(1);
+  var modeLabel = '그라운드 컬러 & 분쇄도';
+  G('rhTag').textContent = modeLabel + '  σ=' + r.sigma.toFixed(1);
 
-  /* 홀빈-분쇄 delta 인라인 표시 */
+  /* delta 인라인 (whole 없으므로 항상 숨김) */
   var deltaEl = G('rhDelta');
-  if(store.whole && store.gcol && deltaEl){
-    var dA = store.whole.agtron - store.gcol.agtron;
-    var dColor = Math.abs(dA)<=7?'#5dda88':Math.abs(dA)<=12?'#d4a820':'#e05050';
-    deltaEl.textContent = 'Δ'+(dA>0?'+':'')+dA+'pt';
-    deltaEl.style.color = dColor;
-    deltaEl.style.display = 'inline';
-  } else if(deltaEl){
-    deltaEl.style.display='none';
-  }
+  if(deltaEl) deltaEl.style.display='none';
   dom.flashA.classList.toggle('on', r.lowLight);
   /* stability notice */
   var sn = G('stabNotice'), st = G('stabNoticeTxt');
@@ -2222,13 +2100,11 @@ function renderResult(r){
   cf.style.width=r.conf+'%';
   cf.className='conf-fill '+(r.conf>=75?'cg':r.conf>=50?'cy':'cr');
   var cs = confStateLabel(r.conf);
-  var cm='벽면 L*='+r.wallL.toFixed(1)+'  |  ';
-  var wallOpt = r.wallL >= 38 && r.wallL <= 58;
-  if(r.lowLight)         cm+='광량 부족 — 5–10cm 더 가까이 대주세요';
-  else if(!r.isLocked)   cm+='편차 σ='+r.stabSigma.toFixed(2)+' — 재촬영 권장';
-  else if(wallOpt && r.conf>=65) cm+='최적 촬영 거리 (L*'+r.wallL.toFixed(0)+')';
-  else if(r.conf>=65)    cm+='측정 조건 양호';
-  else                   cm+='원두를 화면 중앙에 채워 촬영 권장 (현재 L*='+r.wallL.toFixed(0)+', 목표 38–58)';
+  var cm='';
+  if(r.lowLight)         cm='광량 부족 — 카메라 라이트를 켜거나 5~10cm 더 가까이 대주세요';
+  else if(!r.isLocked)   cm='편차 σ='+r.stabSigma.toFixed(2)+' — 재촬영 권장';
+  else if(r.conf>=75)    cm='측정 조건 양호';
+  else                   cm='원두를 원 안에 가득 채워 촬영 권장';
   var confEl = G('confTxt');
   confEl.innerHTML = r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+cm;
 
@@ -2418,25 +2294,20 @@ function doConfirm(){
     pendingGrind = null;
     setInst('분쇄도 저장 완료.');
   } else if(pendingResult !== null){
-    if(currentMode === 'whole'){ store.whole = pendingResult; stepDone.whole = true; }
-    else if(currentMode === 'gcol'){
-      store.gcol = pendingResult;
-      stepDone.gcol = true;
-      /* 분쇄도 동시 저장 */
-      if(pendingResult.grindMicron !== null && pendingResult.grindMicron !== undefined){
-        store.grind = {
-          grindMicron: pendingResult.grindMicron,
-          grindSpread: pendingResult.grindSpread,
-          grindCI:     pendingResult.grindCI,
-          grindFrames: pendingResult.grindFrames,
-          frameCount:  pendingResult.frameCount,
-        };
-        stepDone.grind = true;
-      }
+    store.gcol = pendingResult;
+    stepDone.gcol = true;
+    if(pendingResult.grindMicron !== null && pendingResult.grindMicron !== undefined){
+      store.grind = {
+        grindMicron: pendingResult.grindMicron,
+        grindSpread: pendingResult.grindSpread,
+        grindCI:     pendingResult.grindCI,
+        grindFrames: pendingResult.grindFrames,
+        frameCount:  pendingResult.frameCount,
+      };
+      stepDone.grind = true;
     }
     pendingResult = null;
-    var m = currentMode==='whole'?'홀빈':'그라운드 컬러 & 분쇄도';
-    setInst(m + ' 저장 완료.');
+    setInst('그라운드 컬러 & 분쇄도 저장 완료.');
   }
 
   currentMode = null;
@@ -2454,90 +2325,45 @@ function doConfirm(){
    EXAM PANEL — 정밀검사
 ════════════════════════════════════════ */
 function updateExamPanel(){
-  var hasAny = store.whole || store.gcol || store.grind;
+  var hasAny = store.gcol || store.grind;
   if(!hasAny){ if(dom.exam) dom.exam.style.display='none'; return; }
   if(dom.exam) dom.exam.style.display='block';
-
-  var doneCount = (store.whole?1:0)+(store.gcol?1:0)+(store.grind?1:0);
-  G('examSub').textContent = doneCount + '/3 완료' + (doneCount===3?' — 전체 분석 가능':'');
-
-  /* 홀빈 */
-  var ec = G('examWhole');
-  if(store.whole){
-    ec.classList.remove('missing');
-    G('examWholeAg').textContent = store.whole.agtron;
-    G('examWholeLs').textContent = 'L* '+store.whole.Ls.toFixed(1);
-    G('examWholeRoast').textContent = roastName(store.whole.Ls);
-    var sw=G('examWholeSw'); if(sw&&store.whole.bRGB) sw.style.background=rgbStr(store.whole.bRGB);
-  } else {
-    ec.classList.add('missing');
-    G('examWholeAg').textContent = '—';
-    G('examWholeLs').textContent = '미측정';
-    G('examWholeRoast').textContent = '';
-  }
+  G('examSub').textContent = store.gcol ? '측정 완료' : '분석 결과';
 
   /* 그라운드 컬러 */
   var gc2 = G('examGcol');
-  if(store.gcol){
-    gc2.classList.remove('missing');
-    G('examGcolAg').textContent = store.gcol.agtron;
-    G('examGcolLs').textContent = 'L* '+store.gcol.Ls.toFixed(1);
-    G('examGcolRoast').textContent = roastName(store.gcol.Ls);
-    var sw2=G('examGcolSw'); if(sw2&&store.gcol.bRGB) sw2.style.background=rgbStr(store.gcol.bRGB);
-  } else {
-    gc2.classList.add('missing');
-    G('examGcolAg').textContent = '—';
-    G('examGcolLs').textContent = '미측정';
-    G('examGcolRoast').textContent = '';
+  if(gc2){
+    if(store.gcol){
+      gc2.classList.remove('missing');
+      G('examGcolAg').textContent = store.gcol.agtron;
+      G('examGcolLs').textContent = 'L* '+store.gcol.Ls.toFixed(1);
+      G('examGcolRoast').textContent = roastName(store.gcol.Ls);
+      var sw2=G('examGcolSw'); if(sw2&&store.gcol.bRGB) sw2.style.background=rgbStr(store.gcol.bRGB);
+    } else {
+      gc2.classList.add('missing');
+      G('examGcolAg').textContent = '—';
+      G('examGcolLs').textContent = '미측정';
+      G('examGcolRoast').textContent = '';
+    }
   }
 
   /* 분쇄도 */
   var gg = G('examGrind');
-  if(store.grind && store.grind.grindMicron){
-    gg.classList.remove('missing');
-    var gi=grindInfo(store.grind.grindMicron);
-    G('examGrindMicron').textContent = store.grind.grindMicron + ' µm';
-    G('examGrindCat').textContent = gi.cat;
-    G('examGrindNote').textContent = gi.note;
-    var ndPct=clamp(((store.grind.grindMicron-100)/(2500-100))*95+2.5,2.5,97.5);
-    var nd=G('examGrindNd'); if(nd) nd.style.left=ndPct+'%';
-  } else {
-    gg.classList.add('missing');
-    G('examGrindMicron').textContent = '—';
-    G('examGrindCat').textContent = '미측정';
-    G('examGrindNote').textContent = '';
-  }
-
-  /* ── 홀빈-분쇄 delta feature ────────────────────────────
-     두 측정이 모두 있을 때 발달 균일도 분석.
-     ΔAgtron = whole - ground (양수 = 표면이 더 밝음 = 정상)
-     ΔL*     = whole.Ls - gcol.Ls
-     균일도 지수 = 1 - |ΔAgtron| / 20 (0–1 스케일)            */
-  var ed = G('examDelta');
-  if(store.whole && store.gcol){
-    ed.style.display='block';
-    var dAg = store.whole.agtron - store.gcol.agtron;
-    var dLs = +(store.whole.Ls - store.gcol.Ls).toFixed(1);
-    var uIdx = Math.round(clamp((1 - Math.abs(dAg)/20)*100, 0, 100)); /* 균일도 0–100 */
-    G('examDAg').textContent = (dAg>0?'+':'')+dAg;
-    G('examDLs').textContent = (dLs>0?'+':'')+dLs;
-    var ab=Math.abs(dAg), txt, uTxt;
-    if(ab<=3){
-      txt='ΔAgtron '+dAg+'pt — 표면/내부 발달 매우 균일.';
-      uTxt='균일도 '+uIdx+'% (우수)';
-    } else if(ab<=7){
-      txt='ΔAgtron '+dAg+'pt — 일반적 범위. 홀빈 표면 곡률 특성상 정상.';
-      uTxt='균일도 '+uIdx+'%';
-    } else if(ab<=12){
-      txt='ΔAgtron '+dAg+'pt 차이 — 표면과 내부 발달에 차이 있음.';
-      uTxt='균일도 '+uIdx+'% (확인 권장)';
+  if(gg){
+    if(store.grind && store.grind.grindMicron){
+      gg.classList.remove('missing');
+      var gi=grindInfo(store.grind.grindMicron);
+      G('examGrindMicron').textContent = store.grind.grindMicron + ' µm';
+      G('examGrindCat').textContent = gi.cat;
+      G('examGrindNote').textContent = gi.note;
+      var ndPct=clamp(((store.grind.grindMicron-100)/(2500-100))*95+2.5,2.5,97.5);
+      var nd=G('examGrindNd'); if(nd) nd.style.left=ndPct+'%';
     } else {
-      txt='ΔAgtron '+ab+'pt — 촬영 조건 또는 표면/내부 발달 불균형 확인.';
-      uTxt='균일도 '+uIdx+'% (주의)';
+      gg.classList.add('missing');
+      G('examGrindMicron').textContent = '—';
+      G('examGrindCat').textContent = '미측정';
+      G('examGrindNote').textContent = '';
     }
-    G('examInterp').textContent = txt + '  ' + uTxt;
-  } else {
-    ed.style.display='none';
   }
 
   dom.exam.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -2589,18 +2415,16 @@ function setInst(t){dom.it.textContent=t;}
    STEP NAVIGATOR
 ════════════════════════════════════════ */
 /* stepState tracks what the user should do next */
-var stepSequence = ['whole','gcol'];
-var stepDone     = {whole:false, gcol:false, grind:false};
+var stepSequence = ['gcol'];
+var stepDone     = { gcol:false, grind:false };
 
 var STEP_LABELS = {
-  whole: '홀빈 색도',
-  gcol:  '그라운드 컬러 & 분쇄도',
+  gcol: '그라운드 컬러 & 분쇄도',
 };
 
-/* tile id map */
-var TILE_IDS      = {whole:'tileWhole',     gcol:'tileGcol'};
-var TILE_VAL_IDS  = {whole:'tileWholeVal',  gcol:'tileGcolVal'};
-var TILE_CHIP_IDS = {whole:'tileWholeChip', gcol:'tileGcolChip'};
+var TILE_IDS      = { gcol:'tileGcol' };
+var TILE_VAL_IDS  = { gcol:'tileGcolVal' };
+var TILE_CHIP_IDS = { gcol:'tileGcolChip' };
 
 function renderStepNav(){
   var statusEl = G('stepNavStatus');
@@ -2662,17 +2486,15 @@ function renderStepNav(){
 
   /* status line */
   if(!statusEl) return;
-  var doneCount = (stepDone.whole?1:0)+(stepDone.gcol?1:0);
+  var doneCount = (stepDone.gcol?1:0);
   if(liveRunning){
-    statusEl.textContent = (STEP_LABELS[currentMode]||currentMode) + ' — 분석 중  (타일 탭하면 중단)';
-  } else if(pendingResult !== null || pendingGrind !== null){
-    statusEl.textContent = (STEP_LABELS[currentMode]||currentMode) + ' — 결과 확인 후 저장 또는 재측정';
-  } else if(doneCount === 2){
-    statusEl.textContent = '측정 완료  |  정밀검사 패널 확인';
-  } else if(doneCount > 0){
-    statusEl.textContent = doneCount + '/2 완료  |  원하는 항목을 탭해 측정';
+    statusEl.textContent = '그라운드 컬러 & 분쇄도 — 분석 중  (타일 탭하면 중단)';
+  } else if(pendingResult !== null){
+    statusEl.textContent = '그라운드 컬러 & 분쇄도 — 결과 확인 후 저장 또는 재측정';
+  } else if(doneCount === 1){
+    statusEl.textContent = '측정 완료  |  정밀검사 패널 확인  |  재측정 가능';
   } else {
-    statusEl.textContent = '측정 항목을 선택하세요  |  필요한 항목만 선택 가능';
+    statusEl.textContent = '탭하여 측정 시작';
   }
 }
 
