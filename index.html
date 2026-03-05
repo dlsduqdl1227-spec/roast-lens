@@ -672,6 +672,15 @@ body.unlocked .gate{display:none}
     <div class="rh-tag" id="rhTag">—</div>
     <span id="rhDelta" style="display:none;font-family:var(--m);font-size:10px;font-weight:700;letter-spacing:.06em;margin-left:8px"></span>
   </div>
+  <!-- 분쇄도 입력 (spec §2, §7) -->
+  <div id="grindInputWrap" style="display:none;padding:10px 16px 0;border-bottom:1px solid var(--b)">
+    <div style="font-family:var(--m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--tm);margin-bottom:6px">분쇄도 입력 (선택)</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <input id="grindInputField" type="number" min="100" max="2500" step="10" placeholder="µm 입력 (예: 500)" style="flex:1;background:#1a1a1a;border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-family:var(--m);font-size:13px;padding:7px 10px;-webkit-appearance:none">
+      <span style="font-family:var(--m);font-size:11px;color:var(--tm)">µm</span>
+    </div>
+    <div style="font-family:var(--m);font-size:9px;color:var(--tm);margin-top:4px">입력 시 L* 자동 보정: &lt;500 → +0.5 / &gt;800 → -0.5</div>
+  </div>
   <div class="flash-alert" id="lowlightAlert">
     <div class="flash-alert-t">광량 부족 — 카메라 라이트(손전등)가 켜져 있는지 확인하고, 컵을 더 가까이 대주세요.</div>
   </div>
@@ -721,6 +730,12 @@ body.unlocked .gate{display:none}
       <div class="li"><div class="ln">a*</div><div class="lv" id="lA">—</div><div class="ld">Red↔Green</div></div>
       <div class="li"><div class="ln">b*</div><div class="lv" id="lB">—</div><div class="ld">Yellow↔Blue</div></div>
     </div>
+    <!-- 균일도 (spec §9) -->
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--b)">
+      <span style="font-family:var(--m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--tm)">Uniformity (L* std)</span>
+      <span id="uniformityVal" style="font-family:var(--m);font-size:13px;font-weight:700;color:var(--t1)">—</span>
+    </div>
+    <div id="grindCorrNote" style="display:none;font-family:var(--m);font-size:9px;color:#c8a040;margin-top:4px;letter-spacing:.04em"></div>
   </div>
   <div class="sw-row">
     <div class="sw-cell"><div class="swatch" id="wSw"></div><div class="sw-i"><b>White Ref</b><span id="wVal">—</span></div></div>
@@ -1051,6 +1066,8 @@ function startLive(beanMode){
   pass1Data     = null;
   dom.rp.classList.remove('on');
   dom.decision.classList.remove('on');
+  /* 분쇄도 입력란: gcol에서만 표시 */
+  var giw=G('grindInputWrap'); if(giw) giw.style.display=(currentMode==='gcol')?'block':'none';
 
   var constraints = {
     video:{
@@ -1571,38 +1588,91 @@ function autoLock(){
     gFramesFinal = p1.gFrames + p2.gFrames;
   }
 
-  var lastR = p2.lastR;
   var isWhole = (currentMode === 'whole');
-  var agtronFinal = Math.round(clamp((1.85*avgLsFinal)-1.2, 25, 95));
-  if(isWhole) agtronFinal = Math.round(clamp(agtronFinal-7, 25, 95));
 
-  dom.lrStatus.textContent = '2차 측정 완료 — L*=' + avgLsFinal.toFixed(1) + '  Agtron ' + agtronFinal
-    + (gMicronFinal ? '  분쇄도 ' + gMicronFinal + 'µm' : '') + '  (1+2차 평균)';
+  /* ── Agtron: L* 기반 범위 룩업 (spec §11) ── */
+  var agRange = agtronRangeFromL(avgLsFinal);
+  var agtronFinal = Math.round((agRange.lo + agRange.hi) / 2);
+  if(isWhole) agtronFinal = Math.max(15, agtronFinal - 5);
+
+  /* ── spec §8: |L1-L2| > 2 → 환경 불안정 → 재측정 강제 ── */
+  var passDelta = Math.abs(p1.avgLs - p2.avgLs);
+  var envUnstable = passDelta > 2.0;
+
+  /* ── 분쇄도 입력값 기반 L* 보정 (spec §7) ── */
+  var gifEl = G('grindInputField');
+  var userGrind = gifEl ? (parseInt(gifEl.value, 10) || 0) : 0;
+  var grindLCorr = 0;
+  if(userGrind > 0){
+    if(userGrind < 500)      grindLCorr = +0.5;
+    else if(userGrind > 800) grindLCorr = -0.5;
+  }
+  var LsFinalCorr = clamp(avgLsFinal + grindLCorr, 0, 100);
+  /* 보정 후 Agtron 범위 재계산 */
+  if(grindLCorr !== 0){
+    agRange = agtronRangeFromL(LsFinalCorr);
+    agtronFinal = Math.round((agRange.lo + agRange.hi) / 2);
+    if(isWhole) agtronFinal = Math.max(15, agtronFinal - 5);
+  }
+
+  /* ── 균일도 (spec §9): L* std ── */
+  var uniformity = Math.round(((p1.lsStd + p2.lsStd) / 2) * 100) / 100;
+
+  /* ── 환경 불안정 시 즉시 재측정 요청 ── */
+  if(envUnstable){
+    liveRunning = false;
+    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
+    dom.liveBadge.style.display='none';
+    dom.stopBtns.style.display='none';
+    dom.lrStatus.textContent = '⚠ 1·2차 L* 차이 '+passDelta.toFixed(1)+'pt (기준 2.0pt 초과) — 재측정 필요';
+    dom.lrStatus.style.color = '#e05050';
+    setInst('측정 환경이 불안정합니다. 카메라를 고정하고 다시 측정해 주세요.');
+    passPhase = 1; pass1Data = null;
+    dom.stopBtns.style.display = 'flex';
+    /* shakePrompt 대신 재측정 안내 표시 */
+    if(dom.shakePrompt){
+      dom.shakePrompt.style.display = 'flex';
+      var pt = dom.shakePrompt.querySelector('.shake-prompt-title');
+      var pm = dom.shakePrompt.querySelector('.shake-prompt-msg');
+      var pb = dom.shakePrompt.querySelector('.shake-prompt-btn');
+      if(pt) pt.textContent = '⚠ 측정 불안정';
+      if(pm) pm.textContent = '1·2차 L* 차이가 '+passDelta.toFixed(1)+'pt입니다.\n카메라를 고정하고 재측정하세요.';
+      if(pb){ pb.textContent = '재측정 시작'; pb.onclick = function(){ dom.shakePrompt.style.display='none'; dom.lrStatus.style.color=''; startLive(); }; }
+    }
+    return;
+  }
+
+  dom.lrStatus.textContent = '2차 완료 — L*='+LsFinalCorr.toFixed(1)
+    +'  Ag '+agRange.lo+'–'+agRange.hi
+    +(gMicronFinal?'  분쇄도 '+gMicronFinal+'µm':'')
+    +(grindLCorr!==0?' (분쇄 보정 '+( grindLCorr>0?'+':'')+grindLCorr+')'  :'');
   [dom.lrCovFill,dom.lrLightFill,dom.lrStabFill].forEach(function(el){
     el.style.background='rgba(60,200,100,.9)'; el.style.width='100%';
   });
 
+  var p2lastR = p2.lastR;
   pendingResult = {
     agtron: agtronFinal,
-    margin: isWhole ? 5 : 3,
-    Ls: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
-    sigma: sigFinal, conf: confFinal,
+    agRangeLo: agRange.lo, agRangeHi: agRange.hi,
+    Ls: LsFinalCorr, LsRaw: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
+    sigma: uniformity, conf: confFinal,
     beanType: isWhole ? 'whole' : 'ground',
-    isLocked: true, lowLight: false, stabSigma: sigFinal,
-    /* std 기반 신뢰도 */
-    lsStd: Math.round(((p1.lsStd + p2.lsStd)/2)*100)/100,
+    isLocked: true, lowLight: false, stabSigma: uniformity,
+    lsStd: uniformity, uniformity: uniformity,
     stabGrade: (p1.stabGrade==='low'||p2.stabGrade==='low') ? 'low'
              : (p1.stabGrade==='med'||p2.stabGrade==='med') ? 'med' : 'high',
-    needsRetake: (p1.stabGrade==='low' || p2.stabGrade==='low'),
+    needsRetake: p1.stabGrade==='low' || p2.stabGrade==='low',
+    envUnstable: false,
     wallL: p2.refL,
-    bRGB: lastR.bRGB, wRGB: lastR.wRGB,
+    bRGB: p2lastR.bRGB, wRGB: p2lastR.wRGB,
     frameCount: frameBuffer.length,
     grindMicron: gMicronFinal,
     grindSpread: gSpreadFinal,
-    grindCI:     gCIFinal,
+    grindCI: gCIFinal,
     grindFrames: gFramesFinal,
     dualPass: true,
     pass1L: p1.avgLs, pass2L: p2.avgLs,
+    grindLCorr: grindLCorr, userGrindInput: userGrind,
   };
 
   passPhase = 1; pass1Data = null;
@@ -1634,7 +1704,7 @@ function _grindFromROI(context, rx, ry, rw, rh){
   var imgData=context.getImageData(rx,ry,rw,rh);
   var data=imgData.data;
 
-  /* Grayscale */
+  /* ── Grayscale + mean ── */
   var gray=new Float32Array(rw*rh);
   var gMean=0;
   for(var i=0;i<rw*rh;i++){
@@ -1644,50 +1714,65 @@ function _grindFromROI(context, rx, ry, rw, rh){
   }
   gMean/=(rw*rh);
 
-  /* Texture 에너지 — 너무 평탄하면 (어둡거나 빈 영역) null 반환 */
+  /* ── 텍스처 에너지 체크 ── */
   var gVar=0;
   for(var i=0;i<rw*rh;i++) gVar+=Math.pow(gray[i]-gMean,2);
   gVar/=(rw*rh);
-  if(gVar<6) return null;
+  if(gVar<4) return null; /* 임계값 낮춤: 에스프레소는 매우 균일 */
 
-  /* Variogram (semivariance): γ(h) = E[(Z(x)-Z(x+h))²] / 2
-     에스프레소 영역(~200µm)까지 커버하도록 fine lag 촘촘히 배치 */
-  var lags=[1,2,3,4,5,6,8,10,13,17,22,29,38];
+  /* ── Variogram (semivariance): γ(h) ──────────────────────────
+     에스프레소(150–350µm)는 PX_PER_MM=3.6 기준 약 0.54–1.26px
+     → sub-pixel이므로 lag=1에서 이미 plateau 근접.
+     lag 0.5 를 명시적으로 추가: 가로/세로 인접 픽셀 차이의 50%로 추정.
+     fine lags(1–5)를 촘촘하게 유지하고 coarse(6–38)도 유지.    */
+  var lags=[0.5,1,1.5,2,3,4,5,6,8,10,13,17,22,29,38];
   var sv=lags.map(function(h){
+    var ih=Math.max(1,Math.round(h)); /* integer step for pixel access */
     var sum=0,cnt=0;
-    var ystride=Math.max(1,Math.round(h*0.55));
-    var xstride=Math.max(1,Math.round(h*0.55));
-    for(var y=0;y<rh-h;y+=ystride){
-      for(var x=0;x<rw-h;x+=xstride){
-        var dx=gray[y*rw+x]-gray[y*rw+(x+h)];
-        var dy=gray[y*rw+x]-gray[(y+h)*rw+x];
-        sum+=dx*dx+dy*dy;
-        cnt+=2;
+    var stride=Math.max(1,Math.round(ih*0.55));
+    if(h<1){
+      /* lag<1: 인접 픽셀 차이를 h배율로 보간 */
+      for(var y=0;y<rh-1;y+=stride){
+        for(var x=0;x<rw-1;x+=stride){
+          var dx=gray[y*rw+x]-gray[y*rw+(x+1)];
+          var dy=gray[y*rw+x]-gray[(y+1)*rw+x];
+          sum+=(dx*dx+dy*dy)*h*h; /* scale by h² for fractional lag */
+          cnt+=2;
+        }
+      }
+    } else {
+      for(var y=0;y<rh-ih;y+=stride){
+        for(var x=0;x<rw-ih;x+=stride){
+          var dx=gray[y*rw+x]-gray[y*rw+(x+ih)];
+          var dy=gray[y*rw+x]-gray[(y+ih)*rw+x];
+          sum+=dx*dx+dy*dy;
+          cnt+=2;
+        }
       }
     }
-    return cnt>0?sum/(cnt):0;
+    return cnt>0?sum/cnt:0;
   });
 
-  /* Plateau 추정: 후반부 lags의 중앙값 */
+  /* ── Plateau 추정 ── */
   var plateau=sv.slice(Math.floor(sv.length*0.55)).slice().sort(function(a,b){return a-b;});
   var plateauVal=plateau[Math.floor(plateau.length/2)];
-  if(plateauVal<1) return null;
+  if(plateauVal<0.5) return null; /* 임계값 낮춤 */
 
-  /* Variogram Range: sv가 plateau의 72%에 처음 도달하는 lag */
-  var threshold=plateauVal*0.72;
-  var rangeLag=lags[1]; // 기본값 (에스프레소 방향)
+  /* ── Variogram Range: sv가 plateau의 65%에 처음 도달하는 lag ──
+     에스프레소는 lag=0.5~1에서 이미 65% 도달 → 극소 rangeLag 출력 */
+  var threshold=plateauVal*0.65;
+  var rangeLag=lags[0];
   for(var k=1;k<sv.length;k++){
     if(sv[k]>=threshold){
-      /* 선형 보간 */
-      var frac=(sv[k]-sv[k-1])>0.5
-        ?(threshold-sv[k-1])/(sv[k]-sv[k-1]):0.5;
+      var den=sv[k]-sv[k-1];
+      var frac=den>0.01?(threshold-sv[k-1])/den:0.5;
       frac=clamp(frac,0,1);
       rangeLag=lags[k-1]+frac*(lags[k]-lags[k-1]);
       break;
     }
   }
 
-  /* 기울기 피크: sv가 가장 급격히 상승하는 lag (입자 경계 밀도 반영) */
+  /* ── 기울기 피크 ── */
   var maxSlope=0, slopeIdx=1;
   for(var k=1;k<sv.length;k++){
     var slope=(sv[k]-sv[k-1])/(lags[k]-lags[k-1]);
@@ -1695,19 +1780,18 @@ function _grindFromROI(context, rx, ry, rw, rh){
   }
   var slopeLag=(lags[slopeIdx-1]+lags[slopeIdx])/2;
 
-  /* Blend: range 65% + slope peak 35% */
-  var blendedLag=rangeLag*0.65+slopeLag*0.35;
+  /* Blend: range 70% + slope 30% */
+  var blendedLag=rangeLag*0.70+slopeLag*0.30;
 
-  /* px → µm 변환
-     분쇄도 측정 시 10~15cm 촬영 기준: 실측 보정값 ~2.5 px/mm
-     (1px ≈ 400µm) — 실측: 5~8cm 기준 750µm→300µm(×2.5 과소추정) + 거리 여유 반영 */
-  var PX_PER_MM=3.6; /* 실측 보정: 700µm 기준 1000µm 출력(×1.43 과대) → 2.5×1.43=3.57≈3.6 */
+  /* ── px → µm 변환 ──
+     PX_PER_MM=3.6 → 1px≈278µm. lag=0.5 → raw≈139µm (에스프레소 영역)
+     텍스처 분산 보정: 높은 분산 = 굵은 입자 경향 (반비례)              */
+  var PX_PER_MM=3.6;
   var rawMicrons=(blendedLag/PX_PER_MM)*1000;
-
-  /* 전역 텍스처 밀도 보정:
-     분산이 높을수록(입자 경계 많을수록) → 더 가는 분쇄 경향 */
   var normVar=Math.sqrt(gVar)/255;
-  var varAdj=clamp(1.0+(0.075-normVar)*1.8, 0.65, 1.45);
+  /* 에스프레소 영역(rawMicrons<300)에서 varAdj 약화: 조명 반사 영향 제거 */
+  var varAdjStr = rawMicrons < 300 ? 0.8 : 1.8;
+  var varAdj=clamp(1.0+(0.075-normVar)*varAdjStr, 0.60, 1.50);
   var microns=Math.round(clamp(rawMicrons*varAdj,100,2500)/10)*10;
 
   return {microns:microns, rangeLag:rangeLag, slopeLag:slopeLag, blendedLag:blendedLag, sv:sv, lags:lags, gVar:gVar};
@@ -1788,45 +1872,43 @@ function analyzeFrame(context, W, H){
     if(beanPx.length<15) beanPx=allPx.filter(function(p){return p.lum>10&&p.lum<240;});
     if(beanPx.length<8) return null;
 
-    /* ── 픽셀 극단값 제거: 하위 5%(그림자) + 상위 10%(반사광) ─
-       기존 하위10%/상위5%에서 조정 — 반사광이 더 많으므로 상위를 더 넓게 제거 */
+    /* ── 픽셀 극단값 제거: 상하 각 10% (spec §6) ── */
     beanPx.sort(function(a,b){return a.lum-b.lum;});
     var bn=beanPx.length;
-    var cleanPx=beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.90));
+    var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
     if(cleanPx.length<8) cleanPx=beanPx;
 
-    /* Bean highlight reference (top 12% bright = well-lit surface) */
-    var BEAN_REF_TARGET=44;
+    /* ── Gray World 색 보정 (색 편차만 보정, 밝기 유지) ────────
+       기존: 하이라이트를 L*=44로 밝기 정규화 → 다크로스트도 압축됨
+       신규: 채널 평균 균형(R/G/B)만 보정 → 실제 L* 그대로 반영
+       Gray World: avgR=avgG=avgB=grayMean 이 되도록 gain 계산     */
+    var sumR2=0, sumG2=0, sumB2=0;
+    for(var ci=0;ci<cleanPx.length;ci++){ sumR2+=cleanPx[ci].r; sumG2+=cleanPx[ci].g; sumB2+=cleanPx[ci].b; }
+    var avgR_gw=sumR2/cleanPx.length, avgG_gw=sumG2/cleanPx.length, avgB_gw=sumB2/cleanPx.length;
+    var grayMean_gw=(avgR_gw+avgG_gw+avgB_gw)/3;
+    /* 색 편차 보정 gain — 밝기(전체 스케일)는 그대로 */
+    var gainR=clamp(grayMean_gw/Math.max(avgR_gw,1), 0.55, 1.90);
+    var gainG=clamp(grayMean_gw/Math.max(avgG_gw,1), 0.55, 1.90);
+    var gainB=clamp(grayMean_gw/Math.max(avgB_gw,1), 0.55, 1.90);
+
+    /* 저조도 감지 — 하이라이트 L* < 22 */
     var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
     var refR=median(hiPx,'r'), refG=median(hiPx,'g'), refB=median(hiPx,'b');
     var refLab=sRGBtoLab(clamp(refR,0,255),clamp(refG,0,255),clamp(refB,0,255));
     var refL=refLab.L;
-    var lowLight=refL<28;
+    var lowLight=refL<22;
 
-    var tgtY=Math.pow((BEAN_REF_TARGET+16)/116,3);
-    var refLinY=toLinear(refR/255)*0.2126+toLinear(refG/255)*0.7152+toLinear(refB/255)*0.0722;
-    var ng=clamp(Math.cbrt(tgtY/Math.max(refLinY,0.001)),0.4,5.0);
-    var chR=clamp((255/Math.max(refR,1))*0.20+ng*0.80,0.4,5.0);
-    var chG=clamp((255/Math.max(refG,1))*0.20+ng*0.80,0.4,5.0);
-    var chB=clamp((255/Math.max(refB,1))*0.20+ng*0.80,0.4,5.0);
-
+    /* 중앙 픽셀에 Gray World 보정 적용 */
     var medPx=cleanPx[Math.floor(cleanPx.length/2)];
-    var wbR=clamp(Math.round(medPx.r*chR),0,255);
-    var wbG=clamp(Math.round(medPx.g*chG),0,255);
-    var wbB=clamp(Math.round(medPx.b*chB),0,255);
+    var wbR=clamp(Math.round(medPx.r*gainR),0,255);
+    var wbG=clamp(Math.round(medPx.g*gainG),0,255);
+    var wbB=clamp(Math.round(medPx.b*gainB),0,255);
     var lab=sRGBtoLab(wbR,wbG,wbB);
     var Ls=clamp(lab.L,0,100);
+    /* 밝기 정규화(normGain) 제거 — L*가 실제 로스트 밝기를 그대로 반영해야 함 */
 
-    /* ── 프레임 단위 밝기 정규화 ─────────────────────────────
-       refL이 목표(BEAN_REF_TARGET=44)와 다를 때 Ls를 선형 보정.
-       토치 각도·거리 프레임 간 미세 변동을 흡수.
-       보정 범위 ±15% 이내로 clamp하여 과보정 방지.          */
-    var normGain = (refL > 10)
-      ? clamp(BEAN_REF_TARGET / refL, 0.85, 1.15)
-      : 1.0;
-    var LsNorm = clamp(Ls * normGain, 0, 100);
-
-    var agtron=Math.round(clamp((1.85*LsNorm)-1.2,25,95));
+    /* Agtron: spec 기반 룩업 Ag = 2*(L*-20), 범위 15-95 */
+    var agtron=Math.round(clamp(2.0*(Ls-20), 15, 95));
 
     var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
     var lMean=lSum/cleanPx.length, lVar=0;
@@ -1835,15 +1917,14 @@ function analyzeFrame(context, W, H){
     var beanType= forcedBeanType || (sigma>22?'whole':'ground');
     var beanCoverage=clamp(beanPx.length/Math.max(allPx.length,1),0,1);
 
-    /* Grind size — only meaningful for ground beans */
     var grindResult=null;
     if(beanType==='ground'){
       grindResult=estimateGrindMicrons(context,W,H);
     }
 
     return {
-      Ls:LsNorm, LsRaw:Ls, As:lab.a, Bs:lab.b, agtron, sigma, beanType,
-      lowLight, wallL:refL, beanCoverage, normGain,
+      Ls:Ls, As:lab.a, Bs:lab.b, agtron, sigma, beanType,
+      lowLight, wallL:refL, beanCoverage,
       bRGB:{r:medPx.r,g:medPx.g,b:medPx.b},
       wRGB:{r:refR,g:refG,b:refB},
       grindMicron: grindResult ? grindResult.microns : null,
@@ -1899,21 +1980,23 @@ function runAnalysis(W,H){
   }
   if(beanPx.length < 20) beanPx = allPx.filter(function(p){ return p.lum>10&&p.lum<240; });
 
-  /* ── 3. REMOVE SHADOWS + SPECULAR ──────────────────────────
-     하위 5%(그림자) + 상위 10%(반사광) 제거
-     반사광이 더 많으므로 상위를 더 넓게 제거                   */
+  /* ── 3. REMOVE SHADOWS + SPECULAR: 상하 각 10% (spec §6) ── */
   beanPx.sort(function(a,b){return a.lum-b.lum;});
   var bn=beanPx.length;
-  var cleanPx=beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.90));
+  var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
   if(cleanPx.length<10) cleanPx=beanPx;
 
-  /* ── 4. BEAN HIGHLIGHT REFERENCE ───────────────────────
-     Brightest 12% of clean pixels = well-lit bean surface.
-     Internal WB reference — completely cup-independent.
-     CALIBRATED: optimal refL ≈ 45–50 (close-up torch shot, 5–10cm).
-     At this distance gain ≈ 1.0 → minimal WB correction → best accuracy.
-     Absorbs torch distance/angle variation automatically.     */
-  var BEAN_REF_TARGET = 44; /* ← calibrated: refL=45.8 실측 최적값 기준 */
+  /* ── 4. GRAY WORLD 색 보정 ──────────────────────────────────
+     채널 R/G/B 평균을 균등하게 → 색 편차 보정. 밝기 유지.   */
+  var BEAN_REF_TARGET = 44; /* 저조도 판단 기준용으로만 유지 */
+  var sumRs=0, sumGs=0, sumBs=0;
+  cleanPx.forEach(function(p){sumRs+=p.r; sumGs+=p.g; sumBs+=p.b;});
+  var avgRs=sumRs/cleanPx.length, avgGs=sumGs/cleanPx.length, avgBs=sumBs/cleanPx.length;
+  var grayMs=(avgRs+avgGs+avgBs)/3;
+  var gwR=clamp(grayMs/Math.max(avgRs,1),0.55,1.90);
+  var gwG=clamp(grayMs/Math.max(avgGs,1),0.55,1.90);
+  var gwB=clamp(grayMs/Math.max(avgBs,1),0.55,1.90);
+
   var hiStart = Math.floor(cleanPx.length * 0.88);
   var hiPx    = cleanPx.slice(hiStart);
   var refR = median(hiPx,'r');
@@ -1921,32 +2004,28 @@ function runAnalysis(W,H){
   var refB = median(hiPx,'b');
   var refLab = sRGBtoLab(clamp(refR,0,255), clamp(refG,0,255), clamp(refB,0,255));
   var refL   = refLab.L;
-  var lowLight = refL < 28; /* ← 캘리브레이션: 5-10cm 근접 시 refL≈45 = 충분 */
+  var lowLight = refL < 22;
 
-  var tgtY    = Math.pow((BEAN_REF_TARGET+16)/116, 3);
-  var refLinY = toLinear(refR/255)*0.2126 + toLinear(refG/255)*0.7152 + toLinear(refB/255)*0.0722;
-  var neutralGain = clamp(Math.cbrt(tgtY / Math.max(refLinY, 0.001)), 0.4, 5.0);
-  var chR = clamp((255/Math.max(refR,1))*0.20 + neutralGain*0.80, 0.4, 5.0);
-  var chG = clamp((255/Math.max(refG,1))*0.20 + neutralGain*0.80, 0.4, 5.0);
-  var chB = clamp((255/Math.max(refB,1))*0.20 + neutralGain*0.80, 0.4, 5.0);
+  var tgtY    = Math.pow((BEAN_REF_TARGET+16)/116, 3); /* jitter에서만 사용 */
 
-  /* ── 5. MEDIAN BEAN PIXEL → WB → CIELAB → AGTRON ──────── */
+  /* ── 5. MEDIAN BEAN PIXEL → GW 보정 → CIELAB → AGTRON ───── */
   var medPx = cleanPx[Math.floor(cleanPx.length/2)];
-  var wbR=clamp(Math.round(medPx.r*chR),0,255);
-  var wbG=clamp(Math.round(medPx.g*chG),0,255);
-  var wbB=clamp(Math.round(medPx.b*chB),0,255);
+  var wbR=clamp(Math.round(medPx.r*gwR),0,255);
+  var wbG=clamp(Math.round(medPx.g*gwG),0,255);
+  var wbB=clamp(Math.round(medPx.b*gwB),0,255);
   var lab = sRGBtoLab(wbR,wbG,wbB);
   var Ls  = clamp(lab.L, 0, 100);
   var As  = lab.a, Bs = lab.b;
-  var agtron = Math.round(clamp((1.85*Ls)-1.2, 25, 95));
+  /* Agtron: spec 룩업 Ag = 2*(L*-20) */
+  var agtron = Math.round(clamp(2.0*(Ls-20), 15, 95));
 
   var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
   var lMean=lSum/cleanPx.length, lVar=0;
   cleanPx.forEach(function(p){lVar+=Math.pow(p.lum-lMean,2);});
   var sigma   = Math.sqrt(lVar/cleanPx.length);
   var isWhole = forcedBeanType ? (forcedBeanType==='whole') : (sigma>22), beanType=isWhole?'whole':'ground';
-  var margin  = isWhole?7:4;
-  if(isWhole) agtron=Math.round(clamp(agtron-7,25,95));
+  var margin  = 5; /* spec 기준 ±5pt 균일 */
+  if(isWhole) agtron=Math.round(clamp(agtron-5,15,95)); /* 홀빈: 표면 곡률 -5 보정 */
 
   /* ── 6. STABILITY: 5 jitter sub-samples ─────────────────  */
   var jShifts=[0,0.05,-0.05,0.03,-0.03];
@@ -1963,15 +2042,15 @@ function runAnalysis(W,H){
     var jb=jp.filter(function(p){return (p.r-p.b)>5&&p.r>=p.g*0.82&&p.lum>10&&p.lum<235;});
     if(jb.length<15) jb=jp;
     jb.sort(function(a,b){return a.lum-b.lum;});
-    var jc=jb.slice(Math.floor(jb.length*.10),Math.floor(jb.length*.95));
+    var jc=jb.slice(Math.floor(jb.length*.05),Math.floor(jb.length*.90));
     if(!jc.length) jc=jb;
-    var jhi=jc.slice(Math.floor(jc.length*0.88));
-    var jrR=median(jhi,'r'), jrG=median(jhi,'g'), jrB=median(jhi,'b');
-    var jrLin=toLinear(jrR/255)*0.2126+toLinear(jrG/255)*0.7152+toLinear(jrB/255)*0.0722;
-    var jng=clamp(Math.cbrt(tgtY/Math.max(jrLin,0.001)),0.4,5.0);
-    var jcR=clamp((255/Math.max(jrR,1))*0.20+jng*0.80,0.4,5.0);
-    var jcG=clamp((255/Math.max(jrG,1))*0.20+jng*0.80,0.4,5.0);
-    var jcB=clamp((255/Math.max(jrB,1))*0.20+jng*0.80,0.4,5.0);
+    /* Gray World gain for jitter */
+    var jsR=0,jsG=0,jsB=0;
+    jc.forEach(function(p){jsR+=p.r;jsG+=p.g;jsB+=p.b;});
+    var jgm=(jsR+jsG+jsB)/(jc.length*3);
+    var jcR=clamp(jgm/Math.max(jsR/jc.length,1),0.55,1.90);
+    var jcG=clamp(jgm/Math.max(jsG/jc.length,1),0.55,1.90);
+    var jcB=clamp(jgm/Math.max(jsB/jc.length,1),0.55,1.90);
     var jm=jc[Math.floor(jc.length/2)];
     stabLs.push(sRGBtoLab(
       clamp(Math.round(jm.r*jcR),0,255),
@@ -2079,7 +2158,27 @@ function renderResult(r){
   G('pL').textContent=r.Ls.toFixed(1);
   G('pA').textContent=r.agtron;
   G('rName').textContent=name;
-  G('rRange').textContent='Agtron '+Math.max(25,r.agtron-r.margin)+'–'+Math.min(95,r.agtron+r.margin);
+  /* Agtron 범위: dualPass면 spec 룩업, 아니면 ±margin fallback */
+  if(r.agRangeLo !== undefined){
+    G('rRange').textContent='Agtron '+r.agRangeLo+'–'+r.agRangeHi;
+  } else {
+    var agR = agtronRangeFromL(r.Ls);
+    G('rRange').textContent='Agtron '+agR.lo+'–'+agR.hi;
+  }
+  /* 균일도 (spec §9) */
+  var unifEl = G('uniformityVal');
+  if(unifEl && r.uniformity !== undefined){
+    unifEl.textContent = r.uniformity.toFixed(2);
+    unifEl.style.color = r.uniformity<0.8?'#5dda88':r.uniformity<1.5?'#d4a820':'#e05050';
+  }
+  /* 분쇄도 보정 표시 */
+  var gcorrEl = G('grindCorrNote');
+  if(gcorrEl){
+    if(r.grindLCorr && r.grindLCorr !== 0){
+      gcorrEl.textContent='분쇄도 보정 '+(r.grindLCorr>0?'+':'')+r.grindLCorr+' (입력: '+r.userGrindInput+'µm)';
+      gcorrEl.style.display='block';
+    } else { gcorrEl.style.display='none'; }
+  }
   var modeLabel = currentMode==='whole'?'홀빈':currentMode==='gcol'?'그라운드 컬러 & 분쇄도':'측정';
   G('rhTag').textContent=modeLabel+'  σ='+r.sigma.toFixed(1);
 
@@ -2467,14 +2566,25 @@ function sRGBtoLab(r8,g8,b8){
   function f(t){return t>.008856?Math.cbrt(t):7.787*t+16/116;}
   return{L:116*f(Y/1)  -16, a:500*(f(X/.95047)-f(Y/1)), b:200*(f(Y/1)-f(Z/1.08883))};
 }
+/* ── Agtron 예상 범위: L* 기반 룩업 (spec §11) ── */
+function agtronRangeFromL(L){
+  if(L>=60) return {lo:85, hi:95};
+  if(L>=55) return {lo:75, hi:85};
+  if(L>=50) return {lo:65, hi:75};
+  if(L>=45) return {lo:55, hi:65};
+  if(L>=40) return {lo:45, hi:55};
+  if(L>=35) return {lo:35, hi:45};
+  if(L>=30) return {lo:25, hi:35};
+  return      {lo:15, hi:25};
+}
+
+/* ── 로스트 레벨 분류: spec §10 (5단계) ── */
 function roastName(L){
-  if(L>=51.2)return'Very Light';
-  if(L>=46.8)return'Light';
-  if(L>=41.5)return'Medium-Light';
-  if(L>=36.3)return'Medium';
-  if(L>=31.1)return'Medium-Dark';
-  if(L>=25.9)return'Dark';
-  return'Very Dark';
+  if(L>=60) return 'Light Roast';
+  if(L>=50) return 'Medium Roast';
+  if(L>=40) return 'Medium-Dark Roast';
+  if(L>=30) return 'Dark Roast';
+  return         'Very Dark Roast';
 }
 function setInst(t){dom.it.textContent=t;}
 
