@@ -477,11 +477,9 @@ body.unlocked .gate{display:none}
 <!-- DEVICE CALIBRATION BAR -->
 <div id="devCalBar" style="display:flex;align-items:center;justify-content:space-between;padding:7px 16px;background:var(--s);border-bottom:1px solid var(--b);font-family:var(--m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--tm)">
   <span>기기 보정</span>
-  <div style="display:flex;gap:5px" id="devCalBtns">
+  <div style="display:flex;gap:5px;align-items:center" id="devCalBtns">
     <button onclick="setDeviceCal('auto')" id="devCalAuto" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid #555;background:rgba(255,255,255,0.12);color:var(--t);cursor:pointer">자동</button>
-    <button onclick="setDeviceCal('iphone')" id="devCalIPhone" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid var(--b);background:transparent;color:var(--tm);cursor:pointer">iPhone</button>
-    <button onclick="setDeviceCal('galaxy')" id="devCalGalaxy" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid var(--b);background:transparent;color:var(--tm);cursor:pointer">Galaxy</button>
-    <button onclick="setDeviceCal('pixel')" id="devCalPixel" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid var(--b);background:transparent;color:var(--tm);cursor:pointer">Pixel</button>
+    <span id="devCalLabel" style="font-size:9px;color:var(--tm);letter-spacing:.05em"></span>
   </div>
 </div>
 
@@ -490,7 +488,7 @@ body.unlocked .gate{display:none}
 <div class="mtab-guide-body guide" id="guideBody">
   <div class="guide-hd">측정 원리 & 촬영 방법</div>
   <div class="guide-grid">
-    <div class="gc" style="background:#f0f4f8;border-left:3px solid #4a7ab5"><div class="gc-n" style="color:#4a7ab5">⚡</div><div class="gc-t"><b style="color:#2c5282">Visible Light (가시광선) 측정</b><small style="color:#4a7ab5">사람의 눈이 색을 인지하는 방식과 동일한 가시광선 스펙트럼(380~700nm)을 카메라 센서로 수집 → sRGB → CIELAB 색공간으로 변환하여 로스팅 컬러와 분쇄도를 분석합니다</small></div></div>
+    <div class="gc" style="background:#f0f4f8;border-left:3px solid #4a7ab5"><div class="gc-n" style="color:#4a7ab5">VL</div><div class="gc-t"><b style="color:#2c5282">Visible Light (가시광선) 측정</b><small style="color:#4a7ab5">사람의 눈이 색을 인지하는 방식과 동일한 가시광선 스펙트럼(380~700nm)을 카메라 센서로 수집 → sRGB → CIELAB 색공간으로 변환하여 로스팅 컬러와 분쇄도를 분석합니다</small></div></div>
     <div class="gc"><div class="gc-n">01</div><div class="gc-t">흰 내벽 종이컵에 원두 담기<small>입구까지 충분히</small></div></div>
     <div class="gc"><div class="gc-n">02</div><div class="gc-t">카메라 라이트(손전등) ON<small>플래시 아님 — 지속광 (가시광선 측정의 핵심)</small></div></div>
     <div class="gc"><div class="gc-n">03</div><div class="gc-t">컬러 측정: 3~8cm 가까이, 수직 촬영<small>멀수록 L* 과대 측정 → 가까울수록 정확</small></div></div>
@@ -903,9 +901,9 @@ var liveStream      = null;
 var liveTrack       = null;
 var liveRunning     = false;
 var frameBuffer     = [];      /* stable frames only */
-var FRAME_BUF_SIZE  = 20;      /* 20 stable frames to lock (~2s) */
+var FRAME_BUF_SIZE  = 35;      /* 35 stable frames to lock (~4s) */
 var AUTO_LOCK_SIGMA = 1.5;     /* relaxed: σ < 1.5 across buffer */
-var MIN_STABLE_RUN  = 10;      /* 10 consecutive stable frames */
+var MIN_STABLE_RUN  = 15;      /* 15 consecutive stable frames */
 var SHAKE_DELTA     = 5.0;     /* |ΔL*| > 5 between frames = shake */
 var rafId           = null;
 var lastFrameL      = null;
@@ -938,19 +936,19 @@ function detectDeviceOffset(){
 
 function setDeviceCal(type){
   currentDeviceCal = type;
-  /* 버튼 활성화 스타일 */
-  ['devCalAuto','devCalIPhone','devCalGalaxy','devCalPixel'].forEach(function(id){
-    var el = G(id);
-    if(!el) return;
-    el.style.background = 'transparent';
-    el.style.color = 'var(--tm)';
-    el.style.borderColor = 'var(--b)';
-  });
-  var activeId = {auto:'devCalAuto',iphone:'devCalIPhone',galaxy:'devCalGalaxy',pixel:'devCalPixel'}[type];
-  if(activeId && G(activeId)){
-    G(activeId).style.background = 'rgba(255,255,255,0.12)';
-    G(activeId).style.color = 'var(--t)';
-    G(activeId).style.borderColor = '#555';
+  /* 버튼 활성화 스타일 — 자동 버튼만 존재 */
+  var autoBtn = G('devCalAuto');
+  if(autoBtn){
+    autoBtn.style.background = 'rgba(255,255,255,0.12)';
+    autoBtn.style.color = 'var(--t)';
+    autoBtn.style.borderColor = '#555';
+  }
+  /* 감지 기기명 표시 */
+  var labelEl = G('devCalLabel');
+  if(labelEl){
+    var ua = navigator.userAgent||'';
+    var devName = /iPhone|iPad/.test(ua) ? 'iPhone' : /SM-[A-Z]/i.test(ua) ? 'Samsung' : /Pixel/i.test(ua) ? 'Pixel' : '';
+    labelEl.textContent = devName ? '(' + devName + ' 감지됨)' : '';
   }
   try{ localStorage.setItem('rl_device_cal', type); }catch(e){}
   /* 결과가 이미 있으면 재렌더 */
@@ -974,6 +972,7 @@ function applyDeviceCal(rawL){
    가이드 원은 항상 동일 크기. 대신 감지율(coverage)에 따라
    텍스트로 "더 가까이" / "거리를 두세요" 안내한다.          */
 var FIXED_ROI     = 0.50;   /* 고정 비율, min(W,H) 대비 — 넉넉한 원 */
+var ROI_CY_RATIO  = 0.42;   /* 원 세로 중심: H * 0.42 — 기본 중앙보다 약간 위 */
 var lastCovPct    = 0;      /* 최근 프레임 감지율 (0~100)   */
 
 function G(id){ return document.getElementById(id); }
@@ -1179,7 +1178,27 @@ function enableTorch(){
 }
 
 /* ── STOP ── */
-function stopLive(){
+/* ── 측정 완료 후 카메라만 종료 (결과/상태 유지) ── */
+function stopLiveAfterLock(){
+  if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
+  if(liveTrack){
+    try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){}
+    liveTrack.stop(); liveTrack=null;
+  }
+  if(liveStream){ liveStream.getTracks().forEach(function(t){t.stop();}); liveStream=null; }
+  dom.liveVideo.srcObject=null;
+  dom.liveVideo.style.display='none';
+  dom.guideOverlay.style.display='none';
+  dom.liveReadout.classList.remove('on');
+  dom.torchWarn.style.display='none';
+  dom.shakeWarn.classList.remove('on');
+  dom.liveBadge.style.display='none';
+  dom.stopBtns.style.display='none';
+  dom.upph.style.display='flex';
+  /* liveRunning은 이미 false (autoLock에서 설정됨) */
+}
+
+
   liveRunning = false;
   if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
   if(liveTrack){
@@ -1211,7 +1230,7 @@ function stopLive(){
 
 /* ── FRAME LOOP ── */
 var lastFrameTime = 0;
-var FRAME_INTERVAL = 100; /* 10fps analysis — sufficient for stability */
+var FRAME_INTERVAL = 120; /* ~8fps analysis — balanced speed/stability */
 
 /* ═══════════════════════════════════════
    GUIDE OVERLAY — 고정 원 + 커버리지 기반 거리 안내
@@ -1225,7 +1244,7 @@ function drawGuideOverlay(){
   ov.width  = W;
   ov.height = H;
   var gx = ov.getContext('2d');
-  var cx = W/2, cy = H/2;
+  var cx = W/2, cy = H * ROI_CY_RATIO;
   gx.clearRect(0,0,W,H);
 
   /* ── 고정 원 가이드 ──────────────────────────────
@@ -1294,32 +1313,63 @@ function drawGuideOverlay(){
     gx.save();
     var subMsg, subColor;
     if(lastCovPct > 90){
-      subMsg = '⚠ 너무 가까워요 — 살짝 거리 두세요';
-      subColor = 'rgba(224,80,80,0.95)';
+      subMsg = '너무 가깝습니다 — 살짝 거리를 두세요';
+      subColor = '#ff6b6b';
     } else if(lastCovPct >= 55){
-      subMsg = '✓ 거리 최적 — 이 위치 유지';
-      subColor = 'rgba(100,220,140,0.95)';
+      subMsg = '거리 최적 — 이 위치 유지';
+      subColor = '#5dda88';
     } else if(lastCovPct >= 30){
-      subMsg = '더 가까이 — 3~8cm';
-      subColor = 'rgba(200,160,64,0.95)';
+      subMsg = '더 가까이 대주세요 (3~8cm)';
+      subColor = '#f0c040';
     } else if(lastCovPct > 0){
       subMsg = '컵을 더 가까이 대주세요';
-      subColor = 'rgba(224,80,80,0.95)';
+      subColor = '#ff6b6b';
     } else {
       subMsg = '원 안에 원두를 채우세요';
-      subColor = 'rgba(200,160,64,0.95)';
+      subColor = '#f0c040';
     }
-    gx.font = '12px -apple-system, sans-serif';
+    gx.font = 'bold 14px -apple-system, Inter, sans-serif';
     var stw = gx.measureText(subMsg).width;
-    var subY = cy + r + 22;
-    gx.fillStyle='rgba(0,0,0,0.60)';
+    var subY = cy + r + 28;
+    var pad = 10;
+    /* 배경 박스 */
+    gx.fillStyle = 'rgba(0,0,0,0.72)';
     gx.beginPath();
-    if(gx.roundRect) gx.roundRect(cx-stw/2-10, subY-14, stw+20, 22, 5);
-    else gx.rect(cx-stw/2-10, subY-14, stw+20, 22);
+    if(gx.roundRect) gx.roundRect(cx - stw/2 - pad, subY - 16, stw + pad*2, 26, 6);
+    else gx.rect(cx - stw/2 - pad, subY - 16, stw + pad*2, 26);
     gx.fill();
-    gx.fillStyle=subColor;
-    gx.textAlign='center'; gx.textBaseline='middle';
-    gx.fillText(subMsg, cx, subY-3);
+    /* 외곽선 강조 */
+    gx.strokeStyle = 'rgba(255,255,255,0.10)';
+    gx.lineWidth = 1;
+    gx.stroke();
+    /* 텍스트 */
+    gx.fillStyle = subColor;
+    gx.textAlign = 'center';
+    gx.textBaseline = 'middle';
+    gx.fillText(subMsg, cx, subY - 3);
+    gx.restore();
+  }
+
+  /* 5b. 분쇄도 모드: 상단 거리 안내 */
+  if(currentMode === 'grind' && liveRunning){
+    gx.save();
+    var gmsg = lastCovPct > 85 ? '너무 가깝습니다 (5~10cm)' :
+               lastCovPct >= 40 ? '거리 적정 — 이 위치 유지' :
+               '컵을 더 가까이 대주세요 (5~10cm)';
+    var gmsgColor = lastCovPct > 85 ? '#ff6b6b' : lastCovPct >= 40 ? '#5dda88' : '#f0c040';
+    gx.font = 'bold 13px -apple-system, Inter, sans-serif';
+    var gmsgW = gx.measureText(gmsg).width;
+    var gmsgY = cy - r - 20;
+    var gpad = 10;
+    gx.fillStyle = 'rgba(0,0,0,0.72)';
+    gx.beginPath();
+    if(gx.roundRect) gx.roundRect(cx - gmsgW/2 - gpad, gmsgY - 14, gmsgW + gpad*2, 24, 5);
+    else gx.rect(cx - gmsgW/2 - gpad, gmsgY - 14, gmsgW + gpad*2, 24);
+    gx.fill();
+    gx.fillStyle = gmsgColor;
+    gx.textAlign = 'center';
+    gx.textBaseline = 'middle';
+    gx.fillText(gmsg, cx, gmsgY - 2);
     gx.restore();
   }
 }
@@ -1399,7 +1449,7 @@ function updateLiveReadout(r, smoothL, isShake){
   var covColor = covPct >= 55 ? 'rgba(60,200,100,.9)' : covPct >= 35 ? 'rgba(255,200,60,.9)' : '#e05050';
   dom.lrCovFill.style.width   = covPct + '%';
   dom.lrCovFill.style.background = covColor;
-  var distHint = covPct > 85 ? ' ⚠ 너무 가까움 — 거리를 두세요' : covPct >= 55 ? ' ✓ 최적' : covPct >= 35 ? ' ▼ 더 가까이 대주세요' : ' ▼▼ 많이 부족';
+  var distHint = covPct > 85 ? ' — 너무 가까움, 거리를 두세요' : covPct >= 55 ? ' — 최적' : covPct >= 35 ? ' — 더 가까이 대주세요' : ' — 많이 부족';
   dom.lrCovVal.textContent    = covPct + '%' + distHint;
 
   /* ── Indicator 2: 조명 밝기 — 근거리 촬영 시 wallL이 높아도 정상 */
@@ -1540,6 +1590,8 @@ function autoLock(){
     renderStepNav();
     dom.lrStatus.textContent = '분쇄도 측정 완료' + (gMicron ? ' — ' + gMicron + 'µm' : ' — 감지 실패');
     setInst('분쇄도 측정 완료.');
+    /* 카메라 자동 종료 */
+    setTimeout(function(){ stopLiveAfterLock(); }, 500);
     return;
   }
 
@@ -1571,6 +1623,8 @@ function autoLock(){
   setInst('컬러 측정 완료 — 결과 확인 후 저장하세요.');
   renderResult(pendingResult);
   renderStepNav();
+  /* 카메라 자동 종료 */
+  setTimeout(function(){ stopLiveAfterLock(); }, 500);
 }
 
 /* ════════════════════════════════════════
@@ -1734,13 +1788,13 @@ function analyzeFrame(context, W, H){
     var step = Math.max(3, Math.floor(Math.min(W,H)/120));
 
     /* ── ROI: 고정 42% 반지름 원형 마스크 ────── */
-    var cx=W/2, cy=H/2;
+    var cx=W/2, cy=H*ROI_CY_RATIO;
     var rLimit=Math.min(W,H)*FIXED_ROI;
     var rLim2=rLimit*rLimit;
-    var bx0=Math.max(0,Math.round(W/2-rLimit-6));
-    var by0=Math.max(0,Math.round(H/2-rLimit-6));
-    var bx1=Math.min(W,Math.round(W/2+rLimit+6));
-    var by1=Math.min(H,Math.round(H/2+rLimit+6));
+    var bx0=Math.max(0,Math.round(cx-rLimit-6));
+    var by0=Math.max(0,Math.round(cy-rLimit-6));
+    var bx1=Math.min(W,Math.round(cx+rLimit+6));
+    var by1=Math.min(H,Math.round(cy+rLimit+6));
     var allPx=[];
     for(var y=by0;y<by1;y+=step)
       for(var x=bx0;x<bx1;x+=step){
@@ -2053,7 +2107,7 @@ function renderResult(r){
   if(!r.lowLight){
     sn.classList.add('on');
     if(r.isLocked){
-      var gradeLabel = r.stabGrade==='high'?'신뢰도 높음':r.stabGrade==='med'?'신뢰도 보통':'⚠ 재촬영 권장';
+      var gradeLabel = r.stabGrade==='high'?'신뢰도 높음':r.stabGrade==='med'?'신뢰도 보통':'재촬영 권장';
       var gc = r.stabGrade==='high'?{bg:'#f0fff6',bd:'#a0d8b8',tc:'#1a7a46'}
              : r.stabGrade==='med' ?{bg:'#fffbf0',bd:'#f0d890',tc:'#8a6800'}
              :                      {bg:'#fff0f0',bd:'#e8a0a0',tc:'#8a1a1a'};
@@ -2420,7 +2474,7 @@ function renderStepNav(){
       } else if(hasPending){
         chipEl.textContent = '▲ 결과 확인';
       } else if(stepDone[k]){
-        chipEl.textContent = '✓ 완료 — 재측정 가능';
+        chipEl.textContent = '완료 — 재측정 가능';
       } else {
         chipEl.textContent = '탭하여 측정';
       }
