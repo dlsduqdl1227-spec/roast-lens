@@ -1198,7 +1198,7 @@ function stopLiveAfterLock(){
   /* liveRunning은 이미 false (autoLock에서 설정됨) */
 }
 
-
+function stopLive(){
   liveRunning = false;
   if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
   if(liveTrack){
