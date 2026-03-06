@@ -1554,25 +1554,28 @@ function autoLock(){
 
   /* ── 환경 불안정 시 즉시 재측정 요청 ── */
   if(envUnstable){
+    /* 상태 즉시 초기화 — doRetake가 나머지 UI/카메라 처리 */
+    passPhase   = 1;
+    pass1Data   = null;
+    frameBuffer = [];
+    stableRun   = 0;
     liveRunning = false;
     if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
-    dom.liveBadge.style.display='none';
-    dom.stopBtns.style.display='none';
-    dom.lrStatus.textContent = '⚠ 1·2차 L* 차이 '+passDelta.toFixed(1)+'pt (기준 2.0pt 초과) — 재측정 필요';
-    dom.lrStatus.style.color = '#e05050';
-    setInst('측정 환경이 불안정합니다. 카메라를 고정하고 다시 측정해 주세요.');
-    passPhase = 1; pass1Data = null;
-    dom.stopBtns.style.display = 'flex';
-    /* shakePrompt 대신 재측정 안내 표시 */
+    dom.liveBadge.style.display = 'none';
+    dom.stopBtns.style.display  = 'none';
+    dom.lrStatus.style.color    = '#e05050';
+    dom.lrStatus.textContent    = '⚠ 1·2차 L* 차이 '+passDelta.toFixed(1)+'pt — 재측정 필요 (기준 2.0pt)';
+    setInst('측정 환경이 불안정합니다. 원두를 고정하고 1차부터 다시 측정해 주세요.');
     if(dom.shakePrompt){
       dom.shakePrompt.style.display = 'flex';
-      var pt = dom.shakePrompt.querySelector('.shake-prompt-title');
-      var pm = dom.shakePrompt.querySelector('.shake-prompt-msg');
-      var pb = dom.shakePrompt.querySelector('.shake-prompt-btn');
-      if(pt) pt.textContent = '⚠ 측정 불안정';
-      if(pm) pm.textContent = '1·2차 L* 차이가 '+passDelta.toFixed(1)+'pt입니다.\n카메라를 고정하고 재측정하세요.';
-      if(pb){ pb.textContent = '재측정 시작'; pb.onclick = function(){ dom.shakePrompt.style.display='none'; dom.lrStatus.style.color=''; startLive(); }; }
+      var pt2 = dom.shakePrompt.querySelector('.shake-prompt-title');
+      var pm2 = dom.shakePrompt.querySelector('.shake-prompt-msg');
+      var pb2 = dom.shakePrompt.querySelector('.shake-prompt-btn');
+      if(pt2) pt2.textContent = '⚠ 측정 불안정';
+      if(pm2) pm2.textContent = '1·2차 L* 차이 '+passDelta.toFixed(1)+'pt\n1차부터 다시 측정합니다.';
+      if(pb2){ pb2.textContent = '1차부터 재측정'; pb2.onclick = function(){ doRetake(); }; }
     }
+    renderStepNav();
     return;
   }
 
@@ -2246,37 +2249,46 @@ function _restartCamera(){
 }
 
 function doRetake(){
+  /* ── 항상 패스 상태 초기화 ── */
+  passPhase  = 1;
+  pass1Data  = null;
+  frameBuffer = [];
+  lastFrameL = null;
+  emaL       = null;
+  stableRun  = 0;
   pendingResult = null;
   pendingGrind  = null;
-  var dq=dom.decision.querySelector('.decision-q');
-  if(dq) dq.textContent='이 결과를 사용하시겠습니까?';
+
+  /* UI 초기화 */
+  dom.lrStatus.style.color = '';          /* envUnstable red 색상 제거 */
+  var dq = dom.decision.querySelector('.decision-q');
+  if(dq) dq.textContent = '이 결과를 사용하시겠습니까?';
   dom.decision.classList.remove('on');
   dom.rp.classList.remove('on');
+  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
+  if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout = null; }
+  dom.shakeWarn.classList.remove('on');
+  dom.badge.style.display = 'none';
+  dom.stabBadge.style.display = 'none';
+  dom.lowlightWarn.style.display = 'none';
+  dom.modeBadge.style.display = 'none';
+  [dom.lrCovFill, dom.lrLightFill, dom.lrStabFill].forEach(function(el){ el.style.width='0%'; });
+  hideValBlock();
 
-  /* 카메라 재시작 */
+  /* ── 카메라 재시작 ──
+     envUnstable이 liveStream을 닫지 않으므로 srcObject 있으면 재활용.
+     없으면 startLive()로 완전 재시작.                               */
   if(dom.liveVideo.srcObject){
-    frameBuffer = [];
-    lastFrameL  = null;
-    emaL        = null;
-    stableRun   = 0;
-    if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
-    dom.shakeWarn.classList.remove('on');
-    liveRunning = true;
-    dom.liveBadge.style.display = 'block';
-    dom.lrStatus.textContent = '다시 측정 중...';
-    [dom.lrCovFill,dom.lrLightFill,dom.lrStabFill].forEach(function(el){el.style.width='0%';});
+    dom.lrStatus.textContent = '1차 측정 중...';
     dom.stopBtns.style.display = 'flex';
+    dom.liveBadge.style.display = 'block';
+    liveRunning = true;
     enableTorch();
     rafId = requestAnimationFrame(frameLoop);
-    setInst('다시 측정합니다 — 원두를 카메라 앞에 대주세요.');
+    setInst('1차 측정을 다시 시작합니다 — 원두를 원 안에 채워주세요.');
   } else {
-    setInst('탭을 선택해 다시 측정하세요.');
+    startLive();
   }
-  dom.badge.style.display='none';
-  dom.stabBadge.style.display='none';
-  dom.lowlightWarn.style.display='none';
-  dom.modeBadge.style.display='none';
-  hideValBlock();
   renderStepNav();
 }
 
@@ -2604,8 +2616,12 @@ function confStateLabel(conf){
 function doReset(){
   measurements=[]; measureCount=0; pendingResult=null; pendingGrind=null;
   passPhase=1; pass1Data=null;
-  store = { whole: null, gcol: null, grind: null };
+  frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
+  store = { gcol: null, grind: null };
   currentMode = null;
+  forcedBeanType = null;
+  stepDone = { gcol:false, grind:false };
+  dom.lrStatus.style.color = '';        /* envUnstable red 제거 */
   dom.prev.style.display='none'; dom.prev.src='';
   dom.upph.style.display='flex';
   dom.upzone.classList.remove('loaded');
@@ -2624,10 +2640,9 @@ function doReset(){
   if(dom.shakePrompt) dom.shakePrompt.style.display='none';
   if(dom.lrPass) dom.lrPass.classList.remove('on');
   var bmi=G('beanModeIndicator'); if(bmi) bmi.classList.remove('on');
-  ['tabWhole','tabGcol','tabGrind','tabGuide'].forEach(function(id){ var el=G(id); if(el) el.classList.remove('active'); });
-  forcedBeanType = null;
-  stepDone = {whole:false, gcol:false, grind:false};
-  currentMode = null;
+  ['tabGcol','tabGuide'].forEach(function(id){ var el=G(id); if(el) el.classList.remove('active'); });
+  /* 카메라 완전 정지 */
+  stopLive();
   hideValBlock();
   renderStepNav();
   setInst('측정을 시작하세요.');
