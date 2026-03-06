@@ -493,9 +493,9 @@ body.unlocked .gate{display:none}
     <div class="gc" style="background:#f0f4f8;border-left:3px solid #4a7ab5"><div class="gc-n" style="color:#4a7ab5">⚡</div><div class="gc-t"><b style="color:#2c5282">Visible Light (가시광선) 측정</b><small style="color:#4a7ab5">사람의 눈이 색을 인지하는 방식과 동일한 가시광선 스펙트럼(380~700nm)을 카메라 센서로 수집 → sRGB → CIELAB 색공간으로 변환하여 로스팅 컬러와 분쇄도를 분석합니다</small></div></div>
     <div class="gc"><div class="gc-n">01</div><div class="gc-t">흰 내벽 종이컵에 원두 담기<small>입구까지 충분히</small></div></div>
     <div class="gc"><div class="gc-n">02</div><div class="gc-t">카메라 라이트(손전등) ON<small>플래시 아님 — 지속광 (가시광선 측정의 핵심)</small></div></div>
-    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컵 위 10~15cm, 수직 촬영<small>컬러와 분쇄도 동시 측정 — 원두가 화면을 채우면 됩니다</small></div></div>
-    <div class="gc"><div class="gc-n">04</div><div class="gc-t">같은 거리·각도 유지<small>일관성이 정확도의 핵심 — 화면 안내에 따라 직접 거리 조절</small></div></div>
-    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">05</div><div class="gc-t"><b style="color:#8a6010">분쇄도 정밀 측정은 5~8cm까지 더 가까이!</b><small style="color:#8a6010">입자 텍스처가 선명할수록 정밀도 ↑ — 에스프레소·파인 그라인드는 반드시 가까이 촬영하세요.<br>화면 하단에 거리 안내가 실시간 표시됩니다.</small></div></div>
+    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컬러 측정: 3~8cm 가까이, 수직 촬영<small>멀수록 L* 과대 측정 → 가까울수록 정확</small></div></div>
+    <div class="gc"><div class="gc-n">04</div><div class="gc-t">분쇄도 측정: 5~10cm, 빛이 고르게<small>텍스처가 선명할수록 정밀도 ↑</small></div></div>
+    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">05</div><div class="gc-t"><b style="color:#8a6010">컬러와 분쇄도는 각각 최적 거리가 다릅니다</b><small style="color:#8a6010">컬러: 3~8cm (가까울수록 정확) | 분쇄도: 5~10cm (텍스처 선명도 중요)<br>두 측정을 따로 수행하면 각각 최적 조건에서 결과를 얻을 수 있습니다.</small></div></div>
     <div class="gc"><div class="gc-n">+</div><div class="gc-t">각 단계는 독립 측정 — 필요한 항목만 수행하세요<small>3단계 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
   </div>
 </div>
@@ -685,15 +685,7 @@ body.unlocked .gate{display:none}
     <div class="rh-tag" id="rhTag">—</div>
     <span id="rhDelta" style="display:none;font-family:var(--m);font-size:10px;font-weight:700;letter-spacing:.06em;margin-left:8px"></span>
   </div>
-  <!-- 분쇄도 입력 (spec §2, §7) -->
-  <div id="grindInputWrap" style="display:none;padding:10px 16px 0;border-bottom:1px solid var(--b)">
-    <div style="font-family:var(--m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--tm);margin-bottom:6px">분쇄도 입력 (선택)</div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <input id="grindInputField" type="number" min="100" max="2500" step="10" placeholder="µm 입력 (예: 500)" style="flex:1;background:#1a1a1a;border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-family:var(--m);font-size:13px;padding:7px 10px;-webkit-appearance:none">
-      <span style="font-family:var(--m);font-size:11px;color:var(--tm)">µm</span>
-    </div>
-    <div style="font-family:var(--m);font-size:9px;color:var(--tm);margin-top:4px">입력 시 L* 자동 보정: &lt;500 → +0.5 / &gt;800 → -0.5</div>
-  </div>
+
   <div class="flash-alert" id="lowlightAlert">
     <div class="flash-alert-t">광량 부족 — 카메라 라이트(손전등)가 켜져 있는지 확인하고, 컵을 더 가까이 대주세요.</div>
   </div>
@@ -824,12 +816,18 @@ body.unlocked .gate{display:none}
     <div class="step-nav-status" id="stepNavStatus">측정 항목을 선택하세요</div>
     <button class="step-nav-guide" onclick="toggleGuideTab()">촬영 안내</button>
   </div>
-  <div class="step-tiles" style="justify-content:center">
-    <div class="step-tile idle" id="tileGcol" onclick="tileAction('gcol')" style="min-width:200px;max-width:280px">
+  <div class="step-tiles" style="justify-content:center;gap:10px">
+    <div class="step-tile idle" id="tileColor" onclick="tileAction('color')" style="min-width:160px;max-width:240px">
       <div class="step-tile-icon">01</div>
-      <div class="step-tile-label">그라운드 컬러 &amp; 분쇄도</div>
-      <div class="step-tile-value" id="tileGcolVal">—</div>
-      <div class="step-tile-chip" id="tileGcolChip">탭하여 측정</div>
+      <div class="step-tile-label">그라운드 컬러</div>
+      <div class="step-tile-value" id="tileColorVal">—</div>
+      <div class="step-tile-chip" id="tileColorChip">탭하여 측정</div>
+    </div>
+    <div class="step-tile idle" id="tileGrind" onclick="tileAction('grind')" style="min-width:160px;max-width:240px">
+      <div class="step-tile-icon">02</div>
+      <div class="step-tile-label">분쇄도 입자</div>
+      <div class="step-tile-value" id="tileGrindVal">—</div>
+      <div class="step-tile-chip" id="tileGrindChip">탭하여 측정</div>
     </div>
   </div>
 </div>
@@ -905,7 +903,7 @@ var forcedBeanType = null;
 
 /* ── 독립 측정 저장소 ── */
 var store    = { gcol: null, grind: null };
-var currentMode = null; /* 'whole' | 'gcol' */
+var currentMode = null; /* 'color' | 'grind' */
 var ctx = null, htx = null, lvx = null;
 
 /* live video state */
@@ -1088,11 +1086,11 @@ function showToast(msg){
 /* ── START ── */
 function startLive(beanMode){
   if(liveRunning){ stopLive(); } /* 혹시 살아있으면 먼저 정리 */
-  /* currentMode: 'whole' | 'gcol' — gcol includes grind */
-  var isGrindOnly = false; /* no longer a separate mode */
-  var isGcol      = (currentMode === 'gcol');
-  /* gcol mode forces ground type so grind texture is always computed */
-  forcedBeanType = 'ground'; /* gcol 전용 */
+  /* currentMode: 'color' | 'grind' */
+  var isColorMode = (currentMode === 'color');
+  var isGrindMode = (currentMode === 'grind');
+  /* both modes use ground type */
+  forcedBeanType = 'ground';
 
   /* ── Pre-flight checks ── */
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -1123,8 +1121,6 @@ function startLive(beanMode){
   pass1Data     = null;
   dom.rp.classList.remove('on');
   dom.decision.classList.remove('on');
-  /* 분쇄도 입력란: gcol에서만 표시 */
-  var giw=G('grindInputWrap'); if(giw) giw.style.display=(currentMode==='gcol')?'block':'none';
 
   var constraints = {
     video:{
@@ -1156,14 +1152,17 @@ function startLive(beanMode){
       liveRunning  = true;
       var bmi = G('beanModeIndicator');
       if(bmi){
-        var lbl = '그라운드 컬러 & 분쇄도 측정';
+        var lbl = isColorMode ? '그라운드 컬러 측정 (3~8cm)' : '분쇄도 입자 측정 (5~10cm)';
         bmi.textContent = lbl;
-        bmi.className = 'bean-mode-indicator on '+(isGcol?'ground':'whole');
+        bmi.className = 'bean-mode-indicator on ground';
       }
       dom.liveVideo.addEventListener('loadedmetadata', function(){
         enableTorch();
         rafId = requestAnimationFrame(frameLoop);
-        setInst('가시광선 측정 중 — 컬러: 10~15cm | 분쇄도 정밀: 5~8cm (화면 안내 확인)');
+        var instMsg = isColorMode
+          ? '컬러 측정 중 — 3~8cm 가까이 수직 촬영 (가까울수록 정확)'
+          : '분쇄도 측정 중 — 5~10cm, 라이트 ON, 원두가 화면 가득';
+        setInst(instMsg);
       }, {once:true});
     })
     .catch(function(err){
@@ -1310,7 +1309,7 @@ function drawGuideOverlay(){
 
   /* 5. 상단 안내 라벨 */
   gx.save();
-  var topLbl = '원 안에 분쇄 원두를 가득 채우세요';
+  var topLbl = currentMode === 'grind' ? '분쇄도: 원두를 5~10cm 거리에서 촬영' : '컬러: 원두를 3~8cm 가까이 촬영';
   gx.font = 'bold 13px -apple-system, sans-serif';
   var tw = gx.measureText(topLbl).width;
   var lblY = cy - r - 14;
@@ -1324,27 +1323,48 @@ function drawGuideOverlay(){
   gx.fillText(topLbl, cx, lblY-4);
   gx.restore();
 
-  /* 6. 하단 거리 안내 — 감지율(coverage) 기반 동적 메시지 */
+  /* 6. 하단 거리 안내 — 모드별 + 감지율(coverage) 기반 동적 메시지 */
   gx.save();
   var subMsg, subColor;
   if(!liveRunning){
     subMsg = '탭하여 측정 시작';
     subColor = 'rgba(255,255,255,0.70)';
-  } else if(lastCovPct > 85){
-    subMsg = '⚠ 너무 가까워요 — 조금 거리를 두세요 (10~15cm)';
-    subColor = 'rgba(224,80,80,0.95)';
-  } else if(lastCovPct >= 55){
-    subMsg = '✓ 거리 최적  |  분쇄도 정밀: 5~8cm 가까이';
-    subColor = 'rgba(100,220,140,0.95)';
-  } else if(lastCovPct >= 35){
-    subMsg = '▼ 더 가까이 대주세요 (5~10cm)';
-    subColor = 'rgba(200,160,64,0.95)';
-  } else if(lastCovPct > 0){
-    subMsg = '▼▼ 많이 부족 — 컵을 5~8cm까지 가까이';
-    subColor = 'rgba(224,80,80,0.95)';
+  } else if(currentMode === 'color'){
+    /* 컬러 모드: 3~8cm 가까이 */
+    if(lastCovPct > 90){
+      subMsg = '⚠ 너무 가까워요 — 살짝 거리 두세요';
+      subColor = 'rgba(224,80,80,0.95)';
+    } else if(lastCovPct >= 55){
+      subMsg = '✓ 거리 최적  |  이 위치에서 유지';
+      subColor = 'rgba(100,220,140,0.95)';
+    } else if(lastCovPct >= 30){
+      subMsg = '▼ 더 가까이 — 3~8cm 목표';
+      subColor = 'rgba(200,160,64,0.95)';
+    } else if(lastCovPct > 0){
+      subMsg = '▼▼ 많이 부족 — 컵을 3~5cm까지 가까이';
+      subColor = 'rgba(224,80,80,0.95)';
+    } else {
+      subMsg = '컬러 측정: 3~8cm 가까이 수직 촬영';
+      subColor = 'rgba(200,160,64,0.95)';
+    }
   } else {
-    subMsg = '컬러: 10~15cm  |  분쇄도 정밀: 5~8cm 가까이';
-    subColor = 'rgba(200,160,64,0.95)';
+    /* 분쇄도 모드: 5~10cm */
+    if(lastCovPct > 88){
+      subMsg = '⚠ 너무 가까워요 — 5~10cm 거리';
+      subColor = 'rgba(224,80,80,0.95)';
+    } else if(lastCovPct >= 55){
+      subMsg = '✓ 거리 최적  |  이 위치에서 유지';
+      subColor = 'rgba(100,220,140,0.95)';
+    } else if(lastCovPct >= 35){
+      subMsg = '▼ 더 가까이 대주세요 (5~10cm)';
+      subColor = 'rgba(200,160,64,0.95)';
+    } else if(lastCovPct > 0){
+      subMsg = '▼▼ 많이 부족 — 컵을 5~8cm까지 가까이';
+      subColor = 'rgba(224,80,80,0.95)';
+    } else {
+      subMsg = '분쇄도 측정: 5~10cm  |  라이트 켜고 촬영';
+      subColor = 'rgba(200,160,64,0.95)';
+    }
   }
   gx.font = '11px -apple-system, sans-serif';
   var stw = gx.measureText(subMsg).width;
@@ -1468,7 +1488,8 @@ function updateLiveReadout(r, smoothL, isShake){
   } else if(isShake){
     status = '손떨림 감지 — 잠시 정지해주세요';
   } else if(covPct > 85){
-    status = '너무 가까움 — 10~15cm 거리를 유지하세요';
+    var distLimitMsg = currentMode === 'color' ? '너무 가까움 — 살짝 거리를 두세요' : '너무 가까움 — 5~10cm 거리를 유지하세요';
+    status = distLimitMsg;
   } else if(covPct < 35){
     status = '원두 감지 부족 — 5~10cm까지 더 가까이 대주세요';
   } else if(frameBuffer.length < needed){
@@ -1486,8 +1507,8 @@ function updateLiveReadout(r, smoothL, isShake){
   dom.stabBadge.style.display = 'none';
   dom.lowlightWarn.style.display = r.lowLight ? 'block' : 'none';
 
-  /* Grind size live indicator */
-  if(r.beanType==='ground' && r.grindMicron !== null){
+  /* Grind size live indicator — grind 모드에서만 표시 */
+  if(currentMode === 'grind' && r.beanType==='ground' && r.grindMicron !== null){
     var gi=grindInfo(r.grindMicron);
     dom.lrGrind.classList.add('on');
     /* 라이브 중: frameBuffer내 grindMicron 범위 표시 */
@@ -1590,17 +1611,24 @@ function autoLock(){
     var p1raw = pass1Data;
     var LsCalibrated = applyDeviceCal(p1raw.avgLs);
     var agRange1 = agtronRangeFromL(LsCalibrated);
+    var LsFinalP1 = LsCalibrated;
 
-    /* 분쇄도 입력 보정 */
-    var gifEl1 = G('grindInputField');
-    var userGrind1 = gifEl1 ? (parseInt(gifEl1.value, 10) || 0) : 0;
-    var grindLCorr1 = 0;
-    if(userGrind1 > 0){
-      if(userGrind1 < 500) grindLCorr1 = +0.5;
-      else if(userGrind1 > 800) grindLCorr1 = -0.5;
+    /* ── grind 모드: pendingGrind로 처리 ── */
+    if(currentMode === 'grind'){
+      pendingGrind = {
+        grindMicron: p1raw.gMicron,
+        grindSpread: p1raw.gSpread,
+        grindCI: p1raw.gCI,
+        grindFrames: p1raw.gFrames,
+        frameCount: frameBuffer.length,
+      };
+      renderGrindOnly(pendingGrind);
+      renderStepNav();
+      if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
+      dom.lrStatus.textContent = '분쇄도 측정 완료 — ' + (p1raw.gMicron ? p1raw.gMicron + 'µm' : '감지 실패');
+      setInst('분쇄도 측정 완료.');
+      return;
     }
-    var LsFinalP1 = clamp(LsCalibrated + grindLCorr1, 0, 100);
-    if(grindLCorr1 !== 0){ agRange1 = agtronRangeFromL(LsFinalP1); }
 
     pendingResult = {
       agtron: agRange1.mid,
@@ -1617,13 +1645,10 @@ function autoLock(){
       wallL: p1raw.refL,
       bRGB: p1raw.lastR.bRGB, wRGB: p1raw.lastR.wRGB,
       frameCount: frameBuffer.length,
-      grindMicron: p1raw.gMicron,
-      grindSpread: p1raw.gSpread,
-      grindCI: p1raw.gCI,
-      grindFrames: p1raw.gFrames,
+      grindMicron: null, grindSpread: null, grindCI: null, grindFrames: 0,
       dualPass: false,
       pass1L: p1raw.avgLs,
-      grindLCorr: grindLCorr1, userGrindInput: userGrind1,
+      grindLCorr: 0, userGrindInput: 0,
     };
 
     /* 즉시 결과 렌더 */
@@ -1633,7 +1658,7 @@ function autoLock(){
     /* shakePrompt: 선택적 추가 측정 오버레이 */
     if(dom.shakePrompt) dom.shakePrompt.style.display = 'flex';
     if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '측정 완료 — L*='+LsFinalP1.toFixed(1); }
-    dom.lrStatus.textContent = '측정 완료  L*='+LsFinalP1.toFixed(1)+'  Ag '+agRange1.lo+'–'+agRange1.hi;
+    dom.lrStatus.textContent = '컬러 측정 완료  L*='+LsFinalP1.toFixed(1)+'  Ag '+agRange1.lo+'–'+agRange1.hi;
     dom.lrStatus.style.color = '';
     setInst('측정 완료 — 결과를 사용하거나 추가 측정으로 정확도를 높이세요.');
     return;
@@ -1682,17 +1707,10 @@ function autoLock(){
   var passDelta = Math.abs(p1.avgLs - p2.avgLs);
   var envUnstable = passDelta > 5.0;
 
-  /* ── 분쇄도 입력값 기반 L* 보정 ── */
-  var gifEl = G('grindInputField');
-  var userGrind = gifEl ? (parseInt(gifEl.value, 10) || 0) : 0;
   var grindLCorr = 0;
-  if(userGrind > 0){
-    if(userGrind < 500)      grindLCorr = +0.5;
-    else if(userGrind > 800) grindLCorr = -0.5;
-  }
+  var userGrind = 0;
   var agRange = agtronRangeFromL(avgLsCalibrated);
-  var LsFinalCorr = clamp(avgLsCalibrated + grindLCorr, 0, 100);
-  if(grindLCorr !== 0){ agRange = agtronRangeFromL(LsFinalCorr); }
+  var LsFinalCorr = avgLsCalibrated;
   var agtronFinal = agRange.mid;
 
   /* ── 균일도 (spec §9): L* std ── */
@@ -1745,13 +1763,10 @@ function autoLock(){
     wallL: p2.refL,
     bRGB: p2lastR.bRGB, wRGB: p2lastR.wRGB,
     frameCount: frameBuffer.length,
-    grindMicron: gMicronFinal,
-    grindSpread: gSpreadFinal,
-    grindCI: gCIFinal,
-    grindFrames: gFramesFinal,
+    grindMicron: null, grindSpread: null, grindCI: null, grindFrames: 0,
     dualPass: true,
     pass1L: p1.avgLs, pass2L: p2.avgLs,
-    grindLCorr: grindLCorr, userGrindInput: userGrind,
+    grindLCorr: 0, userGrindInput: 0,
   };
 
   passPhase = 1; pass1Data = null;
@@ -1988,7 +2003,8 @@ function analyzeFrame(context, W, H){
     /* ── 거리 안내용 감지율 업데이트 (원 크기는 고정) ──── */
     lastCovPct = Math.round(beanCoverage * 100);
 
-    var grindResult=estimateGrindMicrons(context,W,H);
+    /* 분쇄도는 grind 모드에서만 계산 */
+    var grindResult = (currentMode === 'grind') ? estimateGrindMicrons(context,W,H) : null;
 
     return {
       Ls:Ls, As:lab.a, Bs:lab.b, agtron, sigma, beanType:'ground',
@@ -2228,7 +2244,7 @@ function renderResult(r){
       gcorrEl.style.display='block';
     } else { gcorrEl.style.display='none'; }
   }
-  var modeLabel = '그라운드 컬러 & 분쇄도';
+  var modeLabel = currentMode === 'color' ? '그라운드 컬러' : currentMode === 'grind' ? '분쇄도 입자' : '그라운드 컬러';
   G('rhTag').textContent = modeLabel + '  σ=' + r.sigma.toFixed(1);
 
   /* delta 인라인 (whole 없으므로 항상 숨김) */
@@ -2286,9 +2302,12 @@ function renderResult(r){
   G('wSw').style.background=rgbStr(r.wRGB); G('wVal').textContent=rgbTxt(r.wRGB);
   G('bSw').style.background=rgbStr(r.bRGB); G('bVal').textContent=rgbTxt(r.bRGB);
 
-  /* ── Grind Size Section ── */
+  /* ── Grind Size Section — grind 모드에서만 표시 ── */
   var grindSec=G('grindSec');
-  if(r.beanType==='ground' && r.grindMicron !== null){
+  if(currentMode === 'color'){
+    /* 컬러 모드: 분쇄도 섹션 숨김 */
+    grindSec.classList.remove('on');
+  } else if(r.beanType==='ground' && r.grindMicron !== null){
     var gi=grindInfo(r.grindMicron);
     grindSec.classList.add('on');
     G('grindNum').textContent=r.grindMicron;
@@ -2477,21 +2496,16 @@ function doConfirm(){
     stepDone.grind = true;
     pendingGrind = null;
     setInst('분쇄도 저장 완료.');
+  } else if(currentMode === 'color' && pendingResult !== null){
+    store.gcol = pendingResult;
+    stepDone.color = true;
+    pendingResult = null;
+    setInst('그라운드 컬러 저장 완료.');
   } else if(pendingResult !== null){
     store.gcol = pendingResult;
-    stepDone.gcol = true;
-    if(pendingResult.grindMicron !== null && pendingResult.grindMicron !== undefined){
-      store.grind = {
-        grindMicron: pendingResult.grindMicron,
-        grindSpread: pendingResult.grindSpread,
-        grindCI:     pendingResult.grindCI,
-        grindFrames: pendingResult.grindFrames,
-        frameCount:  pendingResult.frameCount,
-      };
-      stepDone.grind = true;
-    }
+    stepDone.color = true;
     pendingResult = null;
-    setInst('그라운드 컬러 & 분쇄도 저장 완료.');
+    setInst('저장 완료.');
   }
 
   currentMode = null;
@@ -2512,7 +2526,7 @@ function updateExamPanel(){
   var hasAny = store.gcol || store.grind;
   if(!hasAny){ if(dom.exam) dom.exam.style.display='none'; return; }
   if(dom.exam) dom.exam.style.display='block';
-  G('examSub').textContent = store.gcol ? '측정 완료' : '분석 결과';
+  G('examSub').textContent = (store.gcol && store.grind) ? '컬러 + 분쇄도 완료' : store.gcol ? '컬러 완료' : '분쇄도 완료';
 
   /* 그라운드 컬러 */
   var gc2 = G('examGcol');
@@ -2600,16 +2614,17 @@ function setInst(t){dom.it.textContent=t;}
    STEP NAVIGATOR
 ════════════════════════════════════════ */
 /* stepState tracks what the user should do next */
-var stepSequence = ['gcol'];
-var stepDone     = { gcol:false, grind:false };
+var stepSequence = ['color', 'grind'];
+var stepDone     = { color:false, grind:false };
 
 var STEP_LABELS = {
-  gcol: '그라운드 컬러 & 분쇄도',
+  color: '그라운드 컬러',
+  grind: '분쇄도 입자',
 };
 
-var TILE_IDS      = { gcol:'tileGcol' };
-var TILE_VAL_IDS  = { gcol:'tileGcolVal' };
-var TILE_CHIP_IDS = { gcol:'tileGcolChip' };
+var TILE_IDS      = { color:'tileColor', grind:'tileGrind' };
+var TILE_VAL_IDS  = { color:'tileColorVal', grind:'tileGrindVal' };
+var TILE_CHIP_IDS = { color:'tileColorChip', grind:'tileGrindChip' };
 
 function renderStepNav(){
   var statusEl = G('stepNavStatus');
@@ -2637,22 +2652,14 @@ function renderStepNav(){
     /* value display */
     if(currentMode===k && liveRunning){
       valEl.textContent = '분석 중…';
-    } else if(k === 'gcol'){
+    } else if(k === 'color'){
       var src = stepDone[k] ? store.gcol : (currentMode===k ? pendingResult : null);
-      if(src){
-        var grindPart = (store.grind && store.grind.grindMicron) ? '  |  '+store.grind.grindMicron+'µm' : 
-                        (src.grindMicron ? '  |  '+src.grindMicron+'µm' : '');
-        valEl.textContent = 'Ag ' + src.agtron + grindPart;
-      } else {
-        valEl.textContent = '—';
-      }
-    } else {
-      var src2 = stepDone[k] ? store[k] : (currentMode===k ? pendingResult : null);
-      if(src2){
-        valEl.textContent = 'Ag ' + src2.agtron;
-      } else {
-        valEl.textContent = '—';
-      }
+      if(src){ valEl.textContent = 'L* ' + src.Ls.toFixed(1) + '  Ag ' + src.agtron; }
+      else    { valEl.textContent = '—'; }
+    } else if(k === 'grind'){
+      var gsrc = stepDone[k] ? store.grind : (currentMode===k ? pendingGrind : null);
+      if(gsrc && gsrc.grindMicron){ valEl.textContent = gsrc.grindMicron + ' µm'; }
+      else { valEl.textContent = '—'; }
     }
 
     /* chip text */
@@ -2671,13 +2678,17 @@ function renderStepNav(){
 
   /* status line */
   if(!statusEl) return;
-  var doneCount = (stepDone.gcol?1:0);
+  var doneCount = (stepDone.color?1:0) + (stepDone.grind?1:0);
   if(liveRunning){
-    statusEl.textContent = '그라운드 컬러 & 분쇄도 — 분석 중  (타일 탭하면 중단)';
+    statusEl.textContent = (currentMode==='color'?'그라운드 컬러':'분쇄도 입자') + ' — 분석 중  (타일 탭하면 중단)';
   } else if(pendingResult !== null){
-    statusEl.textContent = '그라운드 컬러 & 분쇄도 — 결과 확인 후 저장 또는 재측정';
+    statusEl.textContent = '그라운드 컬러 — 결과 확인 후 저장 또는 재측정';
+  } else if(pendingGrind !== null){
+    statusEl.textContent = '분쇄도 입자 — 결과 확인 후 저장 또는 재측정';
+  } else if(doneCount === 2){
+    statusEl.textContent = '두 항목 측정 완료  |  정밀검사 패널 확인';
   } else if(doneCount === 1){
-    statusEl.textContent = '측정 완료  |  정밀검사 패널 확인  |  재측정 가능';
+    statusEl.textContent = '1항목 완료  |  나머지 탭하여 측정';
   } else {
     statusEl.textContent = '탭하여 측정 시작';
   }
@@ -2695,7 +2706,7 @@ function tileAction(mode){
     stopLive();
   }
   /* If there's a pending result for this mode — scroll to decision */
-  if((mode !== 'grind' && pendingResult !== null && currentMode === mode) ||
+  if((mode === 'color' && pendingResult !== null && currentMode === mode) ||
      (mode === 'grind' && pendingGrind !== null && currentMode === mode)){
     dom.rp.scrollIntoView({behavior:'smooth', block:'nearest'});
     return;
@@ -2730,22 +2741,22 @@ function validateBeanSubject(frames){
   var medCov = covs[Math.floor(covs.length/2)];
 
   var minCov = currentMode==='whole' ? MIN_BEAN_COV_WHOLE
-             : currentMode==='gcol'  ? MIN_BEAN_COV_GRIND  /* ground분쇄 기준 */
-             :                         MIN_BEAN_COV_GCOL;
+             : currentMode==='color' ? MIN_BEAN_COV_GCOL
+             :                         MIN_BEAN_COV_GRIND;
 
   if(medCov < minCov){
     if(medCov < 0.05){
       return { ok: false, reason: '원두가 감지되지 않습니다. 배경이나 다른 물체가 아닌 원두를 직접 촬영해주세요.' };
     }
-    if(currentMode === 'gcol'){
-      return { ok: false, reason: '분쇄 원두가 충분히 감지되지 않습니다 (감지율 '+ Math.round(medCov*100) +'%). 컵에 분쇄 원두를 담고 10~15cm 거리에서 다시 촬영해주세요.' };
+    if(currentMode === 'color'){
+      return { ok: false, reason: '분쇄 원두가 충분히 감지되지 않습니다 (감지율 '+ Math.round(medCov*100) +'%). 컵에 분쇄 원두를 담고 3~8cm 거리에서 다시 촬영해주세요.' };
     }
     return { ok: false, reason: '원두 감지율이 낮습니다 ('+Math.round(medCov*100)+'%). 원두를 화면 중앙에 위치시키고 더 가까이 촬영해주세요.' };
   }
 
   var sigmas = frames.map(function(r){ return r.sigma; });
   var medSigma = sigmas.slice().sort(function(a,b){return a-b;})[Math.floor(sigmas.length/2)];
-  if(currentMode !== 'gcol' && medSigma < 3.0 && medCov < 0.30){
+  if(currentMode !== 'color' && medSigma < 3.0 && medCov < 0.30){
     return { ok: false, reason: '이미지가 너무 균일합니다 (σ='+medSigma.toFixed(1)+'). 원두를 직접 촬영하고 있는지 확인해주세요.' };
   }
 
@@ -2793,7 +2804,7 @@ function doReset(){
   store = { gcol: null, grind: null };
   currentMode = null;
   forcedBeanType = null;
-  stepDone = { gcol:false, grind:false };
+  stepDone = { color:false, grind:false };
   dom.lrStatus.style.color = '';        /* envUnstable red 제거 */
   dom.prev.style.display='none'; dom.prev.src='';
   dom.upph.style.display='flex';
