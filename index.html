@@ -637,7 +637,7 @@ body.unlocked .gate{display:none}
         <div class="lr-ind-val" id="lrLightVal">—</div>
       </div>
       <div class="lr-ind">
-        <div class="lr-ind-label">안정성</div>
+        <div class="lr-ind-label" id="lrStabLabel">안정성</div>
         <div class="lr-ind-bar"><div class="lr-ind-fill" id="lrStabFill" style="width:0%"></div></div>
         <div class="lr-ind-val" id="lrStabVal">—</div>
       </div>
@@ -901,10 +901,23 @@ var liveStream      = null;
 var liveTrack       = null;
 var liveRunning     = false;
 var frameBuffer     = [];      /* stable frames only */
-var FRAME_BUF_SIZE  = 35;      /* 35 stable frames to lock (~4s) */
-var AUTO_LOCK_SIGMA = 1.5;     /* relaxed: σ < 1.5 across buffer */
-var MIN_STABLE_RUN  = 15;      /* 15 consecutive stable frames */
+var FRAME_BUF_SIZE  = 35;      /* 35 stable frames to lock (~4s) normal mode */
+var AUTO_LOCK_SIGMA = 1.5;     /* normal lock: σ < 1.5 across buffer */
+var MIN_STABLE_RUN  = 15;      /* normal lock: 15 consecutive stable frames */
 var SHAKE_DELTA     = 5.0;     /* |ΔL*| > 5 between frames = shake */
+
+/* ── Approach-Convergence Lock ──────────────────────────────────
+   사용자가 멀리서 점차 가까이 접근할 때 L*가 수렴하는 지점을 감지.
+   수렴 감지 시: 더 적은 프레임으로 더 높은 신뢰도 잠금 가능.
+   원리: cov 증가 중에도 dL*-dt 가 0에 가까워지면 진짜 표면 컬러 도달.  */
+var approachHistory = [];      /* 최근 20프레임: {Ls, covPct, ts} */
+var APPROACH_BUF    = 20;      /* 접근 이력 윈도우 크기 */
+var CONV_BUF_SIZE   = 14;      /* 수렴 잠금: 14프레임이면 충분 */
+var CONV_SIGMA      = 1.0;     /* 수렴 잠금: 더 엄격한 σ */
+var CONV_MIN_RUN    = 8;       /* 수렴 잠금: 8 연속 안정 프레임 */
+var CONV_LS_SLOPE   = 0.35;    /* dL-dt 임계: 이 미만이면 수렴으로 판단 */
+var convergenceMode = false;   /* 현재 수렴 감지 상태 */
+var convergenceConf = 0;       /* 수렴 신뢰도 (0~100) */
 var rafId           = null;
 var lastFrameL      = null;
 var emaL            = null;
@@ -1133,6 +1146,7 @@ function startLive(beanMode){
       lastFrameL   = null;
       emaL         = null;
       stableRun    = 0;
+      approachHistory = []; convergenceMode = false; convergenceConf = 0;
       liveRunning  = true;
       var bmi = G('beanModeIndicator');
       if(bmi){
@@ -1215,6 +1229,7 @@ function stopLive(){
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
   frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
   lastCovPct=0;  /* 감지율 초기화 */
+  approachHistory=[]; convergenceMode=false; convergenceConf=0;
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
   dom.lrStatus.style.color='';   /* 빨간색 등 잔류 색상 제거 */
   dom.upzone.classList.remove('loaded');
@@ -1263,10 +1278,12 @@ function drawGuideOverlay(){
   gx.fill('evenodd');
   gx.restore();
 
-  /* 2. 원 테두리 — 감지율에 따라 색상 변경 */
+  /* 2. 원 테두리 — 감지율 + 수렴 상태에 따라 색상 변경 */
   var ringColor;
   if(!liveRunning){
     ringColor = 'rgba(255,255,255,0.90)';
+  } else if(convergenceMode){
+    ringColor = 'rgba(60,220,120,0.98)';   /* 수렴: 밝은 초록 */
   } else if(lastCovPct >= 55){
     ringColor = 'rgba(60,200,100,0.95)';   /* 최적: 초록 */
   } else if(lastCovPct >= 30){
@@ -1284,9 +1301,21 @@ function drawGuideOverlay(){
   gx.beginPath();
   gx.arc(cx,cy,r,0,Math.PI*2);
   gx.strokeStyle = ringColor;
-  gx.lineWidth   = 3;
+  gx.lineWidth   = convergenceMode ? 4 : 3;
   gx.setLineDash([]);
   gx.stroke();
+
+  /* 수렴 감지 시: 외부 펄스 링 */
+  if(convergenceMode && liveRunning){
+    var pulsePhase = (Date.now() % 1200) / 1200;
+    var pulseR = r + 8 + pulsePhase * 14;
+    var pulseAlpha = 0.55 * (1 - pulsePhase);
+    gx.beginPath();
+    gx.arc(cx, cy, pulseR, 0, Math.PI*2);
+    gx.strokeStyle = 'rgba(60,220,120,' + pulseAlpha + ')';
+    gx.lineWidth = 2;
+    gx.stroke();
+  }
 
   /* 3. 코너 마커 — 4방향 L자 브라켓 */
   var angles=[0, Math.PI/2, Math.PI, Math.PI*3/2];
@@ -1312,20 +1341,20 @@ function drawGuideOverlay(){
   if(currentMode === 'color' && liveRunning){
     gx.save();
     var subMsg, subColor;
-    if(lastCovPct > 90){
+    if(convergenceMode){
+      subMsg = 'L* 수렴 — 이 거리 유지';
+      subColor = '#5dda88';
+    } else if(lastCovPct > 90){
       subMsg = '너무 가깝습니다 — 살짝 거리를 두세요';
       subColor = '#ff6b6b';
     } else if(lastCovPct >= 55){
       subMsg = '거리 최적 — 이 위치 유지';
       subColor = '#5dda88';
-    } else if(lastCovPct >= 30){
-      subMsg = '더 가까이 대주세요 (3~8cm)';
+    } else if(lastCovPct >= 25){
+      subMsg = '천천히 더 가까이 접근해주세요';
       subColor = '#f0c040';
-    } else if(lastCovPct > 0){
-      subMsg = '컵을 더 가까이 대주세요';
-      subColor = '#ff6b6b';
     } else {
-      subMsg = '원 안에 원두를 채우세요';
+      subMsg = '원 안에 원두가 보이도록 가까이';
       subColor = '#f0c040';
     }
     gx.font = 'bold 14px -apple-system, Inter, sans-serif';
@@ -1392,6 +1421,11 @@ function frameLoop(ts){
   var r = analyzeFrame(lvx, W, H);
   if(!r) return;
 
+  /* ── APPROACH HISTORY 기록 ── */
+  var covNow = Math.round((r.beanCoverage||0)*100);
+  approachHistory.push({ Ls: r.Ls, covPct: covNow, ts: ts });
+  if(approachHistory.length > APPROACH_BUF) approachHistory.shift();
+
   /* ── SHAKE DETECTION ── */
   var isShake = false;
   if(lastFrameL !== null && Math.abs(r.Ls - lastFrameL) > SHAKE_DELTA){
@@ -1399,6 +1433,7 @@ function frameLoop(ts){
     frameBuffer = [];
     stableRun   = 0;
     emaL        = null;
+    convergenceMode = false;
     dom.shakeWarn.classList.add('on');
     if(shakeTimeout) clearTimeout(shakeTimeout);
     shakeTimeout = setTimeout(function(){ dom.shakeWarn.classList.remove('on'); }, 700);
@@ -1415,16 +1450,31 @@ function frameLoop(ts){
   } else if(r.lowLight){
     frameBuffer = [];
     stableRun = 0;
+    convergenceMode = false;
   }
 
-  /* Update live readout with EMA-smoothed L* */
-  updateLiveReadout(r, emaL, isShake);
+  /* ── CONVERGENCE DETECTION ── */
+  var conv = detectConvergence();
+  convergenceMode = conv.converging;
+  convergenceConf = conv.convConf;
 
-  /* Auto-lock when buffer full AND sigma tight AND stable run long enough */
+  /* Update live readout */
+  updateLiveReadout(r, emaL, isShake, conv);
+
+  /* ── LOCK CONDITIONS ──────────────────────────────────────────
+     모드 A: 수렴 잠금 — 접근 중 L* 수렴 감지 → 빠른 잠금
+     모드 B: 정상 잠금 — 기존 방식 (정지 + 시간 대기)        */
+  if(frameBuffer.length >= CONV_BUF_SIZE && stableRun >= CONV_MIN_RUN && convergenceMode){
+    var convSigma = computeBufSigma();
+    if(convSigma < CONV_SIGMA){
+      autoLock('convergence');
+      return;
+    }
+  }
   if(frameBuffer.length >= FRAME_BUF_SIZE && stableRun >= MIN_STABLE_RUN){
     var bufSigma = computeBufSigma();
     if(bufSigma < AUTO_LOCK_SIGMA){
-      autoLock();
+      autoLock('normal');
     }
   }
 }
@@ -1436,7 +1486,52 @@ function computeBufSigma(){
   return Math.sqrt(variance);
 }
 
-function updateLiveReadout(r, smoothL, isShake){
+/* ── Approach-Convergence Detector ────────────────────────────
+   approachHistory 윈도우 분석:
+   1. covTrend: cov 값이 최근 N프레임에서 전반적으로 상승 중인가
+   2. lsSlope: L* 변화율 (절댓값, 프레임당 평균 변화량)
+   3. convergence: cov 상승 중이거나 일정 수준 이상 + lsSlope 작음
+   반환: { isApproaching, lsSlope, converging, convConf }
+   ─────────────────────────────────────────────────────────── */
+function detectConvergence(){
+  var h = approachHistory;
+  if(h.length < 8) return { isApproaching:false, lsSlope:99, converging:false, convConf:0 };
+
+  var recent = h.slice(-12);
+  var older  = h.slice(-12, -4);
+  if(older.length < 3) return { isApproaching:false, lsSlope:99, converging:false, convConf:0 };
+
+  /* cov 추세: 최근 평균 vs 이전 평균 */
+  var covNow  = recent.reduce(function(s,f){return s+f.covPct;},0)/recent.length;
+  var covPrev = older.reduce(function(s,f){return s+f.covPct;},0)/older.length;
+  var isApproaching = (covNow - covPrev) > 4;   /* 4% 이상 상승 = 접근 중 */
+
+  /* L* 변화율: 최근 8프레임의 연속 차이 절댓값 평균 */
+  var tail = h.slice(-8);
+  var diffs = [];
+  for(var i=1; i<tail.length; i++) diffs.push(Math.abs(tail[i].Ls - tail[i-1].Ls));
+  var lsSlope = diffs.reduce(function(s,v){return s+v;},0)/diffs.length;
+
+  /* 수렴 판정:
+     - cov가 30% 이상이고 (원두가 보임)
+     - L* 변화율이 CONV_LS_SLOPE 미만 (안정화됨)
+     - 최근 L* sigma가 작음 */
+  var lsTail = tail.map(function(f){return f.Ls;});
+  var lsMean = lsTail.reduce(function(a,b){return a+b;},0)/lsTail.length;
+  var lsSig  = Math.sqrt(lsTail.reduce(function(s,v){return s+Math.pow(v-lsMean,2);},0)/lsTail.length);
+
+  var converging = covNow >= 30 && lsSlope < CONV_LS_SLOPE && lsSig < 1.2;
+
+  /* 수렴 신뢰도: slope가 작을수록, cov가 적정(45-75%)일수록 높음 */
+  var slopeScore = clamp(1 - lsSlope / CONV_LS_SLOPE, 0, 1);
+  var covScore   = covNow >= 45 && covNow <= 80 ? 1.0 : clamp(1 - Math.abs(covNow - 60) / 40, 0.4, 1);
+  var convConf   = Math.round(clamp(slopeScore*0.65 + covScore*0.35, 0, 1) * 100);
+
+  return { isApproaching:isApproaching, lsSlope:lsSlope, lsSig:lsSig, converging:converging, convConf:convConf };
+}
+
+function updateLiveReadout(r, smoothL, isShake, conv){
+  conv = conv || { isApproaching:false, lsSlope:99, converging:false, convConf:0 };
   var displayL = smoothL !== null ? smoothL : r.Ls;
   dom.lrLstar.textContent  = displayL.toFixed(1);
   var lrAR = agtronRangeFromL(displayL);
@@ -1462,35 +1557,70 @@ function updateLiveReadout(r, smoothL, isShake){
   dom.lrLightFill.style.background = lightColor;
   dom.lrLightVal.textContent    = r.lowLight ? '부족 — 라이트 켜세요' : '충분';
 
-  /* ── Indicator 3: 안정성 ── */
+  /* ── Indicator 3: 안정성 / 수렴도 ── */
   var bs = computeBufSigma();
-  var stabPct = frameBuffer.length < 3 ? 0 : Math.round(clamp(1 - bs / 3, 0, 1) * 100);
-  var stabColor = stabPct >= 75 ? 'rgba(60,200,100,.9)' : stabPct >= 45 ? 'rgba(255,200,60,.9)' : '#e05050';
+  var stabPct, stabColor, stabLabel;
+  if(convergenceMode){
+    /* 수렴 모드: 수렴 신뢰도 표시 */
+    stabPct   = convergenceConf;
+    stabColor = stabPct >= 70 ? 'rgba(60,220,120,.95)' : 'rgba(255,200,60,.9)';
+    stabLabel = isShake ? '흔들림!' : ('수렴 ' + convergenceConf + '%');
+  } else {
+    stabPct   = frameBuffer.length < 3 ? 0 : Math.round(clamp(1 - bs / 3, 0, 1) * 100);
+    stabColor = stabPct >= 75 ? 'rgba(60,200,100,.9)' : stabPct >= 45 ? 'rgba(255,200,60,.9)' : '#e05050';
+    stabLabel = isShake ? '흔들림!' : (frameBuffer.length < 5 ? '대기' : 'σ=' + bs.toFixed(2));
+  }
   dom.lrStabFill.style.width      = stabPct + '%';
   dom.lrStabFill.style.background = stabColor;
-  dom.lrStabVal.textContent = isShake ? '흔들림!' : (frameBuffer.length < 5 ? '대기' : 'σ=' + bs.toFixed(2));
+  dom.lrStabVal.textContent = stabLabel;
+  var stabLabelEl = G('lrStabLabel');
+  if(stabLabelEl) stabLabelEl.textContent = convergenceMode ? '수렴도' : '안정성';
 
-  /* ── Status line ── */
+  /* ── Status line — approach-convergence 우선 ── */
   var prog = Math.min(frameBuffer.length, FRAME_BUF_SIZE);
   var needed = FRAME_BUF_SIZE;
   var status;
+  var statusColor = '';
   if(r.lowLight){
     status = '광량 부족 — 라이트를 켜고 더 가까이 대주세요';
+    statusColor = '#e05050';
   } else if(isShake){
     status = '손떨림 감지 — 잠시 정지해주세요';
+    statusColor = '#e05050';
   } else if(covPct > 85){
-    var distLimitMsg = currentMode === 'color' ? '너무 가까움 — 살짝 거리를 두세요' : '너무 가까움 — 5~10cm 거리를 유지하세요';
-    status = distLimitMsg;
+    status = currentMode === 'color' ? '너무 가까움 — 살짝 거리를 두세요' : '너무 가까움 — 5~10cm 거리를 유지하세요';
+    statusColor = '#f0a040';
+  } else if(covPct < 25){
+    status = '카메라를 컵 위에 놓고 천천히 가까이 접근해주세요';
+    statusColor = '';
+  } else if(conv.converging){
+    /* ── 수렴 감지: 가장 중요한 상태 ── */
+    var convSigma = computeBufSigma();
+    var framesLeft = Math.max(0, CONV_BUF_SIZE - frameBuffer.length);
+    if(framesLeft > 0){
+      status = 'L* 수렴 감지 — 이 거리 유지 (' + framesLeft + '프레임 남음)';
+    } else if(convSigma >= CONV_SIGMA){
+      status = 'L* 수렴 중 — σ=' + convSigma.toFixed(2) + ' (목표 <' + CONV_SIGMA + ')';
+    } else {
+      status = 'L* 수렴 완료 — 잠금 중...';
+    }
+    statusColor = '#5dda88';
+  } else if(conv.isApproaching){
+    status = '접근 중 — 천천히 가까이... (L* 변화 ' + conv.lsSlope.toFixed(1) + '/프레임)';
+    statusColor = '#f0c040';
   } else if(covPct < 35){
-    status = '원두 감지 부족 — 5~10cm까지 더 가까이 대주세요';
+    status = '더 가까이 대주세요 — 또는 멀리서 천천히 접근해보세요';
   } else if(frameBuffer.length < needed){
-    status = '분석 중 ' + prog + ' / ' + needed + ' 프레임 — 정지 유지';
-  } else if(bs >= AUTO_LOCK_SIGMA){
-    status = '안정화 중... σ=' + bs.toFixed(2) + ' (목표 <' + AUTO_LOCK_SIGMA + ')';
+    status = '분석 중 ' + prog + ' / ' + needed + ' — 이 거리 유지 또는 천천히 접근';
+  } else if(computeBufSigma() >= AUTO_LOCK_SIGMA){
+    var bs2 = computeBufSigma();
+    status = '안정화 중 σ=' + bs2.toFixed(2) + ' — 또는 멀리서 천천히 접근해보세요';
   } else {
-    status = '잠금 준비 — σ=' + bs.toFixed(2) + '  안정 ' + stableRun + '프레임';
+    status = '잠금 준비 완료';
+    statusColor = '#5dda88';
   }
   dom.lrStatus.textContent = status;
+  dom.lrStatus.style.color = statusColor;
 
   /* badges */
   dom.badge.textContent = r.beanType==='whole' ? '● Whole Bean' : '● Ground Bean';
@@ -1518,7 +1648,8 @@ function updateLiveReadout(r, smoothL, isShake){
   }
 }
 
-function autoLock(){
+function autoLock(lockMode){
+  lockMode = lockMode || 'normal';
   liveRunning = false;
   cancelAnimationFrame(rafId); rafId=null;
 
@@ -1634,9 +1765,9 @@ function autoLock(){
     dualPass: false, grindLCorr: 0, userGrindInput: 0,
   };
 
-  dom.lrStatus.textContent = '컬러 측정 완료  L*=' + LsCalibrated.toFixed(1) + '  Ag ' + agRange.lo + '–' + agRange.hi;
+  dom.lrStatus.textContent = '컬러 측정 완료  L*=' + LsCalibrated.toFixed(1) + '  Ag ' + agRange.lo + '–' + agRange.hi + (lockMode==='convergence' ? '  [수렴 잠금]' : '');
   dom.lrStatus.style.color = '';
-  setInst('컬러 측정 완료 — 결과 확인 후 저장하세요.');
+  setInst(lockMode==='convergence' ? '수렴 잠금 완료 — L* 수렴점에서 측정됐습니다.' : '컬러 측정 완료 — 결과 확인 후 저장하세요.');
   renderResult(pendingResult);
   renderStepNav();
   /* 카메라 자동 종료 */
