@@ -484,6 +484,7 @@ body.unlocked .gate{display:none}
     <div class="gc"><div class="gc-n">03</div><div class="gc-t">컵 위 5–10cm, 수직 촬영<small>가까울수록 정확 — 원두가 화면 중앙을 채우도록 위치</small></div></div>
     <div class="gc"><div class="gc-n">04</div><div class="gc-t">같은 거리·각도 유지<small>일관성이 정확도의 핵심</small></div></div>
     <div class="gc"><div class="gc-n">05</div><div class="gc-t">그라운드 컬러 & 분쇄도 측정 시 10~15cm 거리에서 촬영<small>컬러와 분쇄도를 동시에 측정 — 원두가 화면을 채우면 됩니다</small></div></div>
+    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">06</div><div class="gc-t"><b style="color:#8a6010">분쇄도 정밀 측정이 필요하면 5~8cm까지 더 가까이!</b><small style="color:#8a6010">입자 텍스처가 선명할수록 정밀도 ↑ — 에스프레소·파인 그라인드는 반드시 가까이 촬영하세요</small></div></div>
     <div class="gc"><div class="gc-n">+</div><div class="gc-t">각 단계는 독립 측정 — 필요한 항목만 수행하세요<small>3단계 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
   </div>
 </div>
@@ -916,8 +917,16 @@ var stableRun       = 0;
 var shakeTimeout    = null;
 
 /* ── DUAL-PASS STATE ── */
-var passPhase   = 1;    /* 1 = 1차, 2 = 2차 */
-var pass1Data   = null; /* 1차 결과 보관 */
+var passPhase   = 1;
+var pass1Data   = null;
+
+/* ── 적응형 ROI — coverage 기반, 프레임마다 서서히 보정 ──
+   가까이: coverage↑ → ROI 줄임 (원 작아짐)
+   멀리:   coverage↓ → ROI 늘림 (원 커짐)                  */
+var adaptROI      = 0.42;   /* 현재 비율, min(W,H) 대비    */
+var ADAPT_ROI_MIN = 0.22;   /* 최소: 매우 가까이 촬영 시   */
+var ADAPT_ROI_MAX = 0.48;   /* 최대: 멀리 촬영 시          */
+var ADAPT_STEP    = 0.006;  /* 프레임당 보정량 — 부드럽게  */
 
 function G(id){ return document.getElementById(id); }
 
@@ -1085,7 +1094,7 @@ function startLive(beanMode){
       dom.liveVideo.addEventListener('loadedmetadata', function(){
         enableTorch();
         rafId = requestAnimationFrame(frameLoop);
-        setInst('라이브 측정 중 — 컵을 카메라 앞에 대주세요.');
+        setInst('라이브 측정 중 — 컬러: 10~15cm  |  분쇄도 정밀: 5~8cm 가까이');
       }, {once:true});
     })
     .catch(function(err){
@@ -1136,6 +1145,7 @@ function stopLive(){
   /* 패스 상태 완전 초기화 */
   passPhase=1; pass1Data=null;
   frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
+  adaptROI=0.42;  /* 측정 재시작 시 ROI 초기화 */
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
   dom.lrStatus.style.color='';   /* 빨간색 등 잔류 색상 제거 */
   dom.upzone.classList.remove('loaded');
@@ -1173,7 +1183,7 @@ function drawGuideOverlay(){
      - 촬영 거리: 10~15cm (컬러 정확도 + 분쇄 입자 가시성 균형)
      - 분쇄도 정밀도를 높이려면 5~8cm로 더 가까이         */
 
-  var r = Math.min(W,H) * 0.42;   /* 단일 원 반지름 */
+  var r = Math.min(W,H) * adaptROI;  /* 거리 적응형 */
 
   /* 1. 비네팅 */
   gx.save();
@@ -1243,7 +1253,7 @@ function drawGuideOverlay(){
     subMsg = '탭하여 측정 시작';
     subColor = 'rgba(255,255,255,0.70)';
   } else if(frameBuffer.length < 10){
-    subMsg = '컬러·분쇄도: 10~15cm  |  분쇄도 정밀: 5~8cm';
+    subMsg = '컬러: 10~15cm  |  ⚡ 분쇄도 정밀: 5~8cm 가까이!';
     subColor = 'rgba(200,160,64,0.95)';
   } else {
     var liveL = frameBuffer.length > 0 ? frameBuffer[frameBuffer.length-1].Ls : 0;
@@ -1344,7 +1354,8 @@ function updateLiveReadout(r, smoothL, isShake){
   var covColor = covPct >= 55 ? 'rgba(60,200,100,.9)' : covPct >= 35 ? 'rgba(255,200,60,.9)' : '#e05050';
   dom.lrCovFill.style.width   = covPct + '%';
   dom.lrCovFill.style.background = covColor;
-  dom.lrCovVal.textContent    = covPct + '%' + (covPct < 35 ? ' 가까이' : covPct >= 60 ? ' 최적' : '');
+  var distHint=adaptROI<=0.27?' — 너무 가까움':adaptROI>=0.45?' — 분쇄도 정밀: 5~8cm 가까이':(covPct>=60?' 최적':'');
+  dom.lrCovVal.textContent    = covPct + '%' + distHint;
 
   /* ── Indicator 2: 조명 밝기 ── (최적 refL≈40~55, peak=47) */
   var lightPct = Math.round(clamp(1 - Math.abs(r.wallL - 47) / 35, 0, 1) * 100);
@@ -1791,10 +1802,12 @@ function analyzeFrame(context, W, H){
 
     /* ── ROI: 가이드 원과 동일한 42% 반지름 원형 마스크 ────── */
     var cx=W/2, cy=H/2;
-    var rLimit=Math.min(W,H)*0.42;
+    var rLimit=Math.min(W,H)*adaptROI;
     var rLim2=rLimit*rLimit;
-    var bx0=Math.round(W*0.08), by0=Math.round(H*0.08);
-    var bx1=Math.round(W*0.92), by1=Math.round(H*0.92);
+    var bx0=Math.max(0,Math.round(W/2-rLimit-6));
+    var by0=Math.max(0,Math.round(H/2-rLimit-6));
+    var bx1=Math.min(W,Math.round(W/2+rLimit+6));
+    var by1=Math.min(H,Math.round(H/2+rLimit+6));
     var allPx=[];
     for(var y=by0;y<by1;y+=step)
       for(var x=bx0;x<bx1;x+=step){
@@ -1823,23 +1836,25 @@ function analyzeFrame(context, W, H){
     var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
     if(cleanPx.length<8) cleanPx=beanPx;
 
-    /* ── 중간 40% 평균 → CIELAB ────────────────────────────────
-       단일 중앙값 픽셀(1px)은 노이즈에 취약.
-       중간 30~70% 구간(trimmed mean) 평균 RGB → Lab 변환.
-       픽셀 수가 많을수록 조명 불균일·반사 영향이 평균화됨.     */
-    var lo40=Math.floor(cleanPx.length*0.30), hi40=Math.ceil(cleanPx.length*0.70);
-    var mid40=cleanPx.slice(lo40, hi40);
-    if(mid40.length<4) mid40=cleanPx;
-    var sumR=0,sumG=0,sumB=0;
-    for(var i=0;i<mid40.length;i++){ sumR+=mid40[i].r; sumG+=mid40[i].g; sumB+=mid40[i].b; }
-    var avgR=Math.round(sumR/mid40.length), avgG=Math.round(sumG/mid40.length), avgB=Math.round(sumB/mid40.length);
-    var lab=sRGBtoLab(avgR, avgG, avgB);
+    /* ── 표면 픽셀 55~88% → Lab ─────────────────────────────────
+       Agtron 기준 = 조명받은 표면 반사율.
+       0~55%  = 그림자·요철(너무 어두운 쪽)  → 제외
+       88~100%= specular highlight(반사광)   → 제외
+       55~88% = 실제 표면 컬러 구간           */
+    var lo=Math.floor(cleanPx.length*0.55), hi2=Math.ceil(cleanPx.length*0.88);
+    var surfPx=cleanPx.slice(lo,hi2);
+    if(surfPx.length<4) surfPx=cleanPx.slice(Math.floor(cleanPx.length*0.40),Math.ceil(cleanPx.length*0.88));
+    if(surfPx.length<4) surfPx=cleanPx;
+    var sR=0,sG=0,sB=0;
+    for(var i=0;i<surfPx.length;i++){sR+=surfPx[i].r; sG+=surfPx[i].g; sB+=surfPx[i].b;}
+    var avgR=Math.round(sR/surfPx.length), avgG=Math.round(sG/surfPx.length), avgB=Math.round(sB/surfPx.length);
+    var lab=sRGBtoLab(avgR,avgG,avgB);
     var Ls=clamp(lab.L,0,100);
 
-    /* 저조도: 상위 12% 픽셀 밝기로 판단 */
+    /* 저조도 판단: 상위 12% lum */
     var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
     var hiLum=hiPx.reduce(function(a,p){return a+p.lum;},0)/Math.max(hiPx.length,1);
-    var lowLight = hiLum < 40;
+    var lowLight = hiLum < 38;
 
     var agtron=Math.round(clamp(1.85*Ls-11.5, 15, 95));
 
@@ -1848,6 +1863,12 @@ function analyzeFrame(context, W, H){
     cleanPx.forEach(function(p){lVar+=Math.pow(p.lum-lMean,2);});
     var sigma=Math.sqrt(lVar/cleanPx.length);
     var beanCoverage=clamp(beanPx.length/Math.max(allPx.length,1),0,1);
+
+    /* ── adaptROI 업데이트 ────────────────────────────────────
+       coverage>0.80 = 너무 가까움 → ROI 줄임
+       coverage<0.35 = 너무 멀리   → ROI 늘림              */
+    if(beanCoverage>0.80) adaptROI=Math.max(ADAPT_ROI_MIN,adaptROI-ADAPT_STEP);
+    else if(beanCoverage<0.35) adaptROI=Math.min(ADAPT_ROI_MAX,adaptROI+ADAPT_STEP);
 
     var grindResult=estimateGrindMicrons(context,W,H);
 
@@ -1923,8 +1944,10 @@ function runAnalysis(W,H){
   var refL     = hiLum2;
   var lowLight  = hiLum2 < 40;
 
-  var lo40s=Math.floor(cleanPx.length*0.30), hi40s=Math.ceil(cleanPx.length*0.70);
+  /* 표면 픽셀 55~88% */
+  var lo40s=Math.floor(cleanPx.length*0.55), hi40s=Math.ceil(cleanPx.length*0.88);
   var mid40s=cleanPx.slice(lo40s,hi40s);
+  if(mid40s.length<4) mid40s=cleanPx.slice(Math.floor(cleanPx.length*0.40),Math.ceil(cleanPx.length*0.88));
   if(mid40s.length<4) mid40s=cleanPx;
   var sR2=0,sG2=0,sB2=0;
   for(var i2=0;i2<mid40s.length;i2++){sR2+=mid40s[i2].r;sG2+=mid40s[i2].g;sB2+=mid40s[i2].b;}
@@ -1959,8 +1982,10 @@ function runAnalysis(W,H){
     jb.sort(function(a,b){return a.lum-b.lum;});
     var jc=jb.slice(Math.floor(jb.length*.10),Math.floor(jb.length*.90));
     if(!jc.length) jc=jb;
-    var jlo=Math.floor(jc.length*0.30), jhi=Math.ceil(jc.length*0.70);
-    var jmid=jc.slice(jlo,jhi); if(jmid.length<4) jmid=jc;
+    var jlo=Math.floor(jc.length*0.55), jhi=Math.ceil(jc.length*0.88);
+    var jmid=jc.slice(jlo,jhi);
+    if(jmid.length<4) jmid=jc.slice(Math.floor(jc.length*0.40),Math.ceil(jc.length*0.88));
+    if(jmid.length<4) jmid=jc;
     var jsR=0,jsG=0,jsB=0;
     jmid.forEach(function(p){jsR+=p.r;jsG+=p.g;jsB+=p.b;});
     var jR=Math.round(jsR/jmid.length),jG=Math.round(jsG/jmid.length),jB=Math.round(jsB/jmid.length);
@@ -2033,7 +2058,7 @@ function renderGrindOnly(g){
     var ndPct=clamp(((g.grindMicron-100)/(2500-100))*95+2.5, 2.5, 97.5);
     G('grindNd').style.left=ndPct+'%';
     var grindRelClass = g.grindSpread != null ? (g.grindSpread<=60?'good':g.grindSpread<=120?'med':'low') : 'med';
-    var grindRelText  = g.grindSpread != null ? (g.grindSpread<=60?'신뢰도 양호':g.grindSpread<=120?'편차 보통':'균일도 낮음 — 재촬영 권장') : '';
+    var grindRelText  = g.grindSpread != null ? (g.grindSpread<=60?'신뢰도 양호':g.grindSpread<=120?'편차 보통':'균일도 낮음 — 5~8cm 가까이 재촬영 권장') : '';
     G('grindNote').innerHTML = gi.note + ' (텍스처 기반 추정값)'
       + (g.grindSpread != null ? '  |  구역 편차 ±' + Math.round(g.grindSpread/2) + 'µm  <span class="grind-note-reliability '+grindRelClass+'">'+grindRelText+'</span>' : '');
     setInst('분쇄도 측정 완료 — ' + g.grindMicron + 'µm  ' + gi.cat);
@@ -2119,17 +2144,22 @@ function renderResult(r){
     sn.classList.remove('on');
   }
 
-  var cf=G('confFill');
-  cf.style.width=r.conf+'%';
-  cf.className='conf-fill '+(r.conf>=75?'cg':r.conf>=50?'cy':'cr');
-  var cs = confStateLabel(r.conf);
-  var cm='';
-  if(r.lowLight)         cm='광량 부족 — 카메라 라이트를 켜거나 5~10cm 더 가까이 대주세요';
-  else if(!r.isLocked)   cm='편차 σ='+r.stabSigma.toFixed(2)+' — 재촬영 권장';
-  else if(r.conf>=75)    cm='측정 조건 양호';
-  else                   cm='원두를 원 안에 가득 채워 촬영 권장';
-  var confEl = G('confTxt');
-  confEl.innerHTML = r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+cm;
+  /* 신뢰도 50% 미만 숨김 */
+  var confRowEl=document.querySelector('.conf-row');
+  if(r.conf>=50){
+    if(confRowEl) confRowEl.style.display='';
+    var cf=G('confFill');
+    cf.style.width=r.conf+'%';
+    cf.className='conf-fill '+(r.conf>=75?'cg':'cy');
+    var cs=confStateLabel(r.conf);
+    var cm='';
+    if(r.lowLight)      cm='광량 부족 — 라이트를 켜고 더 가까이';
+    else if(r.conf>=75) cm='측정 조건 양호';
+    else                cm='원두를 원 안에 가득 채워주세요';
+    G('confTxt').innerHTML=r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+cm;
+  } else {
+    if(confRowEl) confRowEl.style.display='none';
+  }
 
   G('ndA').style.left=(((r.agtron-25)/70)*90+5)+'%';
   G('ndL').style.left=r.Ls+'%';
@@ -2172,7 +2202,7 @@ function renderResult(r){
       } else if(r.grindSpread <= 120){
         grindRelClass='med'; grindRelText='편차 보통 (±' + Math.round(r.grindSpread/2) + 'µm)';
       } else {
-        grindRelClass='low'; grindRelText='편차 큼 — 2차 정밀측정 권장';
+        grindRelClass='low'; grindRelText='편차 큼 — 5~8cm 가까이 재촬영 권장';
       }
     } else {
       grindRelClass='med'; grindRelText=''; ciNote='';
