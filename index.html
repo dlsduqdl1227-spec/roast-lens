@@ -650,19 +650,11 @@ body.unlocked .gate{display:none}
       <div class="lr-grind-cat" id="lrGrindCat"></div>
     </div>
     <div class="lr-status" id="lrStatus">측정 준비 중...</div>
-    <div class="lr-pass" id="lrPass">측정 중...</div>
   </div>
   <div class="shake-warn" id="shakeWarn">손떨림 감지 — 재시작</div>
   <div class="live-badge" id="liveBadge">● LIVE</div>
   <div class="lock-flash" id="lockFlash"></div>
   <div class="torch-off-warn" id="torchWarn">라이트가 꺼져 있습니다</div>
-  <!-- 측정 완료 오버레이 (추가 측정 선택 가능) -->
-  <div class="shake-prompt" id="shakePrompt" style="display:none">
-    <div class="shake-prompt-title">측정 완료</div>
-    <div class="shake-prompt-msg">결과가 저장됐습니다.<br>샘플을 흔들어 재배치 후 추가 측정하면<br>정확도가 높아집니다.</div>
-    <button class="shake-prompt-btn" id="shakePromptUseBtn" onclick="confirmPass1Result()">결과 사용</button>
-    <button class="shake-prompt-btn" id="shakePromptAddBtn" style="margin-top:6px;background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.75);font-size:11px" onclick="startPass2()">추가 측정 (선택)</button>
-  </div>
   <div class="ao" id="ao">
     <div class="sp"></div>
     <div class="ao-t">CIELAB 분석 중...</div>
@@ -911,9 +903,9 @@ var liveStream      = null;
 var liveTrack       = null;
 var liveRunning     = false;
 var frameBuffer     = [];      /* stable frames only */
-var FRAME_BUF_SIZE  = 30;      /* need 30 stable frames to lock */
-var AUTO_LOCK_SIGMA = 0.8;     /* strict: σ < 0.8 across buffer */
-var MIN_STABLE_RUN  = 20;      /* consecutive stable frames required */
+var FRAME_BUF_SIZE  = 20;      /* 20 stable frames to lock (~2s) */
+var AUTO_LOCK_SIGMA = 1.5;     /* relaxed: σ < 1.5 across buffer */
+var MIN_STABLE_RUN  = 10;      /* 10 consecutive stable frames */
 var SHAKE_DELTA     = 5.0;     /* |ΔL*| > 5 between frames = shake */
 var rafId           = null;
 var lastFrameL      = null;
@@ -921,10 +913,6 @@ var emaL            = null;
 var EMA_ALPHA       = 0.25;
 var stableRun       = 0;
 var shakeTimeout    = null;
-
-/* ── DUAL-PASS STATE ── */
-var passPhase   = 1;
-var pass1Data   = null;
 
 /* ── 기기 캘리브레이션 ──
    각 기기별 L* 오프셋 (실측 기반 보정값)
@@ -985,7 +973,7 @@ function applyDeviceCal(rawL){
 /* ── 고정 ROI — 원 크기 고정, 거리는 사용자가 직접 조절 ──
    가이드 원은 항상 동일 크기. 대신 감지율(coverage)에 따라
    텍스트로 "더 가까이" / "거리를 두세요" 안내한다.          */
-var FIXED_ROI     = 0.42;   /* 고정 비율, min(W,H) 대비    */
+var FIXED_ROI     = 0.50;   /* 고정 비율, min(W,H) 대비 — 넉넉한 원 */
 var lastCovPct    = 0;      /* 최근 프레임 감지율 (0~100)   */
 
 function G(id){ return document.getElementById(id); }
@@ -1002,8 +990,7 @@ var dom = {
   lrLightFill:G('lrLightFill'), lrLightVal:G('lrLightVal'),
   lrStabFill:G('lrStabFill'), lrStabVal:G('lrStabVal'),
   lrGrind:G('lrGrind'), lrGrindVal:G('lrGrindVal'), lrGrindCat:G('lrGrindCat'),
-  lrStatus:G('lrStatus'), lrPass:G('lrPass'),
-  shakePrompt:G('shakePrompt'), shakePromptFill:G('shakePromptFill'),
+  lrStatus:G('lrStatus'),
   ao:G('ao'), it:G('it'),
   stopBtns:G('stopBtns'),
   rp:G('rp'), crop:G('cropGuide'),
@@ -1117,8 +1104,6 @@ function startLive(beanMode){
   /* Reset pending */
   pendingResult = null;
   pendingGrind  = null;
-  passPhase     = 1;
-  pass1Data     = null;
   dom.rp.classList.remove('on');
   dom.decision.classList.remove('on');
 
@@ -1208,10 +1193,7 @@ function stopLive(){
   dom.liveBadge.style.display='none';
   dom.liveReadout.classList.remove('on');
   dom.torchWarn.style.display='none';
-  if(dom.shakePrompt) dom.shakePrompt.style.display='none';
-  if(dom.lrPass) dom.lrPass.classList.remove('on');
-  /* 패스 상태 완전 초기화 */
-  passPhase=1; pass1Data=null;
+  if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
   frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
   lastCovPct=0;  /* 감지율 초기화 */
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
@@ -1268,116 +1250,78 @@ function drawGuideOverlay(){
     ringColor = 'rgba(255,255,255,0.90)';
   } else if(lastCovPct >= 55){
     ringColor = 'rgba(60,200,100,0.95)';   /* 최적: 초록 */
-  } else if(lastCovPct >= 35){
+  } else if(lastCovPct >= 30){
     ringColor = 'rgba(200,160,64,0.95)';   /* 보통: 노랑 */
   } else {
     ringColor = 'rgba(224,80,80,0.90)';    /* 부족: 빨강 */
   }
+  /* 테두리 외곽 흰 그림자 */
+  gx.beginPath();
+  gx.arc(cx,cy,r,0,Math.PI*2);
+  gx.strokeStyle = 'rgba(255,255,255,0.25)';
+  gx.lineWidth   = 5;
+  gx.stroke();
+  /* 메인 링 */
   gx.beginPath();
   gx.arc(cx,cy,r,0,Math.PI*2);
   gx.strokeStyle = ringColor;
-  gx.lineWidth   = 2.5;
+  gx.lineWidth   = 3;
   gx.setLineDash([]);
   gx.stroke();
 
-  /* 3. 코너 마커 (L자형) */
+  /* 3. 코너 마커 — 4방향 L자 브라켓 */
   var angles=[0, Math.PI/2, Math.PI, Math.PI*3/2];
-  var arm=20, inset=8;
+  var arm=22, inset=8;
   angles.forEach(function(a){
     var px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r;
-    var nx=Math.cos(a), ny=Math.sin(a);
     var tx=-Math.sin(a), ty=Math.cos(a);
     gx.beginPath();
     gx.moveTo(px-tx*arm, py-ty*arm);
     gx.lineTo(px+tx*arm, py+ty*arm);
-    gx.strokeStyle='rgba(255,255,255,0.95)';
-    gx.lineWidth=2;
-    gx.stroke();
-    gx.beginPath();
-    gx.moveTo(px+nx*inset, py+ny*inset);
-    gx.lineTo(px+nx*(inset+14), py+ny*(inset+14));
-    gx.strokeStyle='rgba(255,255,255,0.55)';
-    gx.lineWidth=1.5;
+    gx.strokeStyle='rgba(255,255,255,0.90)';
+    gx.lineWidth=2.5;
     gx.stroke();
   });
 
   /* 4. 중심 점 */
   gx.beginPath();
-  gx.arc(cx,cy,3,0,Math.PI*2);
-  gx.fillStyle='rgba(255,255,255,0.70)';
+  gx.arc(cx,cy,3.5,0,Math.PI*2);
+  gx.fillStyle='rgba(255,255,255,0.75)';
   gx.fill();
 
-  /* 5. 상단 안내 라벨 */
-  gx.save();
-  var topLbl = currentMode === 'grind' ? '분쇄도: 원두를 5~10cm 거리에서 촬영' : '컬러: 원두를 3~8cm 가까이 촬영';
-  gx.font = 'bold 13px -apple-system, sans-serif';
-  var tw = gx.measureText(topLbl).width;
-  var lblY = cy - r - 14;
-  gx.fillStyle='rgba(0,0,0,0.65)';
-  gx.beginPath();
-  if(gx.roundRect) gx.roundRect(cx-tw/2-10, lblY-16, tw+20, 24, 5);
-  else gx.rect(cx-tw/2-10, lblY-16, tw+20, 24);
-  gx.fill();
-  gx.fillStyle='rgba(255,255,255,1.0)';
-  gx.textAlign='center'; gx.textBaseline='middle';
-  gx.fillText(topLbl, cx, lblY-4);
-  gx.restore();
-
-  /* 6. 하단 거리 안내 — 모드별 + 감지율(coverage) 기반 동적 메시지 */
-  gx.save();
-  var subMsg, subColor;
-  if(!liveRunning){
-    subMsg = '탭하여 측정 시작';
-    subColor = 'rgba(255,255,255,0.70)';
-  } else if(currentMode === 'color'){
-    /* 컬러 모드: 3~8cm 가까이 */
+  /* 5. 컬러 모드만: 하단 상태 텍스트 */
+  if(currentMode === 'color' && liveRunning){
+    gx.save();
+    var subMsg, subColor;
     if(lastCovPct > 90){
       subMsg = '⚠ 너무 가까워요 — 살짝 거리 두세요';
       subColor = 'rgba(224,80,80,0.95)';
     } else if(lastCovPct >= 55){
-      subMsg = '✓ 거리 최적  |  이 위치에서 유지';
+      subMsg = '✓ 거리 최적 — 이 위치 유지';
       subColor = 'rgba(100,220,140,0.95)';
     } else if(lastCovPct >= 30){
-      subMsg = '▼ 더 가까이 — 3~8cm 목표';
+      subMsg = '더 가까이 — 3~8cm';
       subColor = 'rgba(200,160,64,0.95)';
     } else if(lastCovPct > 0){
-      subMsg = '▼▼ 많이 부족 — 컵을 3~5cm까지 가까이';
+      subMsg = '컵을 더 가까이 대주세요';
       subColor = 'rgba(224,80,80,0.95)';
     } else {
-      subMsg = '컬러 측정: 3~8cm 가까이 수직 촬영';
+      subMsg = '원 안에 원두를 채우세요';
       subColor = 'rgba(200,160,64,0.95)';
     }
-  } else {
-    /* 분쇄도 모드: 5~10cm */
-    if(lastCovPct > 88){
-      subMsg = '⚠ 너무 가까워요 — 5~10cm 거리';
-      subColor = 'rgba(224,80,80,0.95)';
-    } else if(lastCovPct >= 55){
-      subMsg = '✓ 거리 최적  |  이 위치에서 유지';
-      subColor = 'rgba(100,220,140,0.95)';
-    } else if(lastCovPct >= 35){
-      subMsg = '▼ 더 가까이 대주세요 (5~10cm)';
-      subColor = 'rgba(200,160,64,0.95)';
-    } else if(lastCovPct > 0){
-      subMsg = '▼▼ 많이 부족 — 컵을 5~8cm까지 가까이';
-      subColor = 'rgba(224,80,80,0.95)';
-    } else {
-      subMsg = '분쇄도 측정: 5~10cm  |  라이트 켜고 촬영';
-      subColor = 'rgba(200,160,64,0.95)';
-    }
+    gx.font = '12px -apple-system, sans-serif';
+    var stw = gx.measureText(subMsg).width;
+    var subY = cy + r + 22;
+    gx.fillStyle='rgba(0,0,0,0.60)';
+    gx.beginPath();
+    if(gx.roundRect) gx.roundRect(cx-stw/2-10, subY-14, stw+20, 22, 5);
+    else gx.rect(cx-stw/2-10, subY-14, stw+20, 22);
+    gx.fill();
+    gx.fillStyle=subColor;
+    gx.textAlign='center'; gx.textBaseline='middle';
+    gx.fillText(subMsg, cx, subY-3);
+    gx.restore();
   }
-  gx.font = '11px -apple-system, sans-serif';
-  var stw = gx.measureText(subMsg).width;
-  var subY = cy + r + 20;
-  gx.fillStyle='rgba(0,0,0,0.55)';
-  gx.beginPath();
-  if(gx.roundRect) gx.roundRect(cx-stw/2-8, subY-13, stw+16, 20, 4);
-  else gx.rect(cx-stw/2-8, subY-13, stw+16, 20);
-  gx.fill();
-  gx.fillStyle=subColor;
-  gx.textAlign='center'; gx.textBaseline='middle';
-  gx.fillText(subMsg, cx, subY-3);
-  gx.restore();
 }
 
 function frameLoop(ts){
@@ -1397,12 +1341,6 @@ function frameLoop(ts){
 
   var r = analyzeFrame(lvx, W, H);
   if(!r) return;
-
-  /* ── PASS 배지 표시 ── */
-  if(dom.lrPass){
-    dom.lrPass.classList.add('on');
-    dom.lrPass.textContent = passPhase === 1 ? '1차 측정' : '2차 측정';
-  }
 
   /* ── SHAKE DETECTION ── */
   var isShake = false;
@@ -1464,12 +1402,15 @@ function updateLiveReadout(r, smoothL, isShake){
   var distHint = covPct > 85 ? ' ⚠ 너무 가까움 — 거리를 두세요' : covPct >= 55 ? ' ✓ 최적' : covPct >= 35 ? ' ▼ 더 가까이 대주세요' : ' ▼▼ 많이 부족';
   dom.lrCovVal.textContent    = covPct + '%' + distHint;
 
-  /* ── Indicator 2: 조명 밝기 ── (최적 refL≈40~55, peak=47) */
-  var lightPct = Math.round(clamp(1 - Math.abs(r.wallL - 47) / 35, 0, 1) * 100);
-  var lightColor = lightPct >= 65 ? 'rgba(60,200,100,.9)' : lightPct >= 40 ? 'rgba(255,200,60,.9)' : '#e05050';
+  /* ── Indicator 2: 조명 밝기 — 근거리 촬영 시 wallL이 높아도 정상 */
+  /* lowLight: wallL < 38. 그 외는 밝기 충분 */
+  var lightOk = !r.lowLight;
+  var lightPct = lightOk ? Math.round(clamp(r.wallL / 90, 0, 1) * 100) : Math.round(r.wallL / 38 * 40);
+  lightPct = clamp(lightPct, 0, 100);
+  var lightColor = lightOk ? 'rgba(60,200,100,.9)' : '#e05050';
   dom.lrLightFill.style.width   = lightPct + '%';
   dom.lrLightFill.style.background = lightColor;
-  dom.lrLightVal.textContent    = r.lowLight ? '부족' : lightPct >= 75 ? '최적' : lightPct >= 50 ? '양호' : lightPct + '%';
+  dom.lrLightVal.textContent    = r.lowLight ? '부족 — 라이트 켜세요' : '충분';
 
   /* ── Indicator 3: 안정성 ── */
   var bs = computeBufSigma();
@@ -1544,234 +1485,90 @@ function autoLock(){
     return;
   }
 
-  /* ────────────────────────────────────────
-     데이터 추출 공통 함수
-  ──────────────────────────────────────── */
-  function extractData(buf, mode){
-    /* ── 1. 다중 프레임 중앙값 구조 ─────────────────────────
-       mean 대신 median 채택 — 이상 프레임(손떨림 잔재, 조명 spike) 내성  */
-    var lsArr  = buf.map(function(r){return r.Ls;}).sort(function(a,b){return a-b;});
-    var asArr  = buf.map(function(r){return r.As;}).sort(function(a,b){return a-b;});
-    var bsArr  = buf.map(function(r){return r.Bs;}).sort(function(a,b){return a-b;});
-    var n=lsArr.length;
-    var avgLs = lsArr[Math.floor(n/2)];
-    var avgAs = asArr[Math.floor(n/2)];
-    var avgBs = bsArr[Math.floor(n/2)];
-
-    /* ── 2. std 기반 신뢰도 ───────────────────────────────────
-       Ls 표준편차가 낮을수록 측정이 안정적.
-       std < 0.8 → 신뢰, std 0.8–1.5 → 보통, std > 1.5 → 재촬영 권장  */
-    var lsMean=lsArr.reduce(function(a,b){return a+b;},0)/n;
-    var lsStd=Math.sqrt(lsArr.reduce(function(s,v){return s+Math.pow(v-lsMean,2);},0)/n);
-    var stabOk = lsStd < 1.5;
-    var stabGrade = lsStd < 0.8 ? 'high' : lsStd < 1.5 ? 'med' : 'low';
-
-    var lastR = buf[buf.length-1];
-    var sig   = lsStd;  /* sigma = std of Ls across frames */
-
-    /* 분쇄도: 상하 15% 이상치 제거 후 중앙값 */
-    var gVals = buf.map(function(fr){return fr.grindMicron;}).filter(function(v){return v!=null;});
-    var gMicron=null, gSpread=null, gCI=null;
-    if(gVals.length){
-      gVals.sort(function(a,b){return a-b;});
-      var tlo=Math.floor(gVals.length*0.15), thi=Math.ceil(gVals.length*0.85);
-      var tr=gVals.slice(tlo,thi); if(!tr.length) tr=gVals;
-      gMicron=tr[Math.floor(tr.length/2)];
-      if(tr.length>=4){
-        var q1=tr[Math.floor(tr.length*0.25)], q3=tr[Math.floor(tr.length*0.75)];
-        gSpread=q3-q1;
-        var hi2=gSpread/2;
-        gCI={lo:Math.max(tr[0],gMicron-Math.round(hi2*1.5)),hi:Math.min(tr[tr.length-1],gMicron+Math.round(hi2*1.5))};
-      }
-    }
-    var refL=lastR.wallL||0, cov=lastR.beanCoverage||0.6;
-    var conf=Math.round(clamp((clamp(1-Math.abs(refL-47)/28,0,1))*0.40+(clamp(cov*1.8,0,1))*0.25+(clamp(1-sig/2.5,0,1))*0.35,0,1)*100);
-    return {avgLs,avgAs,avgBs,sig,lsStd,stabOk,stabGrade,refL,conf,lastR,gMicron,gSpread,gCI,gFrames:gVals.length};
-  }
-
-  /* ────────────────────────────────────────
-     1차 잠금
-  ──────────────────────────────────────── */
-  if(passPhase === 1){
-    dom.lockFlash.classList.add('on');
-    setTimeout(function(){ dom.lockFlash.classList.remove('on'); }, 400);
-
-    pass1Data = extractData(frameBuffer, currentMode);
-
-    /* 카메라 일시정지 — 스트림은 유지(2차 재사용), torch만 끔 */
-    liveRunning = false;
-    if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
-    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
-    dom.liveBadge.style.display='none';
-    dom.stopBtns.style.display='none';
-
-    passPhase = 2;
-
-    /* ── 1차 데이터로 즉시 결과 빌드 (기기 보정 적용) ── */
-    var p1raw = pass1Data;
-    var LsCalibrated = applyDeviceCal(p1raw.avgLs);
-    var agRange1 = agtronRangeFromL(LsCalibrated);
-    var LsFinalP1 = LsCalibrated;
-
-    /* ── grind 모드: pendingGrind로 처리 ── */
-    if(currentMode === 'grind'){
-      pendingGrind = {
-        grindMicron: p1raw.gMicron,
-        grindSpread: p1raw.gSpread,
-        grindCI: p1raw.gCI,
-        grindFrames: p1raw.gFrames,
-        frameCount: frameBuffer.length,
-      };
-      renderGrindOnly(pendingGrind);
-      renderStepNav();
-      if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
-      dom.lrStatus.textContent = '분쇄도 측정 완료 — ' + (p1raw.gMicron ? p1raw.gMicron + 'µm' : '감지 실패');
-      setInst('분쇄도 측정 완료.');
-      return;
-    }
-
-    pendingResult = {
-      agtron: agRange1.mid,
-      agRangeLo: agRange1.lo, agRangeHi: agRange1.hi,
-      Ls: LsFinalP1, LsRaw: p1raw.avgLs, _LsRaw: p1raw.avgLs,
-      As: p1raw.avgAs, Bs: p1raw.avgBs,
-      sigma: p1raw.lsStd, conf: p1raw.conf,
-      beanType: 'ground',
-      isLocked: true, lowLight: false, stabSigma: p1raw.lsStd,
-      lsStd: p1raw.lsStd, uniformity: p1raw.lsStd,
-      stabGrade: p1raw.stabGrade,
-      needsRetake: p1raw.stabGrade === 'low',
-      envUnstable: false,
-      wallL: p1raw.refL,
-      bRGB: p1raw.lastR.bRGB, wRGB: p1raw.lastR.wRGB,
-      frameCount: frameBuffer.length,
-      grindMicron: null, grindSpread: null, grindCI: null, grindFrames: 0,
-      dualPass: false,
-      pass1L: p1raw.avgLs,
-      grindLCorr: 0, userGrindInput: 0,
-    };
-
-    /* 즉시 결과 렌더 */
-    renderResult(pendingResult);
-    renderStepNav();
-
-    /* shakePrompt: 선택적 추가 측정 오버레이 */
-    if(dom.shakePrompt) dom.shakePrompt.style.display = 'flex';
-    if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '측정 완료 — L*='+LsFinalP1.toFixed(1); }
-    dom.lrStatus.textContent = '컬러 측정 완료  L*='+LsFinalP1.toFixed(1)+'  Ag '+agRange1.lo+'–'+agRange1.hi;
-    dom.lrStatus.style.color = '';
-    setInst('측정 완료 — 결과를 사용하거나 추가 측정으로 정확도를 높이세요.');
-    return;
-  }
-
-  /* ────────────────────────────────────────
-     2차 잠금 → 평균 합산
-  ──────────────────────────────────────── */
-  var p2 = extractData(frameBuffer, currentMode);
-
+  /* ── 카메라 완전 정지 ── */
   dom.lockFlash.classList.add('on');
-  setTimeout(function(){ dom.lockFlash.classList.remove('on'); }, 500);
+  setTimeout(function(){ dom.lockFlash.classList.remove('on'); }, 400);
   if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
   dom.shakeWarn.classList.remove('on');
-  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
   dom.liveBadge.style.display='none';
   dom.stopBtns.style.display='none';
-  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '2차 완료 — 평균 적용'; }
 
-  /* 1차+2차 단순 평균 */
-  var p1 = pass1Data;
-  var avgLsFinal = (p1.avgLs + p2.avgLs) / 2;
-  var avgAsFinal = (p1.avgAs + p2.avgAs) / 2;
-  var avgBsFinal = (p1.avgBs + p2.avgBs) / 2;
-  var sigFinal   = (p1.sig   + p2.sig)   / 2;
-  var confFinal  = Math.round((p1.conf + p2.conf) / 2);
+  /* ── 데이터 추출 ── */
+  var lsArr  = frameBuffer.map(function(f){return f.Ls;}).sort(function(a,b){return a-b;});
+  var asArr  = frameBuffer.map(function(f){return f.As;}).sort(function(a,b){return a-b;});
+  var bsArr  = frameBuffer.map(function(f){return f.Bs;}).sort(function(a,b){return a-b;});
+  var n = lsArr.length;
+  var avgLs = lsArr[Math.floor(n/2)];
+  var avgAs = asArr[Math.floor(n/2)];
+  var avgBs = bsArr[Math.floor(n/2)];
+  var lsMean = lsArr.reduce(function(a,b){return a+b;},0)/n;
+  var lsStd  = Math.sqrt(lsArr.reduce(function(s,v){return s+Math.pow(v-lsMean,2);},0)/n);
+  var stabGrade = lsStd < 0.8 ? 'high' : lsStd < 1.5 ? 'med' : 'low';
+  var lastR = frameBuffer[frameBuffer.length-1];
 
-  /* 분쇄도: 둘 다 있으면 평균, 아니면 유효한 쪽 */
-  var gMicronFinal = null, gSpreadFinal = null, gCIFinal = null, gFramesFinal = 0;
-  if(p1.gMicron != null && p2.gMicron != null){
-    gMicronFinal  = Math.round((p1.gMicron + p2.gMicron) / 2);
-    gSpreadFinal  = p1.gSpread != null && p2.gSpread != null ? Math.round((p1.gSpread + p2.gSpread)/2) : null;
-    if(p1.gCI && p2.gCI) gCIFinal = {lo:Math.round((p1.gCI.lo+p2.gCI.lo)/2), hi:Math.round((p1.gCI.hi+p2.gCI.hi)/2)};
-    gFramesFinal = p1.gFrames + p2.gFrames;
-  } else {
-    gMicronFinal = p1.gMicron || p2.gMicron;
-    gSpreadFinal = p1.gSpread || p2.gSpread;
-    gCIFinal     = p1.gCI     || p2.gCI;
-    gFramesFinal = p1.gFrames + p2.gFrames;
+  /* 분쇄도 중앙값 */
+  var gVals = frameBuffer.map(function(f){return f.grindMicron;}).filter(function(v){return v!=null;});
+  var gMicron=null, gSpread=null, gCI=null;
+  if(gVals.length){
+    gVals.sort(function(a,b){return a-b;});
+    var tlo=Math.floor(gVals.length*0.15), thi=Math.ceil(gVals.length*0.85);
+    var tr=gVals.slice(tlo,thi); if(!tr.length) tr=gVals;
+    gMicron=tr[Math.floor(tr.length/2)];
+    if(tr.length>=4){
+      var q1=tr[Math.floor(tr.length*0.25)], q3=tr[Math.floor(tr.length*0.75)];
+      gSpread=q3-q1;
+      gCI={lo:Math.max(tr[0],gMicron-Math.round(gSpread*0.75)),hi:Math.min(tr[tr.length-1],gMicron+Math.round(gSpread*0.75))};
+    }
   }
 
-  /* ── 기기 캘리브레이션 적용 ── */
-  var avgLsCalibrated = applyDeviceCal(avgLsFinal);
+  /* 신뢰도 */
+  var cov = lastR.beanCoverage || 0.6;
+  var stabScore = clamp(1 - lsStd / 2.5, 0, 1);
+  var covScore  = clamp(cov * 1.5, 0, 1);
+  var conf = Math.round(clamp(stabScore * 0.60 + covScore * 0.40, 0, 1) * 100);
 
-  /* ── |L1-L2| > 5 → 환경 불안정 경고 (but 1차 결과 유지) ── */
-  var passDelta = Math.abs(p1.avgLs - p2.avgLs);
-  var envUnstable = passDelta > 5.0;
-
-  var grindLCorr = 0;
-  var userGrind = 0;
-  var agRange = agtronRangeFromL(avgLsCalibrated);
-  var LsFinalCorr = avgLsCalibrated;
-  var agtronFinal = agRange.mid;
-
-  /* ── 균일도 (spec §9): L* std ── */
-  var uniformity = Math.round(((p1.lsStd + p2.lsStd) / 2) * 100) / 100;
-
-  /* ── 환경 불안정 시 — 1차 결과 유지 + 경고 표시 (재시작 불필요) ── */
-  if(envUnstable){
-    passPhase = 1; pass1Data = null;
-    liveRunning = false;
-    if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
-    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
-    dom.liveBadge.style.display = 'none';
-    dom.stopBtns.style.display  = 'none';
-    dom.lrStatus.style.color    = '#e05050';
-    dom.lrStatus.textContent    = '⚠ 측정 차이 '+passDelta.toFixed(1)+'pt — 1차 결과를 사용하거나 재측정하세요';
-    setInst('조명·거리 변화가 감지됐습니다. 1차 결과를 사용하거나 다시 측정하세요.');
-    /* shakePrompt를 불안정 상태로 업데이트 */
-    var pt2e = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-title') : null;
-    var pm2e = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-msg') : null;
-    if(pt2e) pt2e.textContent = '⚠ 추가 측정 불안정';
-    if(pm2e) pm2e.innerHTML = '측정 차이 '+passDelta.toFixed(1)+'pt (기준 5.0pt)<br>조명·거리를 고정하고 다시 시도하세요.';
-    var addBtn = G('shakePromptAddBtn');
-    if(addBtn){ addBtn.textContent = '다시 추가 측정'; addBtn.onclick = startPass2; }
-    if(dom.shakePrompt) dom.shakePrompt.style.display = 'flex';
+  /* ── 분쇄도 모드: 즉시 완료 ── */
+  if(currentMode === 'grind'){
+    pendingGrind = {
+      grindMicron: gMicron,
+      grindSpread: gSpread,
+      grindCI: gCI,
+      grindFrames: gVals.length,
+      frameCount: n,
+    };
+    renderGrindOnly(pendingGrind);
     renderStepNav();
+    dom.lrStatus.textContent = '분쇄도 측정 완료' + (gMicron ? ' — ' + gMicron + 'µm' : ' — 감지 실패');
+    setInst('분쇄도 측정 완료.');
     return;
   }
 
-  dom.lrStatus.textContent = '추가 측정 완료 — 평균 L*='+LsFinalCorr.toFixed(1)
-    +'  Ag '+agRange.lo+'–'+agRange.hi
-    +(gMicronFinal?'  분쇄도 '+gMicronFinal+'µm':'')
-    +(grindLCorr!==0?' (분쇄 보정 '+( grindLCorr>0?'+':'')+grindLCorr+')' :'');
-  [dom.lrCovFill,dom.lrLightFill,dom.lrStabFill].forEach(function(el){
-    el.style.background='rgba(60,200,100,.9)'; el.style.width='100%';
-  });
+  /* ── 컬러 모드 ── */
+  var LsCalibrated = applyDeviceCal(avgLs);
+  var agRange = agtronRangeFromL(LsCalibrated);
 
-  var p2lastR = p2.lastR;
   pendingResult = {
-    agtron: agtronFinal,
+    agtron: agRange.mid,
     agRangeLo: agRange.lo, agRangeHi: agRange.hi,
-    Ls: LsFinalCorr, LsRaw: avgLsFinal, _LsRaw: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
-    sigma: uniformity, conf: confFinal,
+    Ls: LsCalibrated, LsRaw: avgLs, _LsRaw: avgLs,
+    As: avgAs, Bs: avgBs,
+    sigma: lsStd, conf: conf,
     beanType: 'ground',
-    isLocked: true, lowLight: false, stabSigma: uniformity,
-    lsStd: uniformity, uniformity: uniformity,
-    stabGrade: (p1.stabGrade==='low'||p2.stabGrade==='low') ? 'low'
-             : (p1.stabGrade==='med'||p2.stabGrade==='med') ? 'med' : 'high',
-    needsRetake: p1.stabGrade==='low' || p2.stabGrade==='low',
+    isLocked: true, lowLight: false, stabSigma: lsStd,
+    lsStd: lsStd, uniformity: lsStd,
+    stabGrade: stabGrade,
+    needsRetake: stabGrade === 'low',
     envUnstable: false,
-    wallL: p2.refL,
-    bRGB: p2lastR.bRGB, wRGB: p2lastR.wRGB,
-    frameCount: frameBuffer.length,
+    wallL: lastR.wallL,
+    bRGB: lastR.bRGB, wRGB: lastR.wRGB,
+    frameCount: n,
     grindMicron: null, grindSpread: null, grindCI: null, grindFrames: 0,
-    dualPass: true,
-    pass1L: p1.avgLs, pass2L: p2.avgLs,
-    grindLCorr: 0, userGrindInput: 0,
+    dualPass: false, grindLCorr: 0, userGrindInput: 0,
   };
 
-  passPhase = 1; pass1Data = null;
-  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '추가 측정 완료 — 평균 L*='+LsFinalCorr.toFixed(1); }
-  setInst('추가 측정 완료 — 평균 L*=' + LsFinalCorr.toFixed(1) + '  Agtron ' + agtronFinal);
+  dom.lrStatus.textContent = '컬러 측정 완료  L*=' + LsCalibrated.toFixed(1) + '  Ag ' + agRange.lo + '–' + agRange.hi;
+  dom.lrStatus.style.color = '';
+  setInst('컬러 측정 완료 — 결과 확인 후 저장하세요.');
   renderResult(pendingResult);
   renderStepNav();
 }
@@ -2255,19 +2052,14 @@ function renderResult(r){
   var sn = G('stabNotice'), st = G('stabNoticeTxt');
   if(!r.lowLight){
     sn.classList.add('on');
-    if(r.dualPass){
+    if(r.isLocked){
       var gradeLabel = r.stabGrade==='high'?'신뢰도 높음':r.stabGrade==='med'?'신뢰도 보통':'⚠ 재촬영 권장';
       var gc = r.stabGrade==='high'?{bg:'#f0fff6',bd:'#a0d8b8',tc:'#1a7a46'}
              : r.stabGrade==='med' ?{bg:'#fffbf0',bd:'#f0d890',tc:'#8a6800'}
              :                      {bg:'#fff0f0',bd:'#e8a0a0',tc:'#8a1a1a'};
       sn.style.background=gc.bg; sn.style.borderColor=gc.bd; st.style.color=gc.tc;
-      st.textContent='측정+추가 평균  L*'+r.pass1L.toFixed(1)+'→'+r.pass2L.toFixed(1)
-        +'  std='+r.lsStd.toFixed(2)+'  ['+gradeLabel+']'
-        +(r.needsRetake?' — 재측정하면 정확도가 높아집니다':'');
-    } else if(r.isLocked){
-      sn.style.background='#f0fff6'; sn.style.borderColor='#a0d8b8';
-      st.style.color='#1a7a46';
-      st.textContent='측정 안정 (σ='+r.stabSigma.toFixed(2)+') — 결과를 신뢰할 수 있습니다.';
+      st.textContent = gradeLabel + '  σ=' + r.lsStd.toFixed(2) + '  ' + r.frameCount + '프레임'
+        + (r.needsRetake ? ' — 재측정하면 정확도가 높아집니다' : '');
     } else {
       sn.style.background='#fffbf0'; sn.style.borderColor='#f0d890';
       st.style.color='#8a6800';
@@ -2277,22 +2069,18 @@ function renderResult(r){
     sn.classList.remove('on');
   }
 
-  /* 신뢰도 50% 미만 숨김 */
+  /* 신뢰도 항상 표시 */
   var confRowEl=document.querySelector('.conf-row');
-  if(r.conf>=50){
-    if(confRowEl) confRowEl.style.display='';
-    var cf=G('confFill');
-    cf.style.width=r.conf+'%';
-    cf.className='conf-fill '+(r.conf>=75?'cg':'cy');
-    var cs=confStateLabel(r.conf);
-    var cm='';
-    if(r.lowLight)      cm='광량 부족 — 라이트를 켜고 5~10cm까지 더 가까이';
-    else if(r.conf>=75) cm='측정 조건 양호';
-    else                cm='원두를 원 안에 가득 채워주세요';
-    G('confTxt').innerHTML=r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+cm;
-  } else {
-    if(confRowEl) confRowEl.style.display='none';
-  }
+  if(confRowEl) confRowEl.style.display='';
+  var cf=G('confFill');
+  cf.style.width=r.conf+'%';
+  cf.className='conf-fill '+(r.conf>=70?'cg':'cy');
+  var cs=confStateLabel(r.conf);
+  var cm='';
+  if(r.lowLight)      cm='광량 부족 — 라이트를 켜고 더 가까이';
+  else if(r.conf>=70) cm='측정 조건 양호';
+  else                cm='원두를 원 안에 가득 채워주세요';
+  G('confTxt').innerHTML=r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+cm;
 
   G('ndA').style.left=(((r.agtron-25)/70)*90+5)+'%';
   G('ndL').style.left=r.Ls+'%';
@@ -2399,42 +2187,6 @@ function launchMode(mode){
 function grindPhaseActive_stub(){ return false; }
 var grindPhaseActive = false;
 
-/* 1차 결과 확정 — 오버레이 닫기 */
-function confirmPass1Result(){
-  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
-  /* decision bar 표시 (결과 저장 흐름 유지) */
-  if(dom.decision && pendingResult) dom.decision.classList.add('on');
-}
-
-/* 추가 측정 버튼 핸들러 */
-function startPass2(){
-  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
-  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '추가 측정 중'; }
-
-  /* 버퍼/상태 초기화 */
-  frameBuffer  = [];
-  stableRun    = 0;
-  emaL         = null;
-  lastFrameL   = null;
-  liveRunning  = true;
-  dom.liveBadge.style.display = 'block';
-  dom.stopBtns.style.display  = 'flex';
-  dom.lrStatus.textContent    = '2차 측정 중...';
-  dom.lrStatus.style.color    = '';
-  [dom.lrCovFill, dom.lrLightFill, dom.lrStabFill].forEach(function(el){ el.style.width='0%'; });
-  setInst('2차 측정 중 — 같은 위치, 같은 거리로 유지해주세요.');
-
-  /* 스트림이 살아있으면 재사용, 아니면 새로 열기 */
-  if(dom.liveVideo.srcObject && liveTrack && liveTrack.readyState === 'live'){
-    /* 토치 재활성화 */
-    enableTorch();
-    rafId = requestAnimationFrame(frameLoop);
-  } else {
-    /* 트랙이 죽어있으면 완전 재시작 */
-    _restartCamera();
-  }
-}
-
 function _restartCamera(){
   if(liveRunning){ return; } /* 이미 실행 중이면 무시 */
   var constraints = {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}}};
@@ -2471,7 +2223,6 @@ function doRetake(){
   if(dq) dq.textContent = '이 결과를 사용하시겠습니까?';
   dom.decision.classList.remove('on');
   dom.rp.classList.remove('on');
-  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
   dom.badge.style.display = 'none';
   dom.stabBadge.style.display = 'none';
   dom.lowlightWarn.style.display = 'none';
@@ -2788,9 +2539,9 @@ function doValRetry(){
    RELIABILITY TEXT HELPER
 ════════════════════════════════════════ */
 function confStateLabel(conf){
-  if(conf >= 80) return {cls:'high', text:'신뢰도 높음'};
-  if(conf >= 55) return {cls:'med',  text:'신뢰도 보통'};
-  if(conf >= 30) return {cls:'low',  text:'신뢰도 낮음'};
+  if(conf >= 75) return {cls:'high', text:'신뢰도 높음'};
+  if(conf >= 50) return {cls:'med',  text:'신뢰도 보통'};
+  if(conf >= 25) return {cls:'low',  text:'신뢰도 낮음'};
   return              {cls:'blocked',text:'측정 불가'};
 }
 
@@ -2799,7 +2550,6 @@ function confStateLabel(conf){
 ════════════════════════════════════════ */
 function doReset(){
   measurements=[]; measureCount=0; pendingResult=null; pendingGrind=null;
-  passPhase=1; pass1Data=null;
   frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
   store = { gcol: null, grind: null };
   currentMode = null;
@@ -2819,10 +2569,6 @@ function doReset(){
   dom.rp.classList.remove('on');
   dom.decision.classList.remove('on');
   if(dom.exam) dom.exam.style.display='none';
-  var gs=G('grindSec'); if(gs) gs.classList.remove('on');
-  dom.lrGrind.classList.remove('on');
-  if(dom.shakePrompt) dom.shakePrompt.style.display='none';
-  if(dom.lrPass) dom.lrPass.classList.remove('on');
   var bmi=G('beanModeIndicator'); if(bmi) bmi.classList.remove('on');
   ['tabGcol','tabGuide'].forEach(function(id){ var el=G(id); if(el) el.classList.remove('active'); });
   /* 카메라 완전 정지 */
