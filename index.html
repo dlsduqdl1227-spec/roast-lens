@@ -1843,7 +1843,7 @@ function analyzeFrame(context, W, H){
     var hiLum=hiPx.reduce(function(a,p){return a+p.lum;},0)/Math.max(hiPx.length,1);
     var lowLight = hiLum < 38;
 
-    var agtron=Math.round(clamp(1.85*Ls-11.5, 15, 95));
+    var agtron=Math.round(clamp(1.35*Ls-11.6, 15, 95));
 
     var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
     var lMean=lSum/cleanPx.length, lVar=0;
@@ -1943,7 +1943,7 @@ function runAnalysis(W,H){
   var lab = sRGBtoLab(mR, mG, mB);
   var Ls  = clamp(lab.L, 0, 100);
   var As  = lab.a, Bs = lab.b;
-  var agtron = Math.round(clamp(1.85*Ls-11.5, 15, 95));
+  var agtron = Math.round(clamp(1.35*Ls-11.6, 15, 95));
 
   var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
   var lMean=lSum/cleanPx.length, lVar=0;
@@ -2394,23 +2394,26 @@ function sRGBtoLab(r8,g8,b8){
   function f(t){return t>.008856?Math.cbrt(t):7.787*t+16/116;}
   return{L:116*f(Y/1)  -16, a:500*(f(X/.95047)-f(Y/1)), b:200*(f(Y/1)-f(Z/1.08883))};
 }
-/* ── Agtron 예상 범위: L* 기반 룩업 (캘리브레이션 Ag=1.85*L*-11.5 기준) ── */
+/* ── Agtron 예상 범위: L* 기반 룩업 (캘리브레이션 Ag=1.35*L*-11.6 기준) ── */
 function agtronRangeFromL(L){
-  /* 공식 중간값 = 1.85*L-11.5, 범위 ±5 */
-  var mid = Math.round(clamp(1.85*L-11.5, 15, 95));
+  /* 공식 = 1.35*L* - 11.6
+     실측 캘리브레이션: L*=65.6 → Ag 77 (기준점)
+     앵커: L*≈27→Ag 25(Dark), L*≈75→Ag 90(Light)
+     ±5 불확실 범위 */
+  var mid = Math.round(clamp(1.35*L - 11.6, 15, 95));
   return {lo: Math.max(15, mid-5), hi: Math.min(95, mid+5), mid: mid};
 }
 
-/* ── 로스트 레벨 분류 (Ag=1.85*L*-11.5 캘리브레이션 기준) ──
-   Ag≥85 → L*≥52.2 → Light
-   Ag≥65 → L*≥41.4 → Medium
-   Ag≥45 → L*≥30.5 → Medium-Dark
-   Ag≥25 → L*≥19.7 → Dark                                    */
+/* ── 로스트 레벨 분류 (Ag=1.35*L*-11.6 캘리브레이션 기준) ──
+   Ag≥85 → L*≥71.5 → Light
+   Ag≥65 → L*≥56.7 → Medium
+   Ag≥45 → L*≥41.9 → Medium-Dark
+   Ag≥25 → L*≥27.1 → Dark                                    */
 function roastName(L){
-  if(L>=52) return 'Light Roast';
-  if(L>=41) return 'Medium Roast';
-  if(L>=31) return 'Medium-Dark Roast';
-  if(L>=20) return 'Dark Roast';
+  if(L>=72) return 'Light Roast';
+  if(L>=57) return 'Medium Roast';
+  if(L>=42) return 'Medium-Dark Roast';
+  if(L>=27) return 'Dark Roast';
   return         'Very Dark Roast';
 }
 function setInst(t){dom.it.textContent=t;}
