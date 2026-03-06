@@ -474,6 +474,16 @@ body.unlocked .gate{display:none}
 
 <div class="wrap">
 
+<!-- DEVICE CALIBRATION BAR -->
+<div id="devCalBar" style="display:flex;align-items:center;justify-content:space-between;padding:7px 16px;background:var(--s);border-bottom:1px solid var(--b);font-family:var(--m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--tm)">
+  <span>기기 보정</span>
+  <div style="display:flex;gap:5px" id="devCalBtns">
+    <button onclick="setDeviceCal('auto')" id="devCalAuto" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid #555;background:rgba(255,255,255,0.12);color:var(--t);cursor:pointer">자동</button>
+    <button onclick="setDeviceCal('iphone')" id="devCalIPhone" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid var(--b);background:transparent;color:var(--tm);cursor:pointer">iPhone</button>
+    <button onclick="setDeviceCal('galaxy')" id="devCalGalaxy" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid var(--b);background:transparent;color:var(--tm);cursor:pointer">Galaxy</button>
+    <button onclick="setDeviceCal('pixel')" id="devCalPixel" style="font-family:var(--m);font-size:9px;letter-spacing:.08em;padding:3px 9px;border-radius:3px;border:1px solid var(--b);background:transparent;color:var(--tm);cursor:pointer">Pixel</button>
+  </div>
+</div>
 
 
 <!-- GUIDE (collapsible, triggered from step bar) -->
@@ -640,17 +650,18 @@ body.unlocked .gate{display:none}
       <div class="lr-grind-cat" id="lrGrindCat"></div>
     </div>
     <div class="lr-status" id="lrStatus">측정 준비 중...</div>
-    <div class="lr-pass" id="lrPass">1차 측정</div>
+    <div class="lr-pass" id="lrPass">측정 중...</div>
   </div>
   <div class="shake-warn" id="shakeWarn">손떨림 감지 — 재시작</div>
   <div class="live-badge" id="liveBadge">● LIVE</div>
   <div class="lock-flash" id="lockFlash"></div>
   <div class="torch-off-warn" id="torchWarn">라이트가 꺼져 있습니다</div>
-  <!-- 2차 측정 유도 오버레이 -->
+  <!-- 측정 완료 오버레이 (추가 측정 선택 가능) -->
   <div class="shake-prompt" id="shakePrompt" style="display:none">
-    <div class="shake-prompt-title">1차 측정 완료</div>
-    <div class="shake-prompt-msg">샘플을 가볍게 흔들어 재배치한 뒤<br>버튼을 누르세요</div>
-    <button class="shake-prompt-btn" onclick="startPass2()">2차 측정 시작</button>
+    <div class="shake-prompt-title">측정 완료</div>
+    <div class="shake-prompt-msg">결과가 저장됐습니다.<br>샘플을 흔들어 재배치 후 추가 측정하면<br>정확도가 높아집니다.</div>
+    <button class="shake-prompt-btn" id="shakePromptUseBtn" onclick="confirmPass1Result()">결과 사용</button>
+    <button class="shake-prompt-btn" id="shakePromptAddBtn" style="margin-top:6px;background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.75);font-size:11px" onclick="startPass2()">추가 측정 (선택)</button>
   </div>
   <div class="ao" id="ao">
     <div class="sp"></div>
@@ -921,6 +932,62 @@ var shakeTimeout    = null;
 var passPhase   = 1;
 var pass1Data   = null;
 
+/* ── 기기 캘리브레이션 ──
+   각 기기별 L* 오프셋 (실측 기반 보정값)
+   iPhone: sRGB→CIELAB 변환 시 약 +1.5 과측정 경향
+   Galaxy: 약 -1.0 과측정 경향 (S23 Ultra 기준)
+   Pixel:  약 +0.5 (Pixel 7 기준)
+   auto:   UA 기반 자동 감지                            */
+var DEVICE_CAL = {
+  auto:   null,   /* 자동 감지 */
+  iphone: -1.5,   /* iPhone 보정: L* -1.5 */
+  galaxy: +1.0,   /* Galaxy 보정: L* +1.0 */
+  pixel:  -0.5,   /* Pixel 보정: L* -0.5  */
+};
+var currentDeviceCal = 'auto';
+
+function detectDeviceOffset(){
+  var ua = navigator.userAgent || '';
+  if(/iPhone|iPad/.test(ua)) return DEVICE_CAL.iphone;
+  if(/SM-[A-Z]/i.test(ua))   return DEVICE_CAL.galaxy;  /* Samsung Galaxy */
+  if(/Pixel/i.test(ua))      return DEVICE_CAL.pixel;
+  return 0;
+}
+
+function setDeviceCal(type){
+  currentDeviceCal = type;
+  /* 버튼 활성화 스타일 */
+  ['devCalAuto','devCalIPhone','devCalGalaxy','devCalPixel'].forEach(function(id){
+    var el = G(id);
+    if(!el) return;
+    el.style.background = 'transparent';
+    el.style.color = 'var(--tm)';
+    el.style.borderColor = 'var(--b)';
+  });
+  var activeId = {auto:'devCalAuto',iphone:'devCalIPhone',galaxy:'devCalGalaxy',pixel:'devCalPixel'}[type];
+  if(activeId && G(activeId)){
+    G(activeId).style.background = 'rgba(255,255,255,0.12)';
+    G(activeId).style.color = 'var(--t)';
+    G(activeId).style.borderColor = '#555';
+  }
+  try{ localStorage.setItem('rl_device_cal', type); }catch(e){}
+  /* 결과가 이미 있으면 재렌더 */
+  if(pendingResult){
+    var rerender = JSON.parse(JSON.stringify(pendingResult));
+    rerender.Ls = applyDeviceCal(rerender._LsRaw !== undefined ? rerender._LsRaw : rerender.Ls);
+    var ar = agtronRangeFromL(rerender.Ls);
+    rerender.agtron = ar.mid; rerender.agRangeLo = ar.lo; rerender.agRangeHi = ar.hi;
+    renderResult(rerender);
+  }
+}
+
+function applyDeviceCal(rawL){
+  var offset = 0;
+  if(currentDeviceCal === 'auto') offset = detectDeviceOffset();
+  else offset = DEVICE_CAL[currentDeviceCal] || 0;
+  return clamp(rawL + offset, 0, 100);
+}
+
 /* ── 고정 ROI — 원 크기 고정, 거리는 사용자가 직접 조절 ──
    가이드 원은 항상 동일 크기. 대신 감지율(coverage)에 따라
    텍스트로 "더 가까이" / "거리를 두세요" 안내한다.          */
@@ -957,6 +1024,13 @@ window.addEventListener('DOMContentLoaded', function(){
   ctx = dom.cvs.getContext('2d', {willReadFrequently:true});
   htx = dom.heat.getContext('2d');
   lvx = dom.liveCvs.getContext('2d', {willReadFrequently:true});
+
+  /* 기기 캘리브레이션 복원 */
+  try{
+    var saved = localStorage.getItem('rl_device_cal');
+    if(saved && DEVICE_CAL.hasOwnProperty(saved)) setDeviceCal(saved);
+    else setDeviceCal('auto');
+  }catch(e){ setDeviceCal('auto'); }
 
   /* Show deploy notice + disable live btn on file:// or non-secure http */
   var isFile   = location.protocol === 'file:';
@@ -1515,18 +1589,56 @@ function autoLock(){
 
     passPhase = 2;
 
-    /* shakePrompt 초기화 후 표시 */
-    var pt1 = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-title') : null;
-    var pm1 = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-msg') : null;
-    var pb1 = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-btn') : null;
-    if(pt1) pt1.textContent = '1차 측정 완료';
-    if(pm1) pm1.textContent = '샘플을 가볍게 흔들어 재배치한 뒤\n아래 버튼을 눌러 2차 측정을 시작하세요.';
-    if(pb1){ pb1.textContent = '2차 측정 시작'; pb1.onclick = startPass2; }
+    /* ── 1차 데이터로 즉시 결과 빌드 (기기 보정 적용) ── */
+    var p1raw = pass1Data;
+    var LsCalibrated = applyDeviceCal(p1raw.avgLs);
+    var agRange1 = agtronRangeFromL(LsCalibrated);
+
+    /* 분쇄도 입력 보정 */
+    var gifEl1 = G('grindInputField');
+    var userGrind1 = gifEl1 ? (parseInt(gifEl1.value, 10) || 0) : 0;
+    var grindLCorr1 = 0;
+    if(userGrind1 > 0){
+      if(userGrind1 < 500) grindLCorr1 = +0.5;
+      else if(userGrind1 > 800) grindLCorr1 = -0.5;
+    }
+    var LsFinalP1 = clamp(LsCalibrated + grindLCorr1, 0, 100);
+    if(grindLCorr1 !== 0){ agRange1 = agtronRangeFromL(LsFinalP1); }
+
+    pendingResult = {
+      agtron: agRange1.mid,
+      agRangeLo: agRange1.lo, agRangeHi: agRange1.hi,
+      Ls: LsFinalP1, LsRaw: p1raw.avgLs, _LsRaw: p1raw.avgLs,
+      As: p1raw.avgAs, Bs: p1raw.avgBs,
+      sigma: p1raw.lsStd, conf: p1raw.conf,
+      beanType: 'ground',
+      isLocked: true, lowLight: false, stabSigma: p1raw.lsStd,
+      lsStd: p1raw.lsStd, uniformity: p1raw.lsStd,
+      stabGrade: p1raw.stabGrade,
+      needsRetake: p1raw.stabGrade === 'low',
+      envUnstable: false,
+      wallL: p1raw.refL,
+      bRGB: p1raw.lastR.bRGB, wRGB: p1raw.lastR.wRGB,
+      frameCount: frameBuffer.length,
+      grindMicron: p1raw.gMicron,
+      grindSpread: p1raw.gSpread,
+      grindCI: p1raw.gCI,
+      grindFrames: p1raw.gFrames,
+      dualPass: false,
+      pass1L: p1raw.avgLs,
+      grindLCorr: grindLCorr1, userGrindInput: userGrind1,
+    };
+
+    /* 즉시 결과 렌더 */
+    renderResult(pendingResult);
+    renderStepNav();
+
+    /* shakePrompt: 선택적 추가 측정 오버레이 */
     if(dom.shakePrompt) dom.shakePrompt.style.display = 'flex';
-    if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '1차 완료 — L*='+pass1Data.avgLs.toFixed(1); }
-    dom.lrStatus.textContent = '1차 측정 완료  L*='+pass1Data.avgLs.toFixed(1)+'  샘플 흔들고 2차 시작';
+    if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '측정 완료 — L*='+LsFinalP1.toFixed(1); }
+    dom.lrStatus.textContent = '측정 완료  L*='+LsFinalP1.toFixed(1)+'  Ag '+agRange1.lo+'–'+agRange1.hi;
     dom.lrStatus.style.color = '';
-    setInst('1차 완료 — 샘플을 흔들어 재배치한 뒤 2차 측정 버튼을 누르세요.');
+    setInst('측정 완료 — 결과를 사용하거나 추가 측정으로 정확도를 높이세요.');
     return;
   }
 
@@ -1566,11 +1678,10 @@ function autoLock(){
     gFramesFinal = p1.gFrames + p2.gFrames;
   }
 
-  /* gcol 전용 — whole 없음 */
-  var agRange = agtronRangeFromL(avgLsFinal);
-  var agtronFinal = agRange.mid;
+  /* ── 기기 캘리브레이션 적용 ── */
+  var avgLsCalibrated = applyDeviceCal(avgLsFinal);
 
-  /* ── |L1-L2| > 2 → 환경 불안정 ── */
+  /* ── |L1-L2| > 2 → 환경 불안정 경고 (but 1차 결과 유지) ── */
   var passDelta = Math.abs(p1.avgLs - p2.avgLs);
   var envUnstable = passDelta > 2.0;
 
@@ -1582,47 +1693,41 @@ function autoLock(){
     if(userGrind < 500)      grindLCorr = +0.5;
     else if(userGrind > 800) grindLCorr = -0.5;
   }
-  var LsFinalCorr = clamp(avgLsFinal + grindLCorr, 0, 100);
-  if(grindLCorr !== 0){
-    agRange = agtronRangeFromL(LsFinalCorr);
-    agtronFinal = agRange.mid;
-  }
+  var agRange = agtronRangeFromL(avgLsCalibrated);
+  var LsFinalCorr = clamp(avgLsCalibrated + grindLCorr, 0, 100);
+  if(grindLCorr !== 0){ agRange = agtronRangeFromL(LsFinalCorr); }
+  var agtronFinal = agRange.mid;
 
   /* ── 균일도 (spec §9): L* std ── */
   var uniformity = Math.round(((p1.lsStd + p2.lsStd) / 2) * 100) / 100;
 
-  /* ── 환경 불안정 시 즉시 재측정 요청 ── */
+  /* ── 환경 불안정 시 — 1차 결과 유지 + 경고 표시 (재시작 불필요) ── */
   if(envUnstable){
-    /* 완전 정지 — 스트림 포함 */
-    passPhase   = 1;
-    pass1Data   = null;
-    frameBuffer = [];
-    stableRun   = 0;
+    passPhase = 1; pass1Data = null;
     liveRunning = false;
     if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
-    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); liveTrack.stop(); }catch(e){} liveTrack=null; }
-    if(liveStream){ liveStream.getTracks().forEach(function(t){t.stop();}); liveStream=null; }
-    dom.liveVideo.srcObject = null;
+    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
     dom.liveBadge.style.display = 'none';
     dom.stopBtns.style.display  = 'none';
     dom.lrStatus.style.color    = '#e05050';
-    dom.lrStatus.textContent    = '⚠ 1·2차 L* 차이 '+passDelta.toFixed(1)+'pt (기준 2.0) — 1차부터 재측정';
-    setInst('조명·거리가 바뀌었습니다. 조건을 고정하고 1차부터 다시 측정해 주세요.');
-    var pt2 = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-title') : null;
-    var pm2 = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-msg') : null;
-    var pb2 = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-btn') : null;
-    if(pt2) pt2.textContent = '⚠ 측정 불안정';
-    if(pm2) pm2.textContent = '1·2차 L* 차이 '+passDelta.toFixed(1)+'pt\n카메라 위치·거리를 고정하고\n1차부터 재측정해 주세요.';
-    if(pb2){ pb2.textContent = '1차부터 재측정'; pb2.onclick = function(){ doRetake(); }; }
+    dom.lrStatus.textContent    = '⚠ 측정 차이 '+passDelta.toFixed(1)+'pt — 1차 결과를 사용하거나 재측정하세요';
+    setInst('조명·거리 변화가 감지됐습니다. 1차 결과를 사용하거나 다시 측정하세요.');
+    /* shakePrompt를 불안정 상태로 업데이트 */
+    var pt2e = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-title') : null;
+    var pm2e = dom.shakePrompt ? dom.shakePrompt.querySelector('.shake-prompt-msg') : null;
+    if(pt2e) pt2e.textContent = '⚠ 추가 측정 불안정';
+    if(pm2e) pm2e.innerHTML = '측정 차이 '+passDelta.toFixed(1)+'pt (기준 2.0pt)<br>조명·거리를 고정하고 다시 시도하세요.';
+    var addBtn = G('shakePromptAddBtn');
+    if(addBtn){ addBtn.textContent = '다시 추가 측정'; addBtn.onclick = startPass2; }
     if(dom.shakePrompt) dom.shakePrompt.style.display = 'flex';
     renderStepNav();
     return;
   }
 
-  dom.lrStatus.textContent = '2차 완료 — L*='+LsFinalCorr.toFixed(1)
+  dom.lrStatus.textContent = '추가 측정 완료 — 평균 L*='+LsFinalCorr.toFixed(1)
     +'  Ag '+agRange.lo+'–'+agRange.hi
     +(gMicronFinal?'  분쇄도 '+gMicronFinal+'µm':'')
-    +(grindLCorr!==0?' (분쇄 보정 '+( grindLCorr>0?'+':'')+grindLCorr+')'  :'');
+    +(grindLCorr!==0?' (분쇄 보정 '+( grindLCorr>0?'+':'')+grindLCorr+')' :'');
   [dom.lrCovFill,dom.lrLightFill,dom.lrStabFill].forEach(function(el){
     el.style.background='rgba(60,200,100,.9)'; el.style.width='100%';
   });
@@ -1631,7 +1736,7 @@ function autoLock(){
   pendingResult = {
     agtron: agtronFinal,
     agRangeLo: agRange.lo, agRangeHi: agRange.hi,
-    Ls: LsFinalCorr, LsRaw: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
+    Ls: LsFinalCorr, LsRaw: avgLsFinal, _LsRaw: avgLsFinal, As: avgAsFinal, Bs: avgBsFinal,
     sigma: uniformity, conf: confFinal,
     beanType: 'ground',
     isLocked: true, lowLight: false, stabSigma: uniformity,
@@ -1653,7 +1758,8 @@ function autoLock(){
   };
 
   passPhase = 1; pass1Data = null;
-  setInst('2차 측정 완료 — 1+2차 평균  L*=' + avgLsFinal.toFixed(1) + '  Agtron ' + agtronFinal);
+  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '추가 측정 완료 — 평균 L*='+LsFinalCorr.toFixed(1); }
+  setInst('추가 측정 완료 — 평균 L*=' + LsFinalCorr.toFixed(1) + '  Agtron ' + agtronFinal);
   renderResult(pendingResult);
   renderStepNav();
 }
@@ -2146,7 +2252,7 @@ function renderResult(r){
              : r.stabGrade==='med' ?{bg:'#fffbf0',bd:'#f0d890',tc:'#8a6800'}
              :                      {bg:'#fff0f0',bd:'#e8a0a0',tc:'#8a1a1a'};
       sn.style.background=gc.bg; sn.style.borderColor=gc.bd; st.style.color=gc.tc;
-      st.textContent='1+2차 평균  L*'+r.pass1L.toFixed(1)+'→'+r.pass2L.toFixed(1)
+      st.textContent='측정+추가 평균  L*'+r.pass1L.toFixed(1)+'→'+r.pass2L.toFixed(1)
         +'  std='+r.lsStd.toFixed(2)+'  ['+gradeLabel+']'
         +(r.needsRetake?' — 재측정하면 정확도가 높아집니다':'');
     } else if(r.isLocked){
@@ -2281,10 +2387,17 @@ function launchMode(mode){
 function grindPhaseActive_stub(){ return false; }
 var grindPhaseActive = false;
 
-/* 2차 측정 버튼 핸들러 */
+/* 1차 결과 확정 — 오버레이 닫기 */
+function confirmPass1Result(){
+  if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
+  /* decision bar 표시 (결과 저장 흐름 유지) */
+  if(dom.decision && pendingResult) dom.decision.classList.add('on');
+}
+
+/* 추가 측정 버튼 핸들러 */
 function startPass2(){
   if(dom.shakePrompt) dom.shakePrompt.style.display = 'none';
-  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '2차 측정'; }
+  if(dom.lrPass){ dom.lrPass.classList.add('on'); dom.lrPass.textContent = '추가 측정 중'; }
 
   /* 버퍼/상태 초기화 */
   frameBuffer  = [];
