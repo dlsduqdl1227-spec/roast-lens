@@ -1553,6 +1553,22 @@ function autoLock(){
   var avgBs = bsArr[Math.floor(n/2)];
   var lsMean = lsArr.reduce(function(a,b){return a+b;},0)/n;
   var lsStd  = Math.sqrt(lsArr.reduce(function(s,v){return s+Math.pow(v-lsMean,2);},0)/n);
+
+  /* ── EMA 일관성 검증: 잠금값이 EMA와 12pt 이상 괴리 시 기각 ──
+     신뢰도 95%여도 L* 자체가 EMA와 크게 다르면 오염 프레임 혼입으로 판단 */
+  if(emaL !== null && Math.abs(avgLs - emaL) > 12){
+    liveRunning = false;
+    if(liveTrack){ try{ liveTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }
+    dom.shakeWarn.classList.remove('on');
+    dom.liveBadge.style.display='none';
+    dom.stopBtns.style.display='none';
+    frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
+    dom.lrStatus.textContent = 'L* 불일치 감지 — 다시 촬영해주세요 (ΔL*=' + Math.abs(avgLs-emaL).toFixed(1) + ')';
+    showValBlock('프레임 간 L* 편차 과다 — 원두를 안정적으로 유지 후 재촬영');
+    renderStepNav();
+    return;
+  }
+
   var stabGrade = lsStd < 0.8 ? 'high' : lsStd < 1.5 ? 'med' : 'low';
   var lastR = frameBuffer[frameBuffer.length-1];
 
@@ -1817,29 +1833,41 @@ function analyzeFrame(context, W, H){
     if(beanPx.length<15) beanPx=allPx.filter(function(p){return p.lum>10&&p.lum<240;});
     if(beanPx.length<8) return null;
 
-    /* ── 픽셀 극단값 제거: 상하 각 10% ── */
+    /* ── 픽셀 극단값 제거: 상하 각 5% (좁게 — 원두 밀집 시 과잉 제거 방지) ── */
     beanPx.sort(function(a,b){return a.lum-b.lum;});
     var bn=beanPx.length;
-    var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
+    var cleanPx=beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.95));
     if(cleanPx.length<8) cleanPx=beanPx;
 
-    /* ── 표면 픽셀 55~88% → Lab ─────────────────────────────────
-       Agtron 기준 = 조명받은 표면 반사율.
-       0~55%  = 그림자·요철(너무 어두운 쪽)  → 제외
-       88~100%= specular highlight(반사광)   → 제외
-       55~88% = 실제 표면 컬러 구간           */
-    var lo=Math.floor(cleanPx.length*0.55), hi2=Math.ceil(cleanPx.length*0.88);
-    var surfPx=cleanPx.slice(lo,hi2);
-    if(surfPx.length<4) surfPx=cleanPx.slice(Math.floor(cleanPx.length*0.40),Math.ceil(cleanPx.length*0.88));
-    if(surfPx.length<4) surfPx=cleanPx;
-    var sR=0,sG=0,sB=0;
-    for(var i=0;i<surfPx.length;i++){sR+=surfPx[i].r; sG+=surfPx[i].g; sB+=surfPx[i].b;}
-    var avgR=Math.round(sR/surfPx.length), avgG=Math.round(sG/surfPx.length), avgB=Math.round(sB/surfPx.length);
+    /* ── 표면 색 추출: 밝은 절반 median (Robust Estimator) ─────────
+       기존 55-88% percentile cut은 그림자 간극 비율에 따라
+       선택 구간이 슬라이딩되어 같은 원두에서 L*가 최대 25pt 달라지는
+       문제 발생. → 밝은 절반(50-95%)의 median 픽셀을 단일 기준으로 사용.
+       median은 분포 형태에 무관하게 "대표 표면"을 안정적으로 추정.  */
+    var surfStart = Math.floor(cleanPx.length * 0.50);
+    var surfEnd   = Math.floor(cleanPx.length * 0.95);
+    var surfPx = cleanPx.slice(surfStart, surfEnd);
+    if(surfPx.length < 4) surfPx = cleanPx.slice(Math.floor(cleanPx.length*0.40));
+    if(surfPx.length < 4) surfPx = cleanPx;
+    /* median RGB — mean 대신 median으로 이상치 내성 강화 */
+    var midIdx = Math.floor(surfPx.length / 2);
+    /* R/G/B 각각 별도 정렬 후 median */
+    var rArr = surfPx.map(function(p){return p.r;}).sort(function(a,b){return a-b;});
+    var gArr = surfPx.map(function(p){return p.g;}).sort(function(a,b){return a-b;});
+    var bArr = surfPx.map(function(p){return p.b;}).sort(function(a,b){return a-b;});
+    var avgR = rArr[Math.floor(rArr.length/2)];
+    var avgG = gArr[Math.floor(gArr.length/2)];
+    var avgB = bArr[Math.floor(bArr.length/2)];
     var lab=sRGBtoLab(avgR,avgG,avgB);
     var Ls=clamp(lab.L,0,100);
 
-    /* 저조도 판단: 상위 12% lum */
-    var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.88));
+    /* ── L* 물리적 범위 검증 ────────────────────────────────────
+       커피 원두 L* 범위: 약 18(Very Dark) ~ 78(Light+토치반사)
+       범위 밖은 컵 배경·반사광 오염으로 판단 → 해당 프레임 기각  */
+    if(Ls < 16 || Ls > 82) return null;
+
+    /* 저조도 판단: 상위 10% lum */
+    var hiPx=cleanPx.slice(Math.floor(cleanPx.length*0.90));
     var hiLum=hiPx.reduce(function(a,p){return a+p.lum;},0)/Math.max(hiPx.length,1);
     var lowLight = hiLum < 38;
 
@@ -1918,28 +1946,34 @@ function runAnalysis(W,H){
   }
   if(beanPx.length < 20) beanPx = allPx.filter(function(p){ return p.lum>10&&p.lum<240; });
 
-  /* ── 3. REMOVE SHADOWS + SPECULAR: 상하 각 10% (spec §6) ── */
+  /* ── 3. REMOVE SHADOWS + SPECULAR: 상하 각 5% ── */
   beanPx.sort(function(a,b){return a.lum-b.lum;});
   var bn=beanPx.length;
-  var cleanPx=beanPx.slice(Math.floor(bn*0.10), Math.floor(bn*0.90));
+  var cleanPx=beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.95));
   if(cleanPx.length<10) cleanPx=beanPx;
 
-  /* ── 4. 중간 40% 평균 → CIELAB (WB 조작 없음) ──────────────
-     단일 중앙값 픽셀은 노이즈에 취약. 30~70% trimmed mean 사용. */
-  var hiStart2 = Math.floor(cleanPx.length * 0.88);
+  /* ── 4. 밝은 절반 median → CIELAB ──────────────────────────
+     55-88% percentile cut은 그림자 간극 비율에 따라 슬라이딩되어
+     같은 원두에서 L*가 크게 달라지는 문제 해결.
+     밝은 절반(50-95%)의 median RGB → 안정적 표면 추정. */
+  var hiStart2 = Math.floor(cleanPx.length * 0.90);
   var hiPx2    = cleanPx.slice(hiStart2);
   var hiLum2   = hiPx2.reduce(function(a,p){return a+p.lum;},0)/Math.max(hiPx2.length,1);
   var refL     = hiLum2;
   var lowLight  = hiLum2 < 40;
 
-  /* 표면 픽셀 55~88% */
-  var lo40s=Math.floor(cleanPx.length*0.55), hi40s=Math.ceil(cleanPx.length*0.88);
-  var mid40s=cleanPx.slice(lo40s,hi40s);
-  if(mid40s.length<4) mid40s=cleanPx.slice(Math.floor(cleanPx.length*0.40),Math.ceil(cleanPx.length*0.88));
-  if(mid40s.length<4) mid40s=cleanPx;
-  var sR2=0,sG2=0,sB2=0;
-  for(var i2=0;i2<mid40s.length;i2++){sR2+=mid40s[i2].r;sG2+=mid40s[i2].g;sB2+=mid40s[i2].b;}
-  var mR=Math.round(sR2/mid40s.length), mG=Math.round(sG2/mid40s.length), mB=Math.round(sB2/mid40s.length);
+  /* 밝은 절반 median */
+  var sStart = Math.floor(cleanPx.length * 0.50);
+  var sEnd   = Math.floor(cleanPx.length * 0.95);
+  var mid40s = cleanPx.slice(sStart, sEnd);
+  if(mid40s.length < 4) mid40s = cleanPx.slice(Math.floor(cleanPx.length*0.40));
+  if(mid40s.length < 4) mid40s = cleanPx;
+  var rArr2 = mid40s.map(function(p){return p.r;}).sort(function(a,b){return a-b;});
+  var gArr2 = mid40s.map(function(p){return p.g;}).sort(function(a,b){return a-b;});
+  var bArr2 = mid40s.map(function(p){return p.b;}).sort(function(a,b){return a-b;});
+  var mR = rArr2[Math.floor(rArr2.length/2)];
+  var mG = gArr2[Math.floor(gArr2.length/2)];
+  var mB = bArr2[Math.floor(bArr2.length/2)];
   var lab = sRGBtoLab(mR, mG, mB);
   var Ls  = clamp(lab.L, 0, 100);
   var As  = lab.a, Bs = lab.b;
@@ -1968,15 +2002,16 @@ function runAnalysis(W,H){
     var jb=jp.filter(function(p){return (p.r-p.b)>5&&p.r>=p.g*0.82&&p.lum>10&&p.lum<235;});
     if(jb.length<15) jb=jp;
     jb.sort(function(a,b){return a.lum-b.lum;});
-    var jc=jb.slice(Math.floor(jb.length*.10),Math.floor(jb.length*.90));
+    var jc=jb.slice(Math.floor(jb.length*.05),Math.floor(jb.length*.95));
     if(!jc.length) jc=jb;
-    var jlo=Math.floor(jc.length*0.55), jhi=Math.ceil(jc.length*0.88);
+    var jlo=Math.floor(jc.length*0.50), jhi=Math.ceil(jc.length*0.95);
     var jmid=jc.slice(jlo,jhi);
-    if(jmid.length<4) jmid=jc.slice(Math.floor(jc.length*0.40),Math.ceil(jc.length*0.88));
+    if(jmid.length<4) jmid=jc.slice(Math.floor(jc.length*0.40));
     if(jmid.length<4) jmid=jc;
-    var jsR=0,jsG=0,jsB=0;
-    jmid.forEach(function(p){jsR+=p.r;jsG+=p.g;jsB+=p.b;});
-    var jR=Math.round(jsR/jmid.length),jG=Math.round(jsG/jmid.length),jB=Math.round(jsB/jmid.length);
+    var jrArr=jmid.map(function(p){return p.r;}).sort(function(a,b){return a-b;});
+    var jgArr=jmid.map(function(p){return p.g;}).sort(function(a,b){return a-b;});
+    var jbArr=jmid.map(function(p){return p.b;}).sort(function(a,b){return a-b;});
+    var jR=jrArr[Math.floor(jrArr.length/2)], jG=jgArr[Math.floor(jgArr.length/2)], jB=jbArr[Math.floor(jbArr.length/2)];
     stabLs.push(sRGBtoLab(jR,jG,jB).L);
   });
   var sMean=stabLs.reduce(function(a,b){return a+b;},0)/stabLs.length;
