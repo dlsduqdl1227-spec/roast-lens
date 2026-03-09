@@ -1797,20 +1797,32 @@ function _grindFromROI(context, rx, ry, rw, rh){
   var imgData=context.getImageData(rx,ry,rw,rh);
   var data=imgData.data;
 
-  /* ── Grayscale + mean ── */
+  /* ── Grayscale + 흰색/배경 픽셀 마스킹 ──
+     컵내벽·A4 배경(S<0.12)은 분쇄도 텍스처 측정에서 제외.
+     해당 픽셀은 이웃 평균으로 대체하여 variogram 연속성 유지. */
   var gray=new Float32Array(rw*rh);
-  var gMean=0;
+  var mask=new Uint8Array(rw*rh); /* 0=배경(제외), 1=원두 */
+  var gMean=0, validCnt=0;
   for(var i=0;i<rw*rh;i++){
     var ri=i*4;
-    gray[i]=0.299*data[ri]+0.587*data[ri+1]+0.114*data[ri+2];
-    gMean+=gray[i];
+    var pr=data[ri], pg=data[ri+1], pb=data[ri+2];
+    var pmx=Math.max(pr,pg,pb), pmn=Math.min(pr,pg,pb);
+    var psat= pmx>0?(pmx-pmn)/pmx:0;
+    var prbR=(pr-pb)/Math.max(pg,1);
+    /* 채도 기반 원두 판별 */
+    mask[i] = (psat >= 0.10 && prbR >= 0.08) ? 1 : 0;
+    gray[i]=0.299*pr+0.587*pg+0.114*pb;
+    if(mask[i]){ gMean+=gray[i]; validCnt++; }
   }
-  gMean/=(rw*rh);
+  if(validCnt < (rw*rh)*0.08) return null; /* 원두 픽셀 너무 적음 */
+  gMean = validCnt > 0 ? gMean/validCnt : 128;
+  /* 배경 픽셀 → 평균값으로 교체 (variogram 오염 방지) */
+  for(var i=0;i<rw*rh;i++) if(!mask[i]) gray[i]=gMean;
 
-  /* ── 텍스처 에너지 체크 ── */
+  /* ── 텍스처 에너지 체크 (원두 픽셀만) ── */
   var gVar=0;
-  for(var i=0;i<rw*rh;i++) gVar+=Math.pow(gray[i]-gMean,2);
-  gVar/=(rw*rh);
+  for(var i=0;i<rw*rh;i++) if(mask[i]) gVar+=Math.pow(gray[i]-gMean,2);
+  gVar = validCnt > 0 ? gVar/validCnt : 0;
   if(gVar<4) return null; /* 임계값 낮춤: 에스프레소는 매우 균일 */
 
   /* ── Variogram (semivariance): γ(h) ──────────────────────────
@@ -1952,16 +1964,12 @@ function analyzeFrame(context, W, H){
       }
     if(allPx.length<30) return null;
 
-    /* Chromatic filter: coffee bean pixels only */
-    var beanPx=allPx.filter(function(p){
-      return (p.r-p.b)>10 && p.r>=p.g*0.88 && p.lum>15 && p.lum<225;
-    });
-    if(beanPx.length<25){
-      beanPx=allPx.filter(function(p){
-        return (p.r-p.b)>5 && p.r>=p.g*0.82 && p.lum>10 && p.lum<235;
-      });
-    }
-    if(beanPx.length<15) beanPx=allPx.filter(function(p){return p.lum>10&&p.lum<240;});
+    /* ── Chromatic filter: 채도 기반 원두 픽셀 추출 ── */
+    var beanPx = allPx.filter(function(p){ return isBeanPixel(p, 'strict'); });
+    if(beanPx.length < 25)
+      beanPx = allPx.filter(function(p){ return isBeanPixel(p, 'relaxed'); });
+    if(beanPx.length < 15)
+      beanPx = allPx.filter(function(p){ return isBeanPixel(p, 'lum'); });
     if(beanPx.length<8) return null;
 
     /* ── 픽셀 극단값 제거: 상하 각 5% (좁게 — 원두 밀집 시 과잉 제거 방지) ── */
@@ -2062,20 +2070,12 @@ function runAnalysis(W,H){
     }
   if(allPx.length<40) throw new Error('픽셀 부족');
 
-  /* ── 2. CHROMATIC FILTER: isolate bean pixels ───────────
-     Coffee brown: warm hue (R>B), not too green, mid-range lum  */
-  var beanPx = allPx.filter(function(p){
-    return (p.r - p.b) > 10
-        && p.r >= p.g * 0.88
-        && p.lum > 15
-        && p.lum < 225;
-  });
-  if(beanPx.length < 30){
-    beanPx = allPx.filter(function(p){
-      return (p.r - p.b) > 5 && p.r >= p.g * 0.82 && p.lum > 10 && p.lum < 235;
-    });
-  }
-  if(beanPx.length < 20) beanPx = allPx.filter(function(p){ return p.lum>10&&p.lum<240; });
+  /* ── 2. CHROMATIC FILTER: 채도 기반 원두 픽셀 추출 ───────── */
+  var beanPx = allPx.filter(function(p){ return isBeanPixel(p, 'strict'); });
+  if(beanPx.length < 30)
+    beanPx = allPx.filter(function(p){ return isBeanPixel(p, 'relaxed'); });
+  if(beanPx.length < 20)
+    beanPx = allPx.filter(function(p){ return isBeanPixel(p, 'lum'); });
 
   /* ── 3. REMOVE SHADOWS + SPECULAR: 상하 각 5% ── */
   beanPx.sort(function(a,b){return a.lum-b.lum;});
@@ -2130,8 +2130,8 @@ function runAnalysis(W,H){
         var d=ctx.getImageData(clamp(x,0,W-1),clamp(y,0,H-1),1,1).data;
         jp.push({r:d[0],g:d[1],b:d[2],lum:lum(d[0],d[1],d[2])});
       }
-    var jb=jp.filter(function(p){return (p.r-p.b)>5&&p.r>=p.g*0.82&&p.lum>10&&p.lum<235;});
-    if(jb.length<15) jb=jp;
+    var jb = jp.filter(function(p){ return isBeanPixel(p, 'relaxed'); });
+    if(jb.length < 15) jb = jp.filter(function(p){ return isBeanPixel(p, 'lum'); });
     jb.sort(function(a,b){return a.lum-b.lum;});
     var jc=jb.slice(Math.floor(jb.length*.05),Math.floor(jb.length*.95));
     if(!jc.length) jc=jb;
@@ -2543,6 +2543,28 @@ function updateExamPanel(){
    COLOR MATH
 ════════════════════════════════════════ */
 function lum(r,g,b){return .2126*r+.7152*g+.0722*b;}
+
+/* ── isBeanPixel: 채도(Saturation) + rb비율 기반 원두 픽셀 판별 ────────
+   기존 R-B>10 방식은 컵내벽 그림자(R-B=13~15, S≈0.08)를 통과시킴.
+   원두: S=0.35~0.60, rbRatio=0.45~1.0
+   컵내벽/A4: S=0.01~0.12, rbRatio=0.01~0.15
+   → Saturation 임계값으로 완전 분리 가능.
+
+   strict  (1차): sat>=0.18, rbRatio>=0.20 → 컵내벽 완전 차단
+   relaxed (2차): sat>=0.12, rbRatio>=0.12 → 어두운 원두 보완
+   lum only(3차): lum 범위만 → 최후 fallback (픽셀 부족 시)          */
+function isBeanPixel(p, mode){
+  var mx = Math.max(p.r, p.g, p.b);
+  var mn = Math.min(p.r, p.g, p.b);
+  var sat = mx > 0 ? (mx - mn) / mx : 0;
+  var rbRatio = (p.r - p.b) / Math.max(p.g, 1);
+  if(mode === 'strict'){
+    return sat >= 0.18 && rbRatio >= 0.20 && p.lum > 12 && p.lum < 222;
+  } else if(mode === 'relaxed'){
+    return sat >= 0.12 && rbRatio >= 0.12 && p.lum > 10 && p.lum < 235;
+  }
+  return p.lum > 10 && p.lum < 240;
+}
 function toLinear(c){return c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4);}
 function median(arr,k){
   var s=arr.slice().sort(function(a,b){return a[k]-b[k];});
@@ -2695,10 +2717,12 @@ function stepMainAction(){ tileAction(currentMode || 'whole'); }
    BEAN VALIDATION GATE
    배경이나 비원두 객체 촬영 시 측정 차단
 ════════════════════════════════════════ */
-/* MIN_BEAN_COV: 원두 픽셀 비율 최솟값 */
-var MIN_BEAN_COV_WHOLE = 0.20;  /* 홀빈: 20% 이상이 커피 색상이어야 */
-var MIN_BEAN_COV_GCOL  = 0.18;  /* 그라운드: 18% */
-var MIN_BEAN_COV_GRIND = 0.12;  /* 분쇄도: 12% (입자가 작아 상대적으로 낮음) */
+/* MIN_BEAN_COV: 원두 픽셀 비율 최솟값
+   채도 기반 필터로 컵내벽/흰배경 제거 후 순수 원두 픽셀 비율 기준
+   → 기존보다 낮춰도 정확도 유지 (오염 픽셀 제거 효과)          */
+var MIN_BEAN_COV_WHOLE = 0.15;  /* 홀빈: 15% */
+var MIN_BEAN_COV_GCOL  = 0.13;  /* 그라운드: 13% */
+var MIN_BEAN_COV_GRIND = 0.09;  /* 분쇄도: 9% */
 
 function validateBeanSubject(frames){
   /* frames: frameBuffer array of analyzeFrame results */
