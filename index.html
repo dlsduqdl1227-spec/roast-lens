@@ -198,6 +198,16 @@ body.unlocked .gate{display:none}
 .lv{font-family:var(--m);font-size:13px;color:var(--t2)}
 .ld{font-family:var(--m);font-size:9px;color:var(--tm);margin-top:2px;letter-spacing:.05em;text-transform:uppercase}
 .sw-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--b)}
+/* 분쇄도 전용 모드: 컬러 섹션 전체 숨김 */
+.rp.grind-mode .primary,
+.rp.grind-mode .roast-row,
+.rp.grind-mode .scales,
+.rp.grind-mode .lab-sec,
+.rp.grind-mode .sw-row,
+.rp.grind-mode .flash-alert,
+.rp.grind-mode .noref-notice { display:none !important; }
+/* 분쇄도 전용: conf-row는 신뢰도 표시 유지 */
+.rp.grind-mode .conf-row { display:block; }
 /* ─── GRIND SIZE ─── */
 .grind-sec{border-bottom:1px solid var(--b);display:none}
 .grind-sec.on{display:block}
@@ -607,12 +617,12 @@ body.unlocked .gate{display:none}
             font-family="'DM Mono',monospace" font-size="9"
             fill="#484848" letter-spacing="1">하단 탭을 눌러 측정 시작</text>
 
-      <!-- bottom scale labels -->
-      <text x="200" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">GROUND COLOR</text>
-      <text x="320" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">GRIND SIZE</text>
+      <!-- bottom scale labels — symmetric -->
+      <text x="130" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#444">GROUND COLOR</text>
+      <text x="270" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#444">GRIND SIZE</text>
 
       <!-- separator line -->
-      <line x1="253" y1="272" x2="253" y2="286" stroke="#2a2a2a" stroke-width=".5"/>
+      <line x1="200" y1="272" x2="200" y2="286" stroke="#2a2a2a" stroke-width=".5"/>
     </svg>
   </div>
   <video id="liveVideo" autoplay playsinline muted></video>
@@ -1666,6 +1676,10 @@ function updateLiveReadout(r, smoothL, isShake, conv){
     } else {
       status = '카메라를 컵 위에 놓고 천천히 가까이 접근해주세요';
     }
+  } else if(currentMode === 'color' && typeof r !== 'undefined' && r && (r.whitePxCount||0) < 20){
+    /* 흰 기준 픽셀 부족 — 컵 내벽 또는 A4 배경 노출 안내 */
+    statusColor = '#f0c040';
+    status = '흰 배경 필요 — 컵 내벽 가장자리가 조금 보이도록 조정해주세요';
   } else if(conv.converging){
     /* ── 수렴 감지: 가장 중요한 상태 ── */
     var convSigma = computeBufSigma();
@@ -1884,7 +1898,7 @@ function _grindFromROI(context, rx, ry, rw, rh){
     gray[i]=0.299*pr+0.587*pg+0.114*pb;
     if(mask[i]){ gMean+=gray[i]; validCnt++; }
   }
-  if(validCnt < (rw*rh)*0.08) return null; /* 원두 픽셀 너무 적음 */
+  if(validCnt < (rw*rh)*0.05) return null; /* 원두 픽셀 최소 5% */
   gMean = validCnt > 0 ? gMean/validCnt : 128;
   /* 배경 픽셀 → 평균값으로 교체 (variogram 오염 방지) */
   for(var i=0;i<rw*rh;i++) if(!mask[i]) gray[i]=gMean;
@@ -1893,7 +1907,7 @@ function _grindFromROI(context, rx, ry, rw, rh){
   var gVar=0;
   for(var i=0;i<rw*rh;i++) if(mask[i]) gVar+=Math.pow(gray[i]-gMean,2);
   gVar = validCnt > 0 ? gVar/validCnt : 0;
-  if(gVar<4) return null; /* 임계값 낮춤: 에스프레소는 매우 균일 */
+  if(gVar<2) return null; /* 임계값 추가 완화: 에스프레소 미세분쇄 */
 
   /* ── Variogram (semivariance): γ(h) ──────────────────────────
      에스프레소(150–350µm)는 PX_PER_MM=3.6 기준 약 0.54–1.26px
@@ -1931,7 +1945,7 @@ function _grindFromROI(context, rx, ry, rw, rh){
   /* ── Plateau 추정 ── */
   var plateau=sv.slice(Math.floor(sv.length*0.55)).slice().sort(function(a,b){return a-b;});
   var plateauVal=plateau[Math.floor(plateau.length/2)];
-  if(plateauVal<0.5) return null; /* 임계값 낮춤 */
+  if(plateauVal<0.2) return null; /* 임계값 완화: 균일한 분쇄도에서도 측정 가능 */
 
   /* ── Variogram Range: sv가 plateau의 65%에 처음 도달하는 lag ──
      에스프레소는 lag=0.5~1에서 이미 65% 도달 → 극소 rangeLag 출력 */
@@ -2069,7 +2083,7 @@ function analyzeFrame(context, W, H){
     var hiLum = hiPx.reduce(function(a,p){return a+p.lum;},0)/Math.max(hiPx.length,1);
     var lowLight = hiLum < 35;
 
-    var agtron = Math.round(clamp(1.35*Ls - 11.6, 15, 95));
+    var agtron = Math.round(clamp(1.35*Ls - 18.6, 15, 95));
 
     var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
     var lMean=lSum/cleanPx.length, lVar=0;
@@ -2156,7 +2170,7 @@ function runAnalysis(W,H){
   var lab = sRGBtoLab(mR, mG, mB);
   var Ls  = ref2.normL;
   var As  = lab.a, Bs = lab.b;
-  var agtron = Math.round(clamp(1.35*Ls-11.6, 15, 95));
+  var agtron = Math.round(clamp(1.35*Ls - 18.6, 15, 95));
 
   var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
   var lMean=lSum/cleanPx.length, lVar=0;
@@ -2267,18 +2281,22 @@ function renderGrindOnly(g){
     var grindRelText  = g.grindSpread != null ? (g.grindSpread<=60?'신뢰도 양호':g.grindSpread<=120?'편차 보통':'균일도 낮음 — 5~8cm 가까이 재촬영 권장') : '';
     G('grindNote').innerHTML = gi.note + ' (텍스처 기반 추정값)'
       + (g.grindSpread != null ? '  |  구역 편차 ±' + Math.round(g.grindSpread/2) + 'µm  <span class="grind-note-reliability '+grindRelClass+'">'+grindRelText+'</span>' : '');
+    /* 분쇄도 신뢰도 — conf-row 활용 */
+    var grindConf = g.grindSpread != null ? Math.round(clamp((1 - g.grindSpread/300)*100, 30, 95)) : 60;
+    var cf=G('confFill'); if(cf){ cf.style.width=grindConf+'%'; cf.className='conf-fill '+(grindConf>=70?'cg':'cy'); }
+    var ct=G('confTxt');  if(ct){ ct.textContent=grindConf+'%  텍스처 일관성 기반  '+g.grindFrames+'프레임 분석'; }
     setInst('분쇄도 측정 완료 — ' + g.grindMicron + 'µm  ' + gi.cat);
   } else {
     grindSec.classList.remove('on');
-    setInst('분쇄도를 감지하지 못했습니다. 다시 촬영해주세요.');
+    /* 측정 실패 안내 */
+    var cf=G('confFill'); if(cf){ cf.style.width='0%'; cf.className='conf-fill cy'; }
+    var ct=G('confTxt');  if(ct){ ct.textContent='측정 실패 — 5~10cm 거리에서 수직으로 재촬영해주세요'; }
+    setInst('분쇄도를 감지하지 못했습니다. 라이트를 켜고 5~10cm 거리에서 수직으로 재촬영해주세요.');
   }
 
-  /* 분쇄도 전용 뷰 — 결과 패널 표시, 컬러 섹션은 숨김 */
-  /* color sections: hide rh-tag color info, only show grind */
+  /* 분쇄도 전용 뷰 — grind-mode 클래스로 컬러 섹션 전부 숨김 */
   G('rhTag').textContent = '분쇄도 측정';
-  /* rp 패널 표시 (컬러 수치는 grind 모드에선 의미 없음 — 숨김) */
-  var colorOnlyEls = ['pL','pA','rName','rRange'];
-  colorOnlyEls.forEach(function(id){ var el=G(id); if(el) el.textContent='—'; });
+  dom.rp.classList.add('grind-mode');
   dom.decision.classList.add('on');
   var dq=dom.decision.querySelector('.decision-q');
   if(dq) dq.textContent='이 분쇄도 결과를 저장하시겠습니까?';
@@ -2292,6 +2310,7 @@ function renderGrindOnly(g){
    RENDER RESULT (pending state — decision bar always shown)
 ════════════════════════════════════════ */
 function renderResult(r){
+  dom.rp.classList.remove('grind-mode');  /* 컬러 모드: 컬러 섹션 복원 */
   var name=roastName(r.Ls);
   G('pL').textContent=r.Ls.toFixed(1);
   /* Agtron 범위: 예상 수치로 표시 */
@@ -2691,17 +2710,17 @@ function sRGBtoLab(r8,g8,b8){
   function f(t){return t>.008856?Math.cbrt(t):7.787*t+16/116;}
   return{L:116*f(Y/1)  -16, a:500*(f(X/.95047)-f(Y/1)), b:200*(f(Y/1)-f(Z/1.08883))};
 }
-/* ── Agtron 예상 범위: L* 기반 룩업 (캘리브레이션 Ag=1.35*L*-11.6 기준) ── */
+/* ── Agtron 예상 범위: L* 기반 룩업 (캘리브레이션 Ag=1.35*L*-18.6 기준) ── */
 function agtronRangeFromL(L){
-  /* 공식 = 1.35*L* - 11.6
+  /* 공식 = 1.35*L* - 18.6 (AWB 보정 캘리브레이션)
      실측 캘리브레이션: L*=65.6 → Ag 77 (기준점)
      앵커: L*≈27→Ag 25(Dark), L*≈75→Ag 90(Light)
      ±5 불확실 범위 */
-  var mid = Math.round(clamp(1.35*L - 11.6, 15, 95));
+  var mid = Math.round(clamp(1.35*L - 18.6, 15, 95));
   return {lo: Math.max(15, mid-5), hi: Math.min(95, mid+5), mid: mid};
 }
 
-/* ── 로스트 레벨 분류 (Ag=1.35*L*-11.6 캘리브레이션 기준) ──
+/* ── 로스트 레벨 분류 (Ag=1.35*L*-18.6 캘리브레이션 기준) ──
    Ag≥85 → L*≥71.5 → Light
    Ag≥65 → L*≥56.7 → Medium
    Ag≥45 → L*≥41.9 → Medium-Dark
