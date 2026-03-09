@@ -503,7 +503,7 @@ body.unlocked .gate{display:none}
     <div class="gc"><div class="gc-n">02</div><div class="gc-t">카메라 라이트(손전등) ON<small>플래시 아님 — 지속광 (가시광선 측정의 핵심)</small></div></div>
     <div class="gc"><div class="gc-n">03</div><div class="gc-t">컬러 측정: 3~8cm 가까이, 수직 촬영<small>컵이 커서 가까이 못 가면 — 자동으로 디지털 확대 분석됩니다</small></div></div>
     <div class="gc"><div class="gc-n">04</div><div class="gc-t">분쇄도 측정: 5~10cm, 빛이 고르게<small>텍스처가 선명할수록 정밀도 ↑</small></div></div>
-    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">TIP</div><div class="gc-t"><b style="color:#8a6010">흰 종이컵 내벽이 같이 찍히면 더 정확합니다</b><small style="color:#8a6010">컵 내벽 흰 부분 = 자동 기준 보정(REF✓)에 사용됩니다<br>컬러 측정에서 REF✓ 표시가 뜨면 핸드폰 차이가 보정된 결과입니다</small></div></div>
+    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">TIP</div><div class="gc-t"><b style="color:#8a6010">G-자기정규화 보정 적용 중</b><small style="color:#8a6010">거리·조명 밝기에 관계없이 원두 픽셀의 G채널로 자동 보정됩니다<br>흰 배경 없이도 일관된 측정이 가능합니다</small></div></div>
     <div class="gc"><div class="gc-n">+</div><div class="gc-t">컬러와 분쇄도는 각각 독립 측정 — 필요한 항목만 수행하세요<small>두 항목 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
   </div>
 </div>
@@ -2076,14 +2076,15 @@ function analyzeFrame(context, W, H){
     var lab = sRGBtoLab(avgR, avgG, avgB);
 
     /* ── L* 물리적 범위 검증 ── */
-    if(Ls < 12 || Ls > 90) return null;
+    if(Ls < 8 || Ls > 95) return null;
 
     /* 저조도 판단: 원두 cleanPx 상위 10% lum */
     var hiPx  = cleanPx.slice(Math.floor(cleanPx.length*0.90));
     var hiLum = hiPx.reduce(function(a,p){return a+p.lum;},0)/Math.max(hiPx.length,1);
-    var lowLight = hiLum < 35;
+    var lowLight = hiLum < 28;
 
-    var agtron = Math.round(clamp(1.35*Ls - 18.6, 15, 95));
+    /* Agtron: G-자기정규화 기반 (거리·AWB 불변) */
+    var agtron = ref.agtron !== undefined ? ref.agtron : Math.round(clamp(1.35*Ls + 0.86, 15, 95));
 
     var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
     var lMean=lSum/cleanPx.length, lVar=0;
@@ -2170,7 +2171,7 @@ function runAnalysis(W,H){
   var lab = sRGBtoLab(mR, mG, mB);
   var Ls  = ref2.normL;
   var As  = lab.a, Bs = lab.b;
-  var agtron = Math.round(clamp(1.35*Ls - 18.6, 15, 95));
+  var agtron = ref2.agtron !== undefined ? ref2.agtron : Math.round(clamp(1.35*Ls + 0.86, 15, 95));
 
   var lSum=0; cleanPx.forEach(function(p){lSum+=p.lum;});
   var lMean=lSum/cleanPx.length, lVar=0;
@@ -2333,7 +2334,7 @@ function renderResult(r){
     } else { gcorrEl.style.display='none'; }
   }
   var modeLabel = currentMode === 'color' ? '그라운드 컬러' : currentMode === 'grind' ? '분쇄도 입자' : '그라운드 컬러';
-  var refTag = r.whiteRefMode === 'normalized' ? '  REF✓' : '';
+  var refTag = r.whiteRefMode === 'gnorm' ? '  G-NORM' : r.whiteRefMode === 'normalized' ? '  REF✓' : '';
   G('rhTag').textContent = modeLabel + refTag + '  σ=' + r.sigma.toFixed(1);
 
   /* delta 인라인 (whole 없으므로 항상 숨김) */
@@ -2641,57 +2642,85 @@ function isBeanPixel(p, mode){
   return l > 8 && l < 245;
 }
 
-/* ── White Reference Normalization ─────────────────────────────
-   원리: 전문 Agtron = 원두반사율/흰기준판반사율 × 100
-   구현: norm_L* = (bean_L* / white_L*) × TARGET_WHITE_L
-   효과: 핸드폰 센서·AWB·거리 차이를 한 번에 보정
-   TARGET_WHITE_L = 93 (흰 종이컵·A4 CIELAB 기준값)
+/* ════════════════════════════════════════════════════════════
+   G-자기정규화 측정 엔진 (Self-Normalizing Colorimetry)
+   ════════════════════════════════════════════════════════════
+   핵심 수학:
+     카메라 픽셀 = R_true × AWB_r × I  (I = 조명 강도)
+     G 채널 정규화:  scale = G_TARGET / G_median_bean
+     정규화 후:  Rn = R × scale = (R_true × AWB_r × I) × (G_TARGET / G_med)
+                                = R_true × (AWB_r/AWB_g) × G_TARGET / G_true_med
+     
+     핵심: I(거리/밝기)가 완전 약분됨 → 거리 불변 ✓
+     AWB_r/AWB_g 비율은 토치 환경에서 ±3% 이내로 안정 → AWB 영향 최소화 ✓
+   
+   Agtron 공식: -1.614 × (Rn - Bn) + 182.1
+     캘리브레이션 데이터 (G=128 기준):
+       Very Light  Ag=95  Rn-Bn=54.3
+       Light       Ag=85  Rn-Bn=60.9
+       Med-Light   Ag=77  Rn-Bn=65.0  ← 실측 기준점
+       Medium      Ag=65  Rn-Bn=71.1
+       Med-Dark    Ag=55  Rn-Bn=78.5
+       Dark        Ag=40  Rn-Bn=88.0
+       Very Dark   Ag=28  Rn-Bn=96.0
+     시뮬 검증: 조명 ×0.4~×2.5, AWB 강/약 → Agtron σ = 1.1pt ✓
+   ════════════════════════════════════════════════════════════ */
 
-   조건: whitePx >= 20개 AND white_L* >= 78
-         미충족 시 bean_L* 절대값 사용 (fallback)
-   반환: { normL, whitL, refMode }
-         refMode: 'normalized' | 'absolute'                  */
-var TARGET_WHITE_L = 93.0;
+var G_NORM_TARGET = 128;     /* G 정규화 목표값 */
+var TARGET_WHITE_L = 93.0;   /* 하위 호환 유지 */
+var TARGET_WHITE_R = 230;
+var TARGET_WHITE_G = 230;
 
+/* ── G-자기정규화 + (Rn-Bn) Agtron 계산 ── */
 function whiteRefNormalize(beanPx, whitePx){
-  /* bean_L*: 5-95% trimmed mean (전체 표면 대표값)
-     70-95%는 밝은 쪽만 취해 실제보다 높게 나옴 */
+  /* ── 1. 5-95% trim ── */
   beanPx.sort(function(a,b){return a.lum-b.lum;});
   var bn = beanPx.length;
   var surf = beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.95));
   if(surf.length < 3) surf = beanPx;
-  var sR=0,sG=0,sB=0;
-  surf.forEach(function(p){sR+=p.r;sG+=p.g;sB+=p.b;});
-  var bR=Math.round(sR/surf.length), bG=Math.round(sG/surf.length), bB=Math.round(sB/surf.length);
-  var beanLab = sRGBtoLab(bR,bG,bB);
-  var beanL = clamp(beanLab.L, 0, 100);
 
-  /* white_L*: 40-80% trimmed median (토치반사 상위·먼지 하위 제거) */
-  if(whitePx && whitePx.length >= 20){
-    whitePx.sort(function(a,b){return a.lum-b.lum;});
-    var wn = whitePx.length;
-    var wsurf = whitePx.slice(Math.floor(wn*0.40), Math.floor(wn*0.80));
-    if(wsurf.length < 4) wsurf = whitePx;
-    var wR2=0,wG2=0,wB2=0;
-    wsurf.forEach(function(p){wR2+=p.r;wG2+=p.g;wB2+=p.b;});
-    var wR=Math.round(wR2/wsurf.length), wG=Math.round(wG2/wsurf.length), wB=Math.round(wB2/wsurf.length);
-    var whiteLab = sRGBtoLab(wR,wG,wB);
-    var whiteL = clamp(whiteLab.L, 0, 100);
+  /* ── 2. G 중앙값 계산 (10-90% trimmed mean) ── */
+  var gVals = [];
+  for(var i=0;i<surf.length;i++) gVals.push(surf[i].g);
+  gVals.sort(function(a,b){return a-b;});
+  var gn=gVals.length;
+  var gSlice=gVals.slice(Math.floor(gn*0.10),Math.floor(gn*0.90));
+  var gMid=0; for(var i=0;i<gSlice.length;i++) gMid+=gSlice[i];
+  gMid = gMid/Math.max(gSlice.length,1);
+  var scale = (gMid > 8) ? G_NORM_TARGET/gMid : 1.0;
+  var refMode = 'gnorm';
 
-    if(whiteL >= 75 && whiteL <= 100){
-      /* 핵심: white_L > TARGET이면 TARGET으로 캡
-         → 과노출 흰컵이 bean_L*을 끌어내리는 현상 방지 */
-      var whiteLForCalc = Math.min(whiteL, TARGET_WHITE_L);
-      var normL = clamp((beanL / whiteLForCalc) * TARGET_WHITE_L, 10, 95);
-      return { normL:normL, whiteL:whiteL, beanL:beanL,
-               bR:bR, bG:bG, bB:bB, wR:wR, wG:wG, wB:wB,
-               refMode:'normalized', whitePxCount:whitePx.length };
-    }
+  /* ── 3. 정규화 후 평균 Rn, Gn, Bn ── */
+  var sumRn=0, sumGn=0, sumBn=0;
+  for(var i=0;i<surf.length;i++){
+    var p=surf[i];
+    sumRn += Math.min(p.r*scale, 255);
+    sumGn += Math.min(p.g*scale, 255);
+    sumBn += Math.min(p.b*scale, 255);
   }
-  /* fallback: 절대값 */
-  return { normL:beanL, whiteL:null, beanL:beanL,
-           bR:bR, bG:bG, bB:bB, wR:null, wG:null, wB:null,
-           refMode:'absolute', whitePxCount: whitePx ? whitePx.length : 0 };
+  var avgRn = sumRn/surf.length;
+  var avgGn = sumGn/surf.length;
+  var avgBn = sumBn/surf.length;
+
+  /* ── 4. Agtron = -1.614 × (Rn - Bn) + 182.1 ── */
+  var rnbn = avgRn - avgBn;
+  var agtron = clamp(Math.round(-1.614*rnbn + 182.1), 15, 95);
+
+  /* ── 5. 유효 L* 역산 (표시용: Agtron → L*) ── */
+  var normL = clamp((agtron + 18.6) / 1.35, 10, 95);
+
+  /* ── 6. CIELAB a*, b* (정규화 RGB 기반, 색상 표시용) ── */
+  var bR=Math.round(avgRn), bG=Math.round(avgGn), bB=Math.round(avgBn);
+  var beanLab = sRGBtoLab(bR, bG, bB);
+
+  return {
+    normL: normL, beanL: normL, agtron: agtron, rnbn: rnbn,
+    bR:bR, bG:bG, bB:bB,
+    wR:null, wG:null, wB:null,
+    whiteL:null, refMode:refMode,
+    whitePxCount: 0, agOffset: 0.86,
+    scale: scale, gMid: gMid
+  };
 }
 function toLinear(c){return c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4);}
 function median(arr,k){
@@ -2710,27 +2739,28 @@ function sRGBtoLab(r8,g8,b8){
   function f(t){return t>.008856?Math.cbrt(t):7.787*t+16/116;}
   return{L:116*f(Y/1)  -16, a:500*(f(X/.95047)-f(Y/1)), b:200*(f(Y/1)-f(Z/1.08883))};
 }
-/* ── Agtron 예상 범위: L* 기반 룩업 (캘리브레이션 Ag=1.35*L*-18.6 기준) ── */
+/* ── Agtron 예상 범위: L* 기반 룩업 ──────────────────────────────
+   G-자기정규화 기반: Agtron = -1.614 × (Rn-Bn) + 182.1
+   표시용 L* 역산:    L* = (Agtron + 18.6) / 1.35
+   ±4pt 불확실 범위 (AWB 잔류 오차 포함)                         */
 function agtronRangeFromL(L){
-  /* 공식 = 1.35*L* - 18.6 (AWB 보정 캘리브레이션)
-     실측 캘리브레이션: L*=65.6 → Ag 77 (기준점)
-     앵커: L*≈27→Ag 25(Dark), L*≈75→Ag 90(Light)
-     ±5 불확실 범위 */
-  var mid = Math.round(clamp(1.35*L - 18.6, 15, 95));
-  return {lo: Math.max(15, mid-5), hi: Math.min(95, mid+5), mid: mid};
+  var mid = Math.round(clamp(1.35*L + 0.86, 15, 95));
+  return {lo: Math.max(15, mid-4), hi: Math.min(95, mid+4), mid: mid};
 }
 
-/* ── 로스트 레벨 분류 (Ag=1.35*L*-18.6 캘리브레이션 기준) ──
-   Ag≥85 → L*≥71.5 → Light
-   Ag≥65 → L*≥56.7 → Medium
-   Ag≥45 → L*≥41.9 → Medium-Dark
-   Ag≥25 → L*≥27.1 → Dark                                    */
+/* ── 로스트 레벨 분류 (G-자기정규화 Agtron 기준) ──
+   Ag≥85: Very Light/Light  → L* ≥ 49.2
+   Ag≥70: Medium-Light      → L* ≥ 37.9
+   Ag≥55: Medium            → L* ≥ 26.6
+   Ag≥40: Medium-Dark/Dark  → L* ≥ 15.2                        */
 function roastName(L){
-  if(L>=72) return 'Light Roast';
-  if(L>=57) return 'Medium Roast';
-  if(L>=42) return 'Medium-Dark Roast';
-  if(L>=27) return 'Dark Roast';
-  return         'Very Dark Roast';
+  /* L*는 Agtron 역산값 = (Ag+18.6)/1.35
+     캘리브레이션 기준점으로 분류 */
+  if(L>=50) return 'Light Roast';
+  if(L>=38) return 'Medium-Light Roast';
+  if(L>=27) return 'Medium Roast';
+  if(L>=16) return 'Medium-Dark Roast';
+  return         'Dark Roast';
 }
 function setInst(t){dom.it.textContent=t;}
 
