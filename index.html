@@ -1879,11 +1879,8 @@ function _grindFromROI(context, rx, ry, rw, rh){
   for(var i=0;i<rw*rh;i++){
     var ri=i*4;
     var pr=data[ri], pg=data[ri+1], pb=data[ri+2];
-    var pmx=Math.max(pr,pg,pb), pmn=Math.min(pr,pg,pb);
-    var psat= pmx>0?(pmx-pmn)/pmx:0;
-    var prbR=(pr-pb)/Math.max(pg,1);
-    /* 채도 기반 원두 판별 */
-    mask[i] = (psat >= 0.10 && prbR >= 0.08) ? 1 : 0;
+    /* AWB-aware 원두 판별: R > B * 1.03 (채도 기반 제거) */
+    mask[i] = (pr > pb * 1.03 && gray[i] > 8 && gray[i] < 235) ? 1 : 0;
     gray[i]=0.299*pr+0.587*pg+0.114*pb;
     if(mask[i]){ gMean+=gray[i]; validCnt++; }
   }
@@ -2057,8 +2054,8 @@ function analyzeFrame(context, W, H){
     if(cleanPx.length < 8) cleanPx = beanPx;
 
     /* ── White Reference Normalization ──────────────────────────
-       핸드폰 센서·AWB·거리 차이를 한 번에 보정.
-       흰 픽셀 >= 20개이고 white_L* >= 78이면 비율 보정 적용.  */
+       beanPx 5-95% trim 후 전체 mean → bean_L*
+       white ref 캡 적용: white_L* > 93이면 93으로 제한           */
     var ref = whiteRefNormalize(cleanPx.slice(), whitePx);
     var Ls = ref.normL;
     var avgR = ref.bR, avgG = ref.bG, avgB = ref.bB;
@@ -2600,32 +2597,29 @@ function updateExamPanel(){
 ════════════════════════════════════════ */
 function lum(r,g,b){return .2126*r+.7152*g+.0722*b;}
 
-/* ── 픽셀 분류 ──────────────────────────────────────────────────
-   원두(coffee): S >= 0.18, rbRatio >= 0.20
-   흰기준(white): S <  0.10, lum > 150  → 컵내벽·A4·흰배경
-   나머지: 그림자·중간채도 → 무시
+/* ── 픽셀 분류 ─────────────────────────────────────────────────
+   AWB(자동화이트밸런스)가 토치 3500K를 6500K로 보정하면
+   원두 픽셀의 R-B 차이가 압축되어 채도(S)가 0.10~0.17로 낮아짐.
+   S 기반 필터는 AWB 이후 라이트로스트 밝은 면을 탈락시킨다.
+
+   bean 기준: R > B × 1.03  (AWB 후에도 원두는 R > B 유지)
+   white 기준: min(R,G,B) > 160  (흰색은 모든 채널이 밝음)
    ──────────────────────────────────────────────────────────── */
 function classifyPixel(p){
-  var mx = Math.max(p.r, p.g, p.b);
-  var mn = Math.min(p.r, p.g, p.b);
-  var sat = mx > 0 ? (mx - mn) / mx : 0;
-  var rbRatio = (p.r - p.b) / Math.max(p.g, 1);
-  if(sat >= 0.18 && rbRatio >= 0.20 && p.lum > 12) return 'bean';
-  if(sat < 0.10 && p.lum > 150)                    return 'white';
+  var l = p.lum;
+  if(l > 10 && l < 232 && p.r > p.b * 1.03) return 'bean';
+  if(Math.min(p.r, p.g, p.b) > 160)         return 'white';
   return 'ignore';
 }
 
 function isBeanPixel(p, mode){
-  var mx = Math.max(p.r, p.g, p.b);
-  var mn = Math.min(p.r, p.g, p.b);
-  var sat = mx > 0 ? (mx - mn) / mx : 0;
-  var rbRatio = (p.r - p.b) / Math.max(p.g, 1);
+  var l = p.lum;
   if(mode === 'strict'){
-    return sat >= 0.18 && rbRatio >= 0.20 && p.lum > 12;
+    return p.r > p.b * 1.03 && l > 10 && l < 232;
   } else if(mode === 'relaxed'){
-    return sat >= 0.12 && rbRatio >= 0.12 && p.lum > 10 && p.lum < 235;
+    return p.r > p.b * 1.01 && l > 8 && l < 240;
   }
-  return p.lum > 10 && p.lum < 240;
+  return l > 8 && l < 245;
 }
 
 /* ── White Reference Normalization ─────────────────────────────
@@ -2641,11 +2635,11 @@ function isBeanPixel(p, mode){
 var TARGET_WHITE_L = 93.0;
 
 function whiteRefNormalize(beanPx, whitePx){
-  /* bean_L*: 70-95% trimmed mean */
+  /* bean_L*: 5-95% trimmed mean (전체 표면 대표값)
+     70-95%는 밝은 쪽만 취해 실제보다 높게 나옴 */
   beanPx.sort(function(a,b){return a.lum-b.lum;});
   var bn = beanPx.length;
-  var surf = beanPx.slice(Math.floor(bn*0.70), Math.floor(bn*0.95));
-  if(surf.length < 3) surf = beanPx.slice(Math.floor(bn*0.55));
+  var surf = beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.95));
   if(surf.length < 3) surf = beanPx;
   var sR=0,sG=0,sB=0;
   surf.forEach(function(p){sR+=p.r;sG+=p.g;sB+=p.b;});
@@ -2665,8 +2659,11 @@ function whiteRefNormalize(beanPx, whitePx){
     var whiteLab = sRGBtoLab(wR,wG,wB);
     var whiteL = clamp(whiteLab.L, 0, 100);
 
-    if(whiteL >= 78 && whiteL <= 100){
-      var normL = clamp((beanL / whiteL) * TARGET_WHITE_L, 10, 95);
+    if(whiteL >= 75 && whiteL <= 100){
+      /* 핵심: white_L > TARGET이면 TARGET으로 캡
+         → 과노출 흰컵이 bean_L*을 끌어내리는 현상 방지 */
+      var whiteLForCalc = Math.min(whiteL, TARGET_WHITE_L);
+      var normL = clamp((beanL / whiteLForCalc) * TARGET_WHITE_L, 10, 95);
       return { normL:normL, whiteL:whiteL, beanL:beanL,
                bR:bR, bG:bG, bB:bB, wR:wR, wG:wG, wB:wB,
                refMode:'normalized', whitePxCount:whitePx.length };
