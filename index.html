@@ -489,12 +489,12 @@ body.unlocked .gate{display:none}
   <div class="guide-hd">측정 원리 & 촬영 방법</div>
   <div class="guide-grid">
     <div class="gc" style="background:#f0f4f8;border-left:3px solid #4a7ab5"><div class="gc-n" style="color:#4a7ab5">VL</div><div class="gc-t"><b style="color:#2c5282">Visible Light (가시광선) 측정</b><small style="color:#4a7ab5">사람의 눈이 색을 인지하는 방식과 동일한 가시광선 스펙트럼(380~700nm)을 카메라 센서로 수집 → sRGB → CIELAB 색공간으로 변환하여 로스팅 컬러와 분쇄도를 분석합니다</small></div></div>
-    <div class="gc"><div class="gc-n">01</div><div class="gc-t">흰 내벽 종이컵에 원두 담기<small>입구까지 충분히</small></div></div>
+    <div class="gc"><div class="gc-n">01</div><div class="gc-t">흰 내벽 종이컵에 <b>분쇄 원두</b> 담기<small>입구까지 충분히 — 컵이 클수록 더 좋음</small></div></div>
     <div class="gc"><div class="gc-n">02</div><div class="gc-t">카메라 라이트(손전등) ON<small>플래시 아님 — 지속광 (가시광선 측정의 핵심)</small></div></div>
-    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컬러 측정: 3~8cm 가까이, 수직 촬영<small>멀수록 L* 과대 측정 → 가까울수록 정확</small></div></div>
+    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컬러 측정: 3~8cm 가까이, 수직 촬영<small>컵이 커서 가까이 못 가면 — 자동으로 디지털 확대 분석됩니다</small></div></div>
     <div class="gc"><div class="gc-n">04</div><div class="gc-t">분쇄도 측정: 5~10cm, 빛이 고르게<small>텍스처가 선명할수록 정밀도 ↑</small></div></div>
-    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">05</div><div class="gc-t"><b style="color:#8a6010">컬러와 분쇄도는 각각 최적 거리가 다릅니다</b><small style="color:#8a6010">컬러: 3~8cm (가까울수록 정확) | 분쇄도: 5~10cm (텍스처 선명도 중요)<br>두 측정을 따로 수행하면 각각 최적 조건에서 결과를 얻을 수 있습니다.</small></div></div>
-    <div class="gc"><div class="gc-n">+</div><div class="gc-t">각 단계는 독립 측정 — 필요한 항목만 수행하세요<small>3단계 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
+    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">TIP</div><div class="gc-t"><b style="color:#8a6010">흰 종이컵 내벽이 같이 찍히면 더 정확합니다</b><small style="color:#8a6010">컵 내벽 흰 부분 = 자동 기준 보정(REF✓)에 사용됩니다<br>컬러 측정에서 REF✓ 표시가 뜨면 핸드폰 차이가 보정된 결과입니다</small></div></div>
+    <div class="gc"><div class="gc-n">+</div><div class="gc-t">컬러와 분쇄도는 각각 독립 측정 — 필요한 항목만 수행하세요<small>두 항목 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
   </div>
 </div>
 
@@ -608,12 +608,10 @@ body.unlocked .gate{display:none}
             fill="#484848" letter-spacing="1">하단 탭을 눌러 측정 시작</text>
 
       <!-- bottom scale labels -->
-      <text x="94"  y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">WHOLE BEAN</text>
       <text x="200" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">GROUND COLOR</text>
-      <text x="308" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">GRIND SIZE</text>
+      <text x="320" y="281" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#333">GRIND SIZE</text>
 
-      <!-- separator lines -->
-      <line x1="147" y1="272" x2="147" y2="286" stroke="#2a2a2a" stroke-width=".5"/>
+      <!-- separator line -->
       <line x1="253" y1="272" x2="253" y2="286" stroke="#2a2a2a" stroke-width=".5"/>
     </svg>
   </div>
@@ -988,6 +986,17 @@ var FIXED_ROI     = 0.50;   /* 고정 비율, min(W,H) 대비 — 넉넉한 원 
 var ROI_CY_RATIO  = 0.42;   /* 원 세로 중심: H * 0.42 — 기본 중앙보다 약간 위 */
 var lastCovPct    = 0;      /* 최근 프레임 감지율 (0~100)   */
 
+/* ── 디지털 줌 (컵 크기로 가까이 못 가는 경우 자동 확대) ─────
+   최근 N프레임 coverage가 낮으면 ROI 샘플 반경을 줄여 중앙 확대.
+   분석 ROI만 축소 — 가이드 원은 그대로, 내부에 줌 링 표시.   */
+var digitalZoom       = 1.0;   /* 현재 줌 배율 (1.0 ~ 3.0) */
+var ZOOM_COV_LOW      = 28;    /* 이 이하면 줌 증가 고려 */
+var ZOOM_COV_OK       = 45;    /* 이 이상이면 줌 감소 */
+var ZOOM_MAX          = 3.0;
+var ZOOM_STEP         = 0.08;  /* 프레임당 줌 증가폭 (부드럽게) */
+var zoomLowFrames     = 0;     /* coverage 낮은 연속 프레임 수 */
+var ZOOM_TRIGGER_FRAMES = 10;  /* 이 프레임 수 이상 낮으면 줌 시작 */
+
 function G(id){ return document.getElementById(id); }
 
 var dom = {
@@ -1147,6 +1156,7 @@ function startLive(beanMode){
       emaL         = null;
       stableRun    = 0;
       approachHistory = []; convergenceMode = false; convergenceConf = 0;
+      digitalZoom = 1.0; zoomLowFrames = 0;
       liveRunning  = true;
       var bmi = G('beanModeIndicator');
       if(bmi){
@@ -1230,6 +1240,7 @@ function stopLive(){
   frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
   lastCovPct=0;  /* 감지율 초기화 */
   approachHistory=[]; convergenceMode=false; convergenceConf=0;
+  digitalZoom=1.0; zoomLowFrames=0;
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
   dom.lrStatus.style.color='';   /* 빨간색 등 잔류 색상 제거 */
   dom.upzone.classList.remove('loaded');
@@ -1315,6 +1326,32 @@ function drawGuideOverlay(){
     gx.strokeStyle = 'rgba(60,220,120,' + pulseAlpha + ')';
     gx.lineWidth = 2;
     gx.stroke();
+  }
+
+  /* 디지털 줌 시: 내부 축소 링 + 줌 배율 표시 */
+  if(liveRunning && digitalZoom > 1.15){
+    var zoomR = r / digitalZoom;
+    /* 줌 ROI 원 */
+    gx.beginPath();
+    gx.arc(cx, cy, zoomR, 0, Math.PI*2);
+    gx.strokeStyle = 'rgba(100,180,255,0.75)';
+    gx.lineWidth = 1.5;
+    gx.setLineDash([4, 4]);
+    gx.stroke();
+    gx.setLineDash([]);
+    /* 줌 배율 레이블 */
+    var zoomLabel = digitalZoom.toFixed(1) + 'x';
+    gx.font = 'bold 12px DM Mono, monospace';
+    gx.textAlign = 'center';
+    var zoomBgW = 52, zoomBgH = 20;
+    var zlx = cx, zly = cy - zoomR - 10;
+    gx.fillStyle = 'rgba(0,40,80,0.80)';
+    gx.beginPath();
+    if(gx.roundRect) gx.roundRect(zlx - zoomBgW/2, zly - zoomBgH, zoomBgW, zoomBgH, 4);
+    else gx.rect(zlx - zoomBgW/2, zly - zoomBgH, zoomBgW, zoomBgH);
+    gx.fill();
+    gx.fillStyle = 'rgba(100,180,255,0.95)';
+    gx.fillText('⌖ ' + zoomLabel, zlx, zly - 4);
   }
 
   /* 3. 코너 마커 — 4방향 L자 브라켓 */
@@ -1425,6 +1462,23 @@ function frameLoop(ts){
   var covNow = Math.round((r.beanCoverage||0)*100);
   approachHistory.push({ Ls: r.Ls, covPct: covNow, ts: ts });
   if(approachHistory.length > APPROACH_BUF) approachHistory.shift();
+
+  /* ── 디지털 줌 자동 조절 ────────────────────────────────────
+     coverage 낮음이 N프레임 이상 지속 → 컵 크기 한계로 판단
+     ROI 반경을 1/zoom 배로 축소 → 중앙만 확대 분석             */
+  if(covNow < ZOOM_COV_LOW && !r.lowLight){
+    zoomLowFrames++;
+    if(zoomLowFrames >= ZOOM_TRIGGER_FRAMES){
+      digitalZoom = Math.min(ZOOM_MAX, digitalZoom + ZOOM_STEP);
+    }
+  } else if(covNow >= ZOOM_COV_OK){
+    zoomLowFrames = 0;
+    /* coverage 충분해지면 천천히 줌 복귀 */
+    digitalZoom = Math.max(1.0, digitalZoom - ZOOM_STEP * 0.5);
+  } else {
+    /* 중간 구간: 줌 유지, 카운터는 천천히 감소 */
+    zoomLowFrames = Math.max(0, zoomLowFrames - 1);
+  }
 
   /* ── SHAKE DETECTION ── */
   var isShake = false;
@@ -1603,8 +1657,15 @@ function updateLiveReadout(r, smoothL, isShake, conv){
     status = currentMode === 'color' ? '너무 가까움 — 살짝 거리를 두세요' : '너무 가까움 — 5~10cm 거리를 유지하세요';
     statusColor = '#f0a040';
   } else if(covPct < 25){
-    status = '카메라를 컵 위에 놓고 천천히 가까이 접근해주세요';
-    statusColor = '';
+    if(digitalZoom >= 1.5){
+      status = '디지털 ' + digitalZoom.toFixed(1) + 'x 확대 분석 중 — 이 위치 유지';
+      statusColor = 'rgba(100,180,255,0.95)';
+    } else if(zoomLowFrames >= ZOOM_TRIGGER_FRAMES){
+      status = '컵 크기 감지 — 디지털 확대 시작 중...';
+      statusColor = '#f0c040';
+    } else {
+      status = '카메라를 컵 위에 놓고 천천히 가까이 접근해주세요';
+    }
   } else if(conv.converging){
     /* ── 수렴 감지: 가장 중요한 상태 ── */
     var convSigma = computeBufSigma();
@@ -1958,9 +2019,11 @@ function analyzeFrame(context, W, H){
   try{
     var step = Math.max(3, Math.floor(Math.min(W,H)/120));
 
-    /* ── ROI: 고정 42% 반지름 원형 마스크 ────── */
+    /* ── ROI: 고정 원형 마스크 + 디지털 줌 ────────────────────
+       digitalZoom > 1 이면 샘플 반경을 1/zoom 배로 축소
+       → 실제 분석 영역이 좁아져 중앙부만 고밀도 샘플링         */
     var cx=W/2, cy=H*ROI_CY_RATIO;
-    var rLimit=Math.min(W,H)*FIXED_ROI;
+    var rLimit = Math.min(W,H) * FIXED_ROI / digitalZoom;
     var rLim2=rLimit*rLimit;
     var bx0=Math.max(0,Math.round(cx-rLimit-6));
     var by0=Math.max(0,Math.round(cy-rLimit-6));
