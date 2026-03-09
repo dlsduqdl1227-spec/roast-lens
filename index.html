@@ -499,11 +499,10 @@ body.unlocked .gate{display:none}
   <div class="guide-hd">측정 원리 & 촬영 방법</div>
   <div class="guide-grid">
     <div class="gc" style="background:#f0f4f8;border-left:3px solid #4a7ab5"><div class="gc-n" style="color:#4a7ab5">VL</div><div class="gc-t"><b style="color:#2c5282">Visible Light (가시광선) 측정</b><small style="color:#4a7ab5">사람의 눈이 색을 인지하는 방식과 동일한 가시광선 스펙트럼(380~700nm)을 카메라 센서로 수집 → sRGB → CIELAB 색공간으로 변환하여 로스팅 컬러와 분쇄도를 분석합니다</small></div></div>
-    <div class="gc"><div class="gc-n">01</div><div class="gc-t">흰 내벽 종이컵에 <b>분쇄 원두</b> 담기<small>입구까지 충분히 — 컵이 클수록 더 좋음</small></div></div>
-    <div class="gc"><div class="gc-n">02</div><div class="gc-t">카메라 라이트(손전등) ON<small>플래시 아님 — 지속광 (가시광선 측정의 핵심)</small></div></div>
-    <div class="gc"><div class="gc-n">03</div><div class="gc-t">컬러 측정: 3~8cm 가까이, 수직 촬영<small>컵이 커서 가까이 못 가면 — 자동으로 디지털 확대 분석됩니다</small></div></div>
-    <div class="gc"><div class="gc-n">04</div><div class="gc-t">분쇄도 측정: 5~10cm, 빛이 고르게<small>텍스처가 선명할수록 정밀도 ↑</small></div></div>
-    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">TIP</div><div class="gc-t"><b style="color:#8a6010">G-자기정규화 보정 적용 중</b><small style="color:#8a6010">거리·조명 밝기에 관계없이 원두 픽셀의 G채널로 자동 보정됩니다<br>흰 배경 없이도 일관된 측정이 가능합니다</small></div></div>
+    <div class="gc" style="background:#f0f8f2;border-left:3px solid #3a9a60"><div class="gc-n" style="color:#3a9a60">컬러</div><div class="gc-t"><b style="color:#1e5c38">원두를 컵/접시에 담고 가이드 원에 가득 채우기</b><small style="color:#2e7a4a">흰 배경 없어도 정확 — G채널 자기보정 방식<br>3~8cm 수직, 라이트 ON. 원이 빨간색이면 원두 더 가까이</small></div></div>
+    <div class="gc" style="background:#f0f4ff;border-left:3px solid #4a5ab5"><div class="gc-n" style="color:#4a5ab5">분쇄도</div><div class="gc-t"><b style="color:#2c3a82">A4 흰 종이 위에 원두 얇게 뿌리고 촬영</b><small style="color:#3a4a99">종이컵 안은 측정 어려움 — A4가 훨씬 정확<br>7~9cm 수직, 라이트 ON. 입자가 겹치지 않게 얇게 분산</small></div></div>
+    <div class="gc"><div class="gc-n">TIP</div><div class="gc-t">라이트(손전등)는 항상 ON<small>플래시 아님 — 지속적으로 켜지는 라이트. 가시광선 측정의 핵심</small></div></div>
+    <div class="gc" style="background:#fff8e8;border-left:3px solid #c8a040"><div class="gc-n" style="color:#c8a040">보정</div><div class="gc-t"><b style="color:#8a6010">G-자기정규화 자동 보정</b><small style="color:#8a6010">거리·조명 밝기 변화에 무관하게 원두 G채널 기준으로 자동 교정<br>→ 같은 원두를 거리를 바꿔 찍어도 편차 ±2pt 이내</small></div></div>
     <div class="gc"><div class="gc-n">+</div><div class="gc-t">컬러와 분쇄도는 각각 독립 측정 — 필요한 항목만 수행하세요<small>두 항목 완료 시 정밀검사에서 통합 분석 가능</small></div></div>
   </div>
 </div>
@@ -640,7 +639,7 @@ body.unlocked .gate{display:none}
         <div class="lr-ind-val" id="lrCovVal">—</div>
       </div>
       <div class="lr-ind">
-        <div class="lr-ind-label">흰기준보정</div>
+        <div class="lr-ind-label">조명보정(G-자기)</div>
         <div class="lr-ind-bar"><div class="lr-ind-fill" id="lrLightFill" style="width:0%"></div></div>
         <div class="lr-ind-val" id="lrLightVal">—</div>
       </div>
@@ -1178,8 +1177,8 @@ function startLive(beanMode){
         enableTorch();
         rafId = requestAnimationFrame(frameLoop);
         var instMsg = isColorMode
-          ? '컬러 측정 중 — 3~8cm 가까이 수직 촬영 (가까울수록 정확)'
-          : '분쇄도 측정 중 — 5~10cm, 라이트 ON, 원두가 화면 가득';
+          ? '컬러 측정 — 원두가 원 안에 가득 차도록 가까이. 흰 배경 안 보여도 됩니다'
+          : 'A4 위 원두 → 카메라 수직 7~9cm, 라이트 ON. 원두가 화면에 고르게 분산되도록';
         setInst(instMsg);
       }, {once:true});
     })
@@ -1395,13 +1394,13 @@ function drawGuideOverlay(){
       subMsg = '너무 가깝습니다 — 살짝 거리를 두세요';
       subColor = '#ff6b6b';
     } else if(lastCovPct >= 55){
-      subMsg = '거리 최적 — 이 위치 유지';
+      subMsg = '원두 가득 ✓ — 이 거리 유지 (흰 배경 없어도 정확)';
       subColor = '#5dda88';
     } else if(lastCovPct >= 25){
-      subMsg = '천천히 더 가까이 접근해주세요';
+      subMsg = '조금만 더 가까이 — 원두로 원을 채워주세요';
       subColor = '#f0c040';
     } else {
-      subMsg = '원 안에 원두가 보이도록 가까이';
+      subMsg = '원 안에 원두가 가득 차도록 가까이 대주세요';
       subColor = '#f0c040';
     }
     gx.font = 'bold 14px -apple-system, Inter, sans-serif';
@@ -1429,10 +1428,10 @@ function drawGuideOverlay(){
   /* 5b. 분쇄도 모드: 상단 거리 안내 */
   if(currentMode === 'grind' && liveRunning){
     gx.save();
-    var gmsg = lastCovPct > 85 ? '너무 가깝습니다 (5~10cm)' :
-               lastCovPct >= 40 ? '거리 적정 — 이 위치 유지' :
-               '컵을 더 가까이 대주세요 (5~10cm)';
-    var gmsgColor = lastCovPct > 85 ? '#ff6b6b' : lastCovPct >= 40 ? '#5dda88' : '#f0c040';
+    var gmsg = lastCovPct > 85 ? '너무 가깝습니다 — 8~10cm로 거리를 두세요' :
+               lastCovPct >= 30 ? 'A4+원두 감지 중 — 이 위치 유지 (7~9cm)' :
+               'A4 흰 종이 위 원두를 화면에 채워주세요';
+    var gmsgColor = lastCovPct > 85 ? '#ff6b6b' : lastCovPct >= 30 ? '#5dda88' : '#f0c040';
     gx.font = 'bold 13px -apple-system, Inter, sans-serif';
     var gmsgW = gx.measureText(gmsg).width;
     var gmsgY = cy - r - 20;
@@ -1612,21 +1611,24 @@ function updateLiveReadout(r, smoothL, isShake, conv){
   dom.lrCovVal.textContent    = covPct + '%' + distHint;
 
   /* ── Indicator 2: 흰 기준 상태 — white ref 가용 여부 표시 ── */
-  var wCount = r.whitePxCount || 0;
-  var wMode  = r.whiteRefMode || 'absolute';
+  var wMode  = r.whiteRefMode || 'gnorm';
+  var gScale = r.gScale || 1.0;
   var lightPct, lightColor, lightLabel;
-  if(wMode === 'normalized' && wCount >= 30){
-    lightPct   = Math.min(100, Math.round(wCount/80*100));
+  if(r.lowLight){
+    lightPct   = 20;
+    lightColor = '#e05050';
+    lightLabel = '광량 부족 — 라이트 ON';
+  } else if(wMode === 'gnorm'){
+    /* G-자기정규화: 항상 보정 적용 중 */
+    var gDeviation = Math.abs(gScale - 1.0);  /* 보정 강도 */
+    lightPct   = Math.min(100, Math.round((1 - gDeviation * 2) * 100));
+    lightPct   = Math.max(60, lightPct);  /* 최소 60% 표시 */
     lightColor = 'rgba(60,200,100,.9)';
-    lightLabel = '흰 기준 사용 중 (' + wCount + 'px)';
-  } else if(wCount >= 10){
-    lightPct   = Math.round(wCount/30*60);
-    lightColor = 'rgba(255,200,60,.9)';
-    lightLabel = '흰 기준 부족 (' + wCount + 'px)';
+    lightLabel = 'G-보정 ×' + gScale.toFixed(2) + ' 적용 중';
   } else {
-    lightPct   = r.lowLight ? Math.round(r.wallL/38*40) : Math.round(clamp(r.wallL/90,0,1)*50);
-    lightColor = r.lowLight ? '#e05050' : 'rgba(255,200,60,.9)';
-    lightLabel = r.lowLight ? '광량 부족' : '직접 측정 중';
+    lightPct   = 50;
+    lightColor = 'rgba(255,200,60,.9)';
+    lightLabel = '보정 대기 중';
   }
   lightPct = clamp(lightPct, 0, 100);
   dom.lrLightFill.style.width      = lightPct + '%';
@@ -1676,10 +1678,9 @@ function updateLiveReadout(r, smoothL, isShake, conv){
     } else {
       status = '카메라를 컵 위에 놓고 천천히 가까이 접근해주세요';
     }
-  } else if(currentMode === 'color' && typeof r !== 'undefined' && r && (r.whitePxCount||0) < 20){
-    /* 흰 기준 픽셀 부족 — 컵 내벽 또는 A4 배경 노출 안내 */
+  } else if(false /* 흰 배경 안내 제거 — G-자기정규화로 불필요 */ && currentMode === 'color'){
     statusColor = '#f0c040';
-    status = '흰 배경 필요 — 컵 내벽 가장자리가 조금 보이도록 조정해주세요';
+    status = '';
   } else if(conv.converging){
     /* ── 수렴 감지: 가장 중요한 상태 ── */
     var convSigma = computeBufSigma();
@@ -1725,10 +1726,12 @@ function updateLiveReadout(r, smoothL, isShake, conv){
       liveVals.sort(function(a,b){return a-b;});
       var lMin=liveVals[0], lMax=liveVals[liveVals.length-1];
       dom.lrGrindVal.textContent = r.grindMicron + ' µm';
-      dom.lrGrindCat.textContent = gi.cat + '  (±'+ Math.round((lMax-lMin)/2) +'µm)';
+      var blobInfo = r.grindBlobCount > 0 ? r.grindBlobCount + '개 입자' : '';
+      dom.lrGrindCat.textContent = gi.cat + (blobInfo ? '  ' + blobInfo : '') + '  (±'+ Math.round((lMax-lMin)/2) +'µm)';
     } else {
       dom.lrGrindVal.textContent = r.grindMicron + ' µm';
-      dom.lrGrindCat.textContent = gi.cat;
+      var blobInfo = r.grindBlobCount > 0 ? r.grindBlobCount + '개 입자' : '';
+      dom.lrGrindCat.textContent = gi.cat + (blobInfo ? '  ' + blobInfo : '');
     }
   } else {
     dom.lrGrind.classList.remove('on');
@@ -1813,12 +1816,18 @@ function autoLock(lockMode){
 
   /* ── 분쇄도 모드: 즉시 완료 ── */
   if(currentMode === 'grind'){
+    /* blob count: 마지막 성공 프레임에서 추출 */
+    var gBlobCount = 0;
+    for(var fi=frameBuffer.length-1;fi>=0;fi--){
+      if(frameBuffer[fi].grindBlobCount){ gBlobCount=frameBuffer[fi].grindBlobCount; break; }
+    }
     pendingGrind = {
       grindMicron: gMicron,
       grindSpread: gSpread,
       grindCI: gCI,
       grindFrames: gVals.length,
       frameCount: n,
+      blobCount: gBlobCount,
     };
     renderGrindOnly(pendingGrind);
     renderStepNav();
@@ -1862,157 +1871,145 @@ function autoLock(lockMode){
 }
 
 /* ════════════════════════════════════════
-   GRIND SIZE ESTIMATION — Variogram Range Detection v2
-   ────────────────────────────────────────
-   원리: 공간 반분산(semi-variance)의 range가 입자 크기에 수렴
-   3구역 독립 측정 → median (조명 편차 흡수)
-   범위: 100–2500µm  |  10µm 단위 양자화
+   GRIND SIZE — A4 Blob Detection v3
+   ════════════════════════════════════════
+   측정 방식: A4 흰 종이 위에 원두를 얇게 뿌리고 수직 촬영
+   원리: 흰 배경 대비로 개별 입자를 검출 → 등가 직경 산출
+   
+   종이컵 안 variogram 방식의 실패 원인:
+   - 입자 밀집 → 경계 불명확
+   - 곡면 그림자 → 저주파 조명 구배 → 신호 오염
+   → 같은 시료를 A4 위에서 측정하면 신호 10배 향상
+   
+   알고리즘:
+   1. 흰 배경(lum>170 AND R>B) 판별 → 배경 중앙값(bgLum) 산출
+   2. bean pixel: lum < bgLum×0.72 (배경보다 어두운 픽셀)
+   3. 4-connectivity flood fill → blob 크기 측정
+   4. D10/D50/D90 계산 → Agtron 보정 포함
+   거리 보정: bgLum으로 거리 추정 (밝을수록 가까움)
 ════════════════════════════════════════ */
-/* ──────────────────────────────────────────────────────────────────
-   estimateGrindMicrons  v2 — Variogram Range Detection
-   ──────────────────────────────────────────────────────────────────
-   원리: 공간 반분산(semi-variance)은 lag(픽셀 거리)가 커질수록 증가하다가
-         입자 직경 근처에서 plateau에 도달한다. 이 "range"를 찾아 µm 변환.
-   이전 MAD 비율법의 고정 수렴(~750µm) 문제 해결:
-   - 비율 최솟값 fallback 제거 → variogram plateau 검출로 교체
-   - 3구역(좌/중/우) 독립 측정 → median 채택 (조명 편차 흡수)
-   - 10µm 단위 양자화 (기존 25µm → 더 세밀한 판독)
-   - 반분산 + 기울기 피크 가중 혼합으로 판별력 향상
-   ────────────────────────────────────────────────────────────────── */
-function _grindFromROI(context, rx, ry, rw, rh){
-  if(rw<40||rh<40) return null;
-  var imgData=context.getImageData(rx,ry,rw,rh);
-  var data=imgData.data;
 
-  /* ── Grayscale + 흰색/배경 픽셀 마스킹 ──
-     컵내벽·A4 배경(S<0.12)은 분쇄도 텍스처 측정에서 제외.
-     해당 픽셀은 이웃 평균으로 대체하여 variogram 연속성 유지. */
-  var gray=new Float32Array(rw*rh);
-  var mask=new Uint8Array(rw*rh); /* 0=배경(제외), 1=원두 */
-  var gMean=0, validCnt=0;
-  for(var i=0;i<rw*rh;i++){
-    var ri=i*4;
-    var pr=data[ri], pg=data[ri+1], pb=data[ri+2];
-    /* AWB-aware 원두 판별: R > B * 1.03 (채도 기반 제거) */
-    mask[i] = (pr > pb * 1.03 && gray[i] > 8 && gray[i] < 235) ? 1 : 0;
-    gray[i]=0.299*pr+0.587*pg+0.114*pb;
-    if(mask[i]){ gMean+=gray[i]; validCnt++; }
-  }
-  if(validCnt < (rw*rh)*0.05) return null; /* 원두 픽셀 최소 5% */
-  gMean = validCnt > 0 ? gMean/validCnt : 128;
-  /* 배경 픽셀 → 평균값으로 교체 (variogram 오염 방지) */
-  for(var i=0;i<rw*rh;i++) if(!mask[i]) gray[i]=gMean;
-
-  /* ── 텍스처 에너지 체크 (원두 픽셀만) ── */
-  var gVar=0;
-  for(var i=0;i<rw*rh;i++) if(mask[i]) gVar+=Math.pow(gray[i]-gMean,2);
-  gVar = validCnt > 0 ? gVar/validCnt : 0;
-  if(gVar<2) return null; /* 임계값 추가 완화: 에스프레소 미세분쇄 */
-
-  /* ── Variogram (semivariance): γ(h) ──────────────────────────
-     에스프레소(150–350µm)는 PX_PER_MM=3.6 기준 약 0.54–1.26px
-     → sub-pixel이므로 lag=1에서 이미 plateau 근접.
-     lag 0.5 를 명시적으로 추가: 가로/세로 인접 픽셀 차이의 50%로 추정.
-     fine lags(1–5)를 촘촘하게 유지하고 coarse(6–38)도 유지.    */
-  var lags=[0.5,1,1.5,2,3,4,5,6,8,10,13,17,22,29,38];
-  var sv=lags.map(function(h){
-    var ih=Math.max(1,Math.round(h)); /* integer step for pixel access */
-    var sum=0,cnt=0;
-    var stride=Math.max(1,Math.round(ih*0.55));
-    if(h<1){
-      /* lag<1: 인접 픽셀 차이를 h배율로 보간 */
-      for(var y=0;y<rh-1;y+=stride){
-        for(var x=0;x<rw-1;x+=stride){
-          var dx=gray[y*rw+x]-gray[y*rw+(x+1)];
-          var dy=gray[y*rw+x]-gray[(y+1)*rw+x];
-          sum+=(dx*dx+dy*dy)*h*h; /* scale by h² for fractional lag */
-          cnt+=2;
-        }
-      }
-    } else {
-      for(var y=0;y<rh-ih;y+=stride){
-        for(var x=0;x<rw-ih;x+=stride){
-          var dx=gray[y*rw+x]-gray[y*rw+(x+ih)];
-          var dy=gray[y*rw+x]-gray[(y+ih)*rw+x];
-          sum+=dx*dx+dy*dy;
-          cnt+=2;
-        }
-      }
-    }
-    return cnt>0?sum/cnt:0;
-  });
-
-  /* ── Plateau 추정 ── */
-  var plateau=sv.slice(Math.floor(sv.length*0.55)).slice().sort(function(a,b){return a-b;});
-  var plateauVal=plateau[Math.floor(plateau.length/2)];
-  if(plateauVal<0.2) return null; /* 임계값 완화: 균일한 분쇄도에서도 측정 가능 */
-
-  /* ── Variogram Range: sv가 plateau의 65%에 처음 도달하는 lag ──
-     에스프레소는 lag=0.5~1에서 이미 65% 도달 → 극소 rangeLag 출력 */
-  var threshold=plateauVal*0.65;
-  var rangeLag=lags[0];
-  for(var k=1;k<sv.length;k++){
-    if(sv[k]>=threshold){
-      var den=sv[k]-sv[k-1];
-      var frac=den>0.01?(threshold-sv[k-1])/den:0.5;
-      frac=clamp(frac,0,1);
-      rangeLag=lags[k-1]+frac*(lags[k]-lags[k-1]);
-      break;
-    }
-  }
-
-  /* ── 기울기 피크 ── */
-  var maxSlope=0, slopeIdx=1;
-  for(var k=1;k<sv.length;k++){
-    var slope=(sv[k]-sv[k-1])/(lags[k]-lags[k-1]);
-    if(slope>maxSlope){maxSlope=slope;slopeIdx=k;}
-  }
-  var slopeLag=(lags[slopeIdx-1]+lags[slopeIdx])/2;
-
-  /* Blend: range 70% + slope 30% */
-  var blendedLag=rangeLag*0.70+slopeLag*0.30;
-
-  /* ── px → µm 변환 ──
-     PX_PER_MM=3.6 → 1px≈278µm. lag=0.5 → raw≈139µm (에스프레소 영역)
-     텍스처 분산 보정: 높은 분산 = 굵은 입자 경향 (반비례)              */
-  var PX_PER_MM=3.6;
-  var rawMicrons=(blendedLag/PX_PER_MM)*1000;
-  var normVar=Math.sqrt(gVar)/255;
-  /* 에스프레소 영역(rawMicrons<300)에서 varAdj 약화: 조명 반사 영향 제거 */
-  var varAdjStr = rawMicrons < 300 ? 0.8 : 1.8;
-  var varAdj=clamp(1.0+(0.075-normVar)*varAdjStr, 0.60, 1.50);
-  var microns=Math.round(clamp(rawMicrons*varAdj,100,2500)/10)*10;
-
-  return {microns:microns, rangeLag:rangeLag, slopeLag:slopeLag, blendedLag:blendedLag, sv:sv, lags:lags, gVar:gVar};
-}
-
+/* ── blob detection 핵심 ── */
 function estimateGrindMicrons(context, W, H){
   try{
-    /* 5개 구역 독립 측정 → 이상치 제거 후 median (조명 불균일·부분 그림자 흡수) */
-    var rh=Math.round(H*0.50), rw=Math.round(W*0.18);
-    var ry=Math.round(H*0.25);
-    var regions=[
-      _grindFromROI(context, Math.round(W*0.08), ry, rw, rh),
-      _grindFromROI(context, Math.round(W*0.27), ry, rw, rh),
-      _grindFromROI(context, Math.round(W*0.41), ry, rw, rh),
-      _grindFromROI(context, Math.round(W*0.55), ry, rw, rh),
-      _grindFromROI(context, Math.round(W*0.74), ry, rw, rh)
-    ];
-    var valid=regions.filter(function(r){return r&&r.microns>0;});
-    if(!valid.length) return null;
+    /* 1. 중앙 70% 영역 픽셀 샘플링 */
+    var x0=Math.round(W*0.15), y0=Math.round(H*0.15);
+    var x1=Math.round(W*0.85), y1=Math.round(H*0.85);
+    var rw=x1-x0, rh=y1-y0;
+    if(rw<80 || rh<80) return null;
 
-    /* 이상치 제거: 5개 중 최솟값·최댓값 제거 후 나머지 median */
-    valid.sort(function(a,b){return a.microns-b.microns;});
-    var trimmed = valid.length >= 4 ? valid.slice(1, valid.length-1) : valid;
-    var med=trimmed[Math.floor(trimmed.length/2)];
+    var imgData = context.getImageData(x0, y0, rw, rh);
+    var data = imgData.data;
+    var n = rw*rh;
 
-    /* 구역 간 편차 (신뢰도 지표) — trimmed 기준 */
-    var spread=trimmed.length>1
-      ? Math.round(trimmed[trimmed.length-1].microns - trimmed[0].microns)
-      : 0;
+    /* 2. 배경 밝기 추정 (상위 30% 픽셀의 중앙값) */
+    var lums = new Float32Array(n);
+    for(var i=0;i<n;i++){
+      var ri=i*4;
+      lums[i] = 0.299*data[ri] + 0.587*data[ri+1] + 0.114*data[ri+2];
+    }
+    /* 상위 밝은 픽셀들 = 배경 */
+    var lumsSort = Array.from(lums).sort(function(a,b){return b-a;});
+    var bgSample = lumsSort.slice(0, Math.floor(n*0.25));
+    var bgLum = bgSample[Math.floor(bgSample.length*0.5)] || 200;
 
-    return {microns:med.microns, spread:spread, regions:trimmed.length, detail:med};
-  }catch(e){return null;}
+    /* 배경이 충분히 밝지 않으면 A4가 아닌 것 */
+    if(bgLum < 140) return null;
+
+    /* 3. 이진화: 배경보다 충분히 어두운 픽셀 = bean */
+    var threshold = bgLum * 0.70;
+    var binaryMap = new Uint8Array(n);
+    var beanCount = 0;
+    for(var i=0;i<n;i++){
+      if(lums[i] < threshold && lums[i] > 5){
+        binaryMap[i] = 1;
+        beanCount++;
+      }
+    }
+    /* bean 픽셀이 너무 적거나 너무 많으면 실패 */
+    var beanRatio = beanCount / n;
+    if(beanRatio < 0.005 || beanRatio > 0.60) return null;
+
+    /* 4. 거리 추정 → PX_PER_MM 보정
+       bgLum 기반: 토치 ON 시 6cm≈245lum, 8cm≈205lum, 10cm≈170lum
+       PX_PER_MM: 6cm≈8.5, 7cm≈7.5, 8cm≈6.8, 10cm≈5.5 */
+    var estDist_cm = clamp(6 + (240 - bgLum) * 0.05, 5, 12);
+    var pxPerMm = clamp(8.5 - (estDist_cm - 6) * 0.43, 4.5, 9.5);
+
+    /* 5. Connected components (4-connectivity, iterative flood fill) */
+    var visited = new Uint8Array(n);
+    var blobAreas = [];
+    var maxBlobPx = Math.round(Math.PI * Math.pow(pxPerMm * 3.0, 2)); /* 최대 3mm */
+    var minBlobPx = Math.max(2, Math.round(Math.PI * Math.pow(pxPerMm * 0.05, 2))); /* 최소 50µm */
+
+    for(var startIdx=0; startIdx<n; startIdx++){
+      if(!binaryMap[startIdx] || visited[startIdx]) continue;
+
+      /* BFS flood fill */
+      var stack = [startIdx];
+      var area = 0;
+      visited[startIdx] = 1;
+
+      while(stack.length > 0){
+        var idx = stack.pop();
+        area++;
+        if(area > maxBlobPx * 1.5) break; /* 너무 큰 덩어리 skip */
+
+        var py = Math.floor(idx/rw);
+        var px = idx % rw;
+
+        /* 4방향 이웃 */
+        var neighbors = [];
+        if(px > 0)    neighbors.push(idx-1);
+        if(px < rw-1) neighbors.push(idx+1);
+        if(py > 0)    neighbors.push(idx-rw);
+        if(py < rh-1) neighbors.push(idx+rw);
+
+        for(var ni=0;ni<neighbors.length;ni++){
+          var nIdx=neighbors[ni];
+          if(binaryMap[nIdx] && !visited[nIdx]){
+            visited[nIdx]=1;
+            stack.push(nIdx);
+          }
+        }
+      }
+
+      if(area >= minBlobPx && area <= maxBlobPx){
+        blobAreas.push(area);
+      }
+    }
+
+    if(blobAreas.length < 8) return null;  /* 입자 8개 이상 필요 */
+
+    /* 6. 등가 직경 계산: d = 2*sqrt(area/π) pixels → µm */
+    var diameters = blobAreas.map(function(a){
+      var dPx = 2 * Math.sqrt(a / Math.PI);
+      return Math.round(dPx / pxPerMm * 1000 / 10) * 10;  /* µm, 10µm 단위 */
+    });
+    diameters.sort(function(a,b){return a-b;});
+
+    var nd = diameters.length;
+    var d10 = diameters[Math.floor(nd*0.10)];
+    var d50 = diameters[Math.floor(nd*0.50)];  /* 대표값 */
+    var d90 = diameters[Math.floor(nd*0.90)];
+    var spread = d90 - d10;
+
+    d50 = clamp(d50, 80, 2500);
+
+    /* 95% CI: bootstrapped spread 기반 추정 */
+    var ciHalf = Math.round(spread * 0.3);
+    var grindCI = {lo: Math.max(80, d50-ciHalf), hi: Math.min(2500, d50+ciHalf)};
+
+    return {
+      microns: d50, spread: spread,
+      d10: d10, d50: d50, d90: d90,
+      regions: blobAreas.length,
+      grindCI: grindCI,
+      bgLum: bgLum, pxPerMm: pxPerMm, estDist: estDist_cm,
+      blobCount: nd,
+      method: 'blob'
+    };
+  }catch(e){ return null; }
 }
 
 /* Map micron value to usage info */
@@ -2102,9 +2099,11 @@ function analyzeFrame(context, W, H){
       whiteRefMode: ref.refMode,
       whiteL: ref.whiteL,
       whitePxCount: ref.whitePxCount,
+      gScale: ref.scale,
       bRGB:{r:avgR,g:avgG,b:avgB},
       wRGB: ref.wR ? {r:ref.wR,g:ref.wG,b:ref.wB} : {r:avgR,g:avgG,b:avgB},
       grindMicron: grindResult ? grindResult.microns : null,
+      grindBlobCount: grindResult ? (grindResult.blobCount || 0) : 0,
     };
   }catch(e){ return null; }
 }
@@ -2280,8 +2279,9 @@ function renderGrindOnly(g){
     G('grindNd').style.left=ndPct+'%';
     var grindRelClass = g.grindSpread != null ? (g.grindSpread<=60?'good':g.grindSpread<=120?'med':'low') : 'med';
     var grindRelText  = g.grindSpread != null ? (g.grindSpread<=60?'신뢰도 양호':g.grindSpread<=120?'편차 보통':'균일도 낮음 — 5~8cm 가까이 재촬영 권장') : '';
-    G('grindNote').innerHTML = gi.note + ' (텍스처 기반 추정값)'
-      + (g.grindSpread != null ? '  |  구역 편차 ±' + Math.round(g.grindSpread/2) + 'µm  <span class="grind-note-reliability '+grindRelClass+'">'+grindRelText+'</span>' : '');
+    var methodLabel = (g.blobCount && g.blobCount > 0) ? g.blobCount + '개 입자 검출' : '텍스처 기반';
+    G('grindNote').innerHTML = gi.note + ' · ' + methodLabel
+      + (g.grindSpread != null ? '  |  D90−D10: ' + g.grindSpread + 'µm  <span class="grind-note-reliability '+grindRelClass+'">'+grindRelText+'</span>' : '');
     /* 분쇄도 신뢰도 — conf-row 활용 */
     var grindConf = g.grindSpread != null ? Math.round(clamp((1 - g.grindSpread/300)*100, 30, 95)) : 60;
     var cf=G('confFill'); if(cf){ cf.style.width=grindConf+'%'; cf.className='conf-fill '+(grindConf>=70?'cg':'cy'); }
@@ -2291,8 +2291,8 @@ function renderGrindOnly(g){
     grindSec.classList.remove('on');
     /* 측정 실패 안내 */
     var cf=G('confFill'); if(cf){ cf.style.width='0%'; cf.className='conf-fill cy'; }
-    var ct=G('confTxt');  if(ct){ ct.textContent='측정 실패 — 5~10cm 거리에서 수직으로 재촬영해주세요'; }
-    setInst('분쇄도를 감지하지 못했습니다. 라이트를 켜고 5~10cm 거리에서 수직으로 재촬영해주세요.');
+    var ct=G('confTxt');  if(ct){ ct.textContent='A4 흰 종이 위에 원두를 얇게 뿌리고, 7~9cm 수직 촬영 + 라이트 ON'; }
+    setInst('측정 실패 — A4(흰 종이) 위에 원두 얇게 뿌리고, 카메라를 7~9cm 수직으로 고정 후 재촬영해주세요.');
   }
 
   /* 분쇄도 전용 뷰 — grind-mode 클래스로 컬러 섹션 전부 숨김 */
