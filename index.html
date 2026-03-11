@@ -912,19 +912,23 @@ var FRAME_BUF_SIZE  = 20;      /* 20 frames (~5s at 4fps) */
 var AUTO_LOCK_SIGMA = 0.85;    /* normal lock: σ < 0.85 (강화) */
 var MIN_STABLE_RUN  = 12;      /* normal lock: 12 consecutive stable frames */
 var SHAKE_DELTA     = 4.0;     /* |ΔL*| > 4 between frames = shake (더 민감하게) */
-var MAX_LS_RANGE    = 2.5;     /* 버퍼 내 max-min L* ≤ 2.5 — 거리 변화 감지 */
+var MAX_LS_RANGE    = 1.8;     /* 버퍼 내 max-min L* ≤ 1.8 — 거리 변화 감지 (강화) */
 
 /* ── Coverage Gate ─────────────────────────────────────────────────
    측정 정확도는 원두가 가이드 원을 얼마나 채웠는지에 직접 의존.
    
    MIN_COV_BUFFER: 이 이상일 때만 프레임 버퍼 수집 시작
    MIN_COV_LOCK:   이 이상이 COV_STABLE_NEEDED 프레임 연속이어야 잠금
+   MAX_COV_LOCK:   이 초과 = 너무 가까움 → 잠금 완전 차단
    COV_STABLE_NEEDED: 연속으로 coverage OK여야 하는 프레임 수
-   MAX_COV_STDDEV:    버퍼 내 coverage 표준편차 — 이 이상이면 거리 변화 중  */
+   MAX_COV_STDDEV:    버퍼 내 coverage 표준편차 — 이 이상이면 거리 변화 중
+   COV_ANCHOR_TOL:    버퍼 평균 대비 이 이상 이탈 시 버퍼 초기화           */
 var MIN_COV_BUFFER    = 45;   /* 45% 이상 채워져야 버퍼 수집 시작 */
 var MIN_COV_LOCK      = 55;   /* 55% 이상 채워져야 잠금 허용 */
+var MAX_COV_LOCK      = 83;   /* 83% 초과 = 너무 가까움 → 잠금 차단 */
+var COV_ANCHOR_TOL    = 10;   /* 버퍼 평균 커버리지 대비 ±10% 이탈 시 버퍼 초기화 */
 var COV_STABLE_NEEDED = 8;    /* MIN_COV_LOCK 이상이 8프레임 연속이어야 잠금 */
-var MAX_COV_STDDEV    = 8.0;  /* 버퍼 내 coverage 표준편차 ≤ 8% (정지 확인) */
+var MAX_COV_STDDEV    = 5.0;  /* 버퍼 내 coverage 표준편차 ≤ 5% (강화) */
 var covGatePassed     = false;
 var covStableRun      = 0;    /* coverage >= MIN_COV_LOCK 연속 프레임 수 */
 
@@ -1350,7 +1354,8 @@ function drawGuideOverlay(){
   gx.stroke();
   /* 진행 호 */
   if(covFrac > 0.01){
-    var fillColor = lastCovPct >= MIN_COV_LOCK ? 'rgba(60,210,100,0.92)' :
+    var fillColor = lastCovPct > MAX_COV_LOCK    ? 'rgba(255,60,60,0.95)'  :
+                    lastCovPct >= MIN_COV_LOCK   ? 'rgba(60,210,100,0.92)' :
                     lastCovPct >= MIN_COV_BUFFER ? 'rgba(255,170,40,0.92)' :
                     'rgba(230,80,60,0.85)';
     gx.beginPath();
@@ -1430,16 +1435,18 @@ function drawGuideOverlay(){
   gx.fill();
 
   /* coverage 수치 오버레이 — 측정 불가 상태일 때 원 위에 표시 */
-  if(liveRunning && currentMode === 'color' && lastCovPct < MIN_COV_LOCK + 5){
+  if(liveRunning && currentMode === 'color' && (lastCovPct < MIN_COV_LOCK + 5 || lastCovPct > MAX_COV_LOCK)){
     var covTxt = lastCovPct + '%';
-    var covSubTxt = lastCovPct < MIN_COV_BUFFER ? '원두 더 채워주세요' :
-                    lastCovPct < MIN_COV_LOCK   ? '거의 됐습니다' : '';
+    var covSubTxt = lastCovPct > MAX_COV_LOCK    ? '너무 가까움 — 잠금 차단' :
+                    lastCovPct < MIN_COV_BUFFER  ? '원두 더 채워주세요' :
+                    lastCovPct < MIN_COV_LOCK    ? '거의 됐습니다' : '';
     gx.save();
     gx.textAlign = 'center';
     gx.textBaseline = 'middle';
     /* 큰 숫자 */
     gx.font = 'bold 28px DM Mono, monospace';
-    var covColor = lastCovPct >= MIN_COV_BUFFER ? 'rgba(255,190,60,1)' : 'rgba(230,90,70,1)';
+    var covColor = lastCovPct > MAX_COV_LOCK    ? 'rgba(255,80,80,1)'   :
+                   lastCovPct >= MIN_COV_BUFFER ? 'rgba(255,190,60,1)'  : 'rgba(230,90,70,1)';
     /* 배경 */
     gx.fillStyle = 'rgba(0,0,0,0.55)';
     gx.beginPath();
@@ -1462,9 +1469,9 @@ function drawGuideOverlay(){
     if(convergenceMode){
       subMsg = 'L* 수렴 — 이 거리 유지';
       subColor = '#5dda88';
-    } else if(lastCovPct > 90){
-      subMsg = '너무 가깝습니다 — 살짝 거리를 두세요';
-      subColor = '#ff6b6b';
+    } else if(lastCovPct > MAX_COV_LOCK){
+      subMsg = '너무 가까움 — 거리를 멀리하세요 (잠금 차단 중)';
+      subColor = '#ff4444';
     } else if(lastCovPct >= MIN_COV_LOCK){
       if(convergenceMode){
         subMsg = '원두 충분 ✓  L* 수렴 잠금 중...';
@@ -1587,29 +1594,37 @@ function frameLoop(ts){
   emaL = (emaL === null) ? r.Ls : (EMA_ALPHA * r.Ls + (1-EMA_ALPHA) * emaL);
 
   /* ── Coverage Gate ─────────────────────────────────────────────
-     covGateOk:    버퍼 수집 허용 (MIN_COV_BUFFER 이상)
-     covStableRun: MIN_COV_LOCK 이상이 연속된 프레임 수
-     → 잠금은 covStableRun >= COV_STABLE_NEEDED 일 때만 허용      */
-  var covGateOk = (covNow >= MIN_COV_BUFFER);
-  if(covNow >= MIN_COV_LOCK){ covStableRun++; }
+     covGateOk:    버퍼 수집 허용 (MIN_COV_BUFFER 이상 AND MAX_COV_LOCK 이하)
+     covStableRun: 유효 범위 연속 프레임 수
+     → 너무 가까움(> MAX_COV_LOCK) 또는 너무 멈(< MIN_COV_LOCK) → 잠금 차단
+     → 범위 이탈 시 frameBuffer까지 초기화 (스테일 프레임 방지)          */
+  var tooClose  = (covNow > MAX_COV_LOCK);
+  var tooFar    = (covNow < MIN_COV_BUFFER);
+  var covGateOk = (!tooClose && !tooFar);
+
+  if(covNow >= MIN_COV_LOCK && covNow <= MAX_COV_LOCK){ covStableRun++; }
   else { covStableRun = 0; }
   covGatePassed = (covStableRun >= COV_STABLE_NEEDED);
 
   if(!isShake && !r.lowLight && covGateOk){
+    /* Coverage Anchor: 버퍼 내 평균과 현재값이 크게 다르면 초기화 (거리 변화) */
+    if(frameBuffer.length >= 6){
+      var anchorVals = frameBuffer.map(function(f){return (f.beanCoverage||0)*100;});
+      var anchorMean = anchorVals.reduce(function(a,b){return a+b;},0)/anchorVals.length;
+      if(Math.abs(covNow - anchorMean) > COV_ANCHOR_TOL){
+        frameBuffer = []; stableRun = 0; covStableRun = 0; convergenceMode = false;
+      }
+    }
     stableRun++;
     frameBuffer.push(r);
     if(frameBuffer.length > FRAME_BUF_SIZE) frameBuffer.shift();
   } else if(r.lowLight){
-    frameBuffer = [];
-    stableRun = 0;
-    covStableRun = 0;
-    convergenceMode = false;
-    covGatePassed = false;
+    /* 저조도: 전체 리셋 */
+    frameBuffer = []; stableRun = 0; covStableRun = 0;
+    convergenceMode = false; covGatePassed = false;
   } else {
-    /* coverage 부족 또는 흔들림: 안정 카운트 리셋 (버퍼는 유지) */
-    stableRun = 0;
-    covStableRun = 0;
-    convergenceMode = false;
+    /* 너무 가깝거나 멀거나 흔들림: 버퍼까지 초기화 (스테일 프레임 방지) */
+    frameBuffer = []; stableRun = 0; covStableRun = 0; convergenceMode = false;
   }
 
   /* ── CONVERGENCE DETECTION ── */
@@ -1788,9 +1803,11 @@ function updateLiveReadout(r, smoothL, isShake, conv){
   } else if(isShake){
     status = '손떨림 감지 — 잠시 정지해주세요';
     statusColor = '#e05050';
-  } else if(covPct > 85){
-    status = currentMode === 'color' ? '너무 가까움 — 살짝 거리를 두세요' : '너무 가까움 — 5~10cm 거리를 유지하세요';
-    statusColor = '#f0a040';
+  } else if(covPct > MAX_COV_LOCK){
+    status = currentMode === 'color'
+      ? '너무 가까움 — 거리를 멀리하세요 (잠금 차단 중)'
+      : '너무 가까움 — 5~10cm 거리를 유지하세요';
+    statusColor = '#ff4444';
   } else if(currentMode === 'color' && covPct < MIN_COV_BUFFER){
     /* ── Coverage Gate 미달: 원두 충전 요청 ── */
     if(covPct < 10){
