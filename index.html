@@ -908,21 +908,25 @@ var liveStream      = null;
 var liveTrack       = null;
 var liveRunning     = false;
 var frameBuffer     = [];      /* stable frames only */
-var FRAME_BUF_SIZE  = 18;      /* 18 frames (~4.5s at 4fps) */
-var AUTO_LOCK_SIGMA = 1.2;     /* normal lock: σ < 1.2 */
-var MIN_STABLE_RUN  = 8;       /* normal lock: 8 consecutive stable frames */
-var SHAKE_DELTA     = 5.0;     /* |ΔL*| > 5 between frames = shake */
+var FRAME_BUF_SIZE  = 20;      /* 20 frames (~5s at 4fps) */
+var AUTO_LOCK_SIGMA = 0.85;    /* normal lock: σ < 0.85 (강화) */
+var MIN_STABLE_RUN  = 12;      /* normal lock: 12 consecutive stable frames */
+var SHAKE_DELTA     = 4.0;     /* |ΔL*| > 4 between frames = shake (더 민감하게) */
+var MAX_LS_RANGE    = 2.5;     /* 버퍼 내 max-min L* ≤ 2.5 — 거리 변화 감지 */
 
-/* ── Coverage Gate — 원두 충전량 최소 기준 ─────────────────────────
-   컬러 측정의 정확도는 가이드 원 안에 원두가 얼마나 채워졌느냐에 의존.
-   원두가 부족하면 배경(컵벽, 공기)이 측정값을 오염시킴.
+/* ── Coverage Gate ─────────────────────────────────────────────────
+   측정 정확도는 원두가 가이드 원을 얼마나 채웠는지에 직접 의존.
    
-   MIN_COV_BUFFER: 이 이상일 때만 프레임 버퍼에 포함 (측정 데이터 수집 시작)
-   MIN_COV_LOCK:   이 이상일 때만 잠금 허용 (최종 확정)
-   FILL_STAGES:    사용자 안내 단계 구분 임계값                         */
-var MIN_COV_BUFFER  = 38;   /* 38% 이상 채워져야 버퍼 수집 시작 */
-var MIN_COV_LOCK    = 48;   /* 48% 이상 채워져야 잠금 허용 */
-var covGatePassed   = false; /* coverage gate 통과 여부 */
+   MIN_COV_BUFFER: 이 이상일 때만 프레임 버퍼 수집 시작
+   MIN_COV_LOCK:   이 이상이 COV_STABLE_NEEDED 프레임 연속이어야 잠금
+   COV_STABLE_NEEDED: 연속으로 coverage OK여야 하는 프레임 수
+   MAX_COV_STDDEV:    버퍼 내 coverage 표준편차 — 이 이상이면 거리 변화 중  */
+var MIN_COV_BUFFER    = 45;   /* 45% 이상 채워져야 버퍼 수집 시작 */
+var MIN_COV_LOCK      = 55;   /* 55% 이상 채워져야 잠금 허용 */
+var COV_STABLE_NEEDED = 8;    /* MIN_COV_LOCK 이상이 8프레임 연속이어야 잠금 */
+var MAX_COV_STDDEV    = 8.0;  /* 버퍼 내 coverage 표준편차 ≤ 8% (정지 확인) */
+var covGatePassed     = false;
+var covStableRun      = 0;    /* coverage >= MIN_COV_LOCK 연속 프레임 수 */
 
 /* ── Approach-Convergence Lock ──────────────────────────────────
    사용자가 멀리서 점차 가까이 접근할 때 L*가 수렴하는 지점을 감지.
@@ -930,10 +934,10 @@ var covGatePassed   = false; /* coverage gate 통과 여부 */
    원리: cov 증가 중에도 dL*-dt 가 0에 가까워지면 진짜 표면 컬러 도달.  */
 var approachHistory = [];      /* 최근 20프레임: {Ls, covPct, ts} */
 var APPROACH_BUF    = 20;      /* 접근 이력 윈도우 크기 */
-var CONV_BUF_SIZE   = 10;      /* 수렴 잠금: 10프레임 */
-var CONV_SIGMA      = 0.9;     /* 수렴 잠금: σ < 0.9 */
-var CONV_MIN_RUN    = 6;       /* 수렴 잠금: 6 연속 안정 프레임 */
-var CONV_LS_SLOPE   = 0.35;    /* dL-dt 임계: 이 미만이면 수렴으로 판단 */
+var CONV_BUF_SIZE   = 14;      /* 수렴 잠금: 14프레임 (강화) */
+var CONV_SIGMA      = 0.70;    /* 수렴 잠금: σ < 0.70 (강화) */
+var CONV_MIN_RUN    = 10;      /* 수렴 잠금: 10 연속 안정 프레임 (강화) */
+var CONV_LS_SLOPE   = 0.25;    /* dL-dt 임계: 이 미만이면 수렴으로 판단 (강화) */
 var convergenceMode = false;   /* 현재 수렴 감지 상태 */
 var convergenceConf = 0;       /* 수렴 신뢰도 (0~100) */
 var rafId           = null;
@@ -1258,8 +1262,8 @@ function stopLive(){
   dom.torchWarn.style.display='none';
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
   frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
-  lastCovPct=0;  /* 감지율 초기화 */
-  covGatePassed=false;  /* coverage gate 초기화 */
+  lastCovPct=0; covStableRun=0;
+  covGatePassed=false;
   approachHistory=[]; convergenceMode=false; convergenceConf=0;
   digitalZoom=1.0; zoomLowFrames=0;
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
@@ -1426,7 +1430,7 @@ function drawGuideOverlay(){
   gx.fill();
 
   /* coverage 수치 오버레이 — 측정 불가 상태일 때 원 위에 표시 */
-  if(liveRunning && currentMode === 'color' && lastCovPct < MIN_COV_LOCK){
+  if(liveRunning && currentMode === 'color' && lastCovPct < MIN_COV_LOCK + 5){
     var covTxt = lastCovPct + '%';
     var covSubTxt = lastCovPct < MIN_COV_BUFFER ? '원두 더 채워주세요' :
                     lastCovPct < MIN_COV_LOCK   ? '거의 됐습니다' : '';
@@ -1465,7 +1469,8 @@ function drawGuideOverlay(){
       if(convergenceMode){
         subMsg = '원두 충분 ✓  L* 수렴 잠금 중...';
       } else {
-        subMsg = '원두 충분 ✓ (' + lastCovPct + '%) — 이 거리 유지';
+        var stbDisp = covStableRun >= COV_STABLE_NEEDED ? '안정 확인 ✓' : '안정 ' + covStableRun + '/' + COV_STABLE_NEEDED;
+        subMsg = '원두 충분 (' + lastCovPct + '%) — ' + stbDisp;
       }
       subColor = '#5dda88';
     } else if(lastCovPct >= MIN_COV_BUFFER){
@@ -1581,9 +1586,14 @@ function frameLoop(ts){
   /* ── EMA SMOOTHING ── */
   emaL = (emaL === null) ? r.Ls : (EMA_ALPHA * r.Ls + (1-EMA_ALPHA) * emaL);
 
-  /* ── Coverage Gate: 원두 충전량 기준 미달 시 버퍼/잠금 차단 ── */
+  /* ── Coverage Gate ─────────────────────────────────────────────
+     covGateOk:    버퍼 수집 허용 (MIN_COV_BUFFER 이상)
+     covStableRun: MIN_COV_LOCK 이상이 연속된 프레임 수
+     → 잠금은 covStableRun >= COV_STABLE_NEEDED 일 때만 허용      */
   var covGateOk = (covNow >= MIN_COV_BUFFER);
-  covGatePassed = (covNow >= MIN_COV_LOCK);
+  if(covNow >= MIN_COV_LOCK){ covStableRun++; }
+  else { covStableRun = 0; }
+  covGatePassed = (covStableRun >= COV_STABLE_NEEDED);
 
   if(!isShake && !r.lowLight && covGateOk){
     stableRun++;
@@ -1592,12 +1602,13 @@ function frameLoop(ts){
   } else if(r.lowLight){
     frameBuffer = [];
     stableRun = 0;
+    covStableRun = 0;
     convergenceMode = false;
     covGatePassed = false;
-  } else if(!covGateOk){
-    /* coverage 부족: 버퍼는 지우지 않되, 안정 카운트만 리셋
-       (갑자기 치워도 이전 버퍼 유지 → 다시 채우면 빠르게 복귀) */
+  } else {
+    /* coverage 부족 또는 흔들림: 안정 카운트 리셋 (버퍼는 유지) */
     stableRun = 0;
+    covStableRun = 0;
     convergenceMode = false;
   }
 
@@ -1612,14 +1623,38 @@ function frameLoop(ts){
   /* ── LOCK CONDITIONS ──────────────────────────────────────────
      모드 A: 수렴 잠금 — 접근 중 L* 수렴 감지 → 빠른 잠금
      모드 B: 정상 잠금 — 기존 방식 (정지 + 시간 대기)        */
-  if(covGatePassed && frameBuffer.length >= CONV_BUF_SIZE && stableRun >= CONV_MIN_RUN && convergenceMode){
+  /* ── L* range 게이트: 버퍼 내 거리 변화 감지 ────────────────────
+     max-min L* > MAX_LS_RANGE → 측정 중 거리가 바뀐 것 → 잠금 거부  */
+  var lsRangeOk = false;
+  if(frameBuffer.length >= 6){
+    var buflsVals = frameBuffer.map(function(f){return f.Ls;});
+    var buflsMax = Math.max.apply(null, buflsVals);
+    var buflsMin = Math.min.apply(null, buflsVals);
+    lsRangeOk = (buflsMax - buflsMin) <= MAX_LS_RANGE;
+  }
+
+  /* ── Coverage 안정성 게이트: 거리 이동 중 여부 확인 ────────────────
+     버퍼 내 coverage 표준편차 > MAX_COV_STDDEV → 가까이/멀리 움직이는 중 */
+  var covStdOk = false;
+  if(frameBuffer.length >= 8){
+    var covVals = frameBuffer.map(function(f){ return (f.beanCoverage||0)*100; });
+    var covMean = covVals.reduce(function(a,b){return a+b;},0)/covVals.length;
+    var covVar  = covVals.reduce(function(s,v){return s+Math.pow(v-covMean,2);},0)/covVals.length;
+    covStdOk = Math.sqrt(covVar) <= MAX_COV_STDDEV;
+  }
+
+  var allGatesOk = covGatePassed && lsRangeOk && covStdOk;
+
+  /* 수렴 잠금 — 모든 게이트 통과 필요 */
+  if(allGatesOk && frameBuffer.length >= CONV_BUF_SIZE && stableRun >= CONV_MIN_RUN && convergenceMode){
     var convSigma = computeBufSigma();
     if(convSigma < CONV_SIGMA){
       autoLock('convergence');
       return;
     }
   }
-  if(covGatePassed && frameBuffer.length >= FRAME_BUF_SIZE && stableRun >= MIN_STABLE_RUN){
+  /* 정상 잠금 — 모든 게이트 통과 필요 */
+  if(allGatesOk && frameBuffer.length >= FRAME_BUF_SIZE && stableRun >= MIN_STABLE_RUN){
     var bufSigma = computeBufSigma();
     if(bufSigma < AUTO_LOCK_SIGMA){
       autoLock('normal');
@@ -1781,31 +1816,47 @@ function updateLiveReadout(r, smoothL, isShake, conv){
     statusColor = '#f0c040';
     status = '';
   } else if(conv.converging){
-    /* ── 수렴 감지: 가장 중요한 상태 ── */
     var convSigma = computeBufSigma();
     var framesLeft = Math.max(0, CONV_BUF_SIZE - frameBuffer.length);
-    if(framesLeft > 0){
+    if(!covGatePassed){
+      status = '수렴 중 — 원두 더 채워주세요 (' + covStableRun + '/' + COV_STABLE_NEEDED + ')';
+      statusColor = '#f0c040';
+    } else if(framesLeft > 0){
       status = 'L* 수렴 감지 — 이 거리 유지 (' + framesLeft + '프레임 남음)';
+      statusColor = '#5dda88';
     } else if(convSigma >= CONV_SIGMA){
-      status = 'L* 수렴 중 — σ=' + convSigma.toFixed(2) + ' (목표 <' + CONV_SIGMA + ')';
+      status = 'L* 수렴 중 σ=' + convSigma.toFixed(2) + ' — 조금만 더 유지';
+      statusColor = '#5dda88';
     } else {
       status = 'L* 수렴 완료 — 잠금 중...';
+      statusColor = '#5dda88';
     }
-    statusColor = '#5dda88';
   } else if(conv.isApproaching){
     status = '접근 중 — 천천히 가까이... (L* 변화 ' + conv.lsSlope.toFixed(1) + '/프레임)';
     statusColor = '#f0c040';
   } else if(covPct < 35){
     status = '더 가까이 대주세요 — 또는 멀리서 천천히 접근해보세요';
   } else if(frameBuffer.length < needed){
-    var covBar = covPct >= MIN_COV_LOCK ? '원두 충분 ✓' : '원두 ' + covPct + '%';
-    status = '측정 중 ' + prog + '/' + needed + '프레임 (' + covBar + ') — 이 거리 유지';
-  } else if(computeBufSigma() >= AUTO_LOCK_SIGMA){
-    var bs2 = computeBufSigma();
-    status = '안정화 중 σ=' + bs2.toFixed(2) + ' — 또는 멀리서 천천히 접근해보세요';
+    var covBar = covPct >= MIN_COV_LOCK ? '원두 ' + covPct + '%✓' : '원두 ' + covPct + '% (목표 ' + MIN_COV_LOCK + '%)';
+    var stbBar = '안정 ' + Math.min(stableRun||0, needed) + '/' + needed;
+    status = '측정 중 — ' + covBar + ' · ' + stbBar;
   } else {
-    status = '잠금 준비 완료';
-    statusColor = '#5dda88';
+    var bs2 = computeBufSigma();
+    var buflsV2 = frameBuffer.map(function(f){return f.Ls;});
+    var lsR2 = Math.max.apply(null,buflsV2) - Math.min.apply(null,buflsV2);
+    if(!covGatePassed){
+      status = '원두를 더 채워주세요 (' + covPct + '%) — 안정 ' + covStableRun + '/' + COV_STABLE_NEEDED + '프레임';
+      statusColor = '#f0a040';
+    } else if(lsR2 > MAX_LS_RANGE){
+      status = '거리를 고정해주세요 — L* 편차 ' + lsR2.toFixed(1) + 'pt (목표 ' + MAX_LS_RANGE + ' 이하)';
+      statusColor = '#f0a040';
+    } else if(bs2 >= AUTO_LOCK_SIGMA){
+      status = '안정화 중 σ=' + bs2.toFixed(2) + ' — 이 거리 그대로 유지해주세요';
+      statusColor = '#f0c040';
+    } else {
+      status = '잠금 준비 완료';
+      statusColor = '#5dda88';
+    }
   }
   dom.lrStatus.textContent = status;
   dom.lrStatus.style.color = statusColor;
