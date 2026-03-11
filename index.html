@@ -913,6 +913,17 @@ var AUTO_LOCK_SIGMA = 1.2;     /* normal lock: σ < 1.2 */
 var MIN_STABLE_RUN  = 8;       /* normal lock: 8 consecutive stable frames */
 var SHAKE_DELTA     = 5.0;     /* |ΔL*| > 5 between frames = shake */
 
+/* ── Coverage Gate — 원두 충전량 최소 기준 ─────────────────────────
+   컬러 측정의 정확도는 가이드 원 안에 원두가 얼마나 채워졌느냐에 의존.
+   원두가 부족하면 배경(컵벽, 공기)이 측정값을 오염시킴.
+   
+   MIN_COV_BUFFER: 이 이상일 때만 프레임 버퍼에 포함 (측정 데이터 수집 시작)
+   MIN_COV_LOCK:   이 이상일 때만 잠금 허용 (최종 확정)
+   FILL_STAGES:    사용자 안내 단계 구분 임계값                         */
+var MIN_COV_BUFFER  = 38;   /* 38% 이상 채워져야 버퍼 수집 시작 */
+var MIN_COV_LOCK    = 48;   /* 48% 이상 채워져야 잠금 허용 */
+var covGatePassed   = false; /* coverage gate 통과 여부 */
+
 /* ── Approach-Convergence Lock ──────────────────────────────────
    사용자가 멀리서 점차 가까이 접근할 때 L*가 수렴하는 지점을 감지.
    수렴 감지 시: 더 적은 프레임으로 더 높은 신뢰도 잠금 가능.
@@ -1248,6 +1259,7 @@ function stopLive(){
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
   frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0;
   lastCovPct=0;  /* 감지율 초기화 */
+  covGatePassed=false;  /* coverage gate 초기화 */
   approachHistory=[]; convergenceMode=false; convergenceConf=0;
   digitalZoom=1.0; zoomLowFrames=0;
   if(shakeTimeout){ clearTimeout(shakeTimeout); shakeTimeout=null; }
@@ -1317,6 +1329,36 @@ function drawGuideOverlay(){
   gx.strokeStyle = 'rgba(255,255,255,0.25)';
   gx.lineWidth   = 5;
   gx.stroke();
+
+  /* ── Coverage Fill Ring: 원두 충전 진행률 표시 ──────────────────
+     MIN_COV_BUFFER(38%) 도달 전: 점선 빨간 링 (충전 필요)
+     38~48%: 주황 실선 (거의 됨)
+     48%+:   초록 실선 (측정 가능)
+     원 아래쪽에서 시작해서 시계방향으로 채워지는 호로 표시    */
+  var covFrac = clamp(lastCovPct / 70, 0, 1);  /* 70% = 완전히 채움으로 간주 */
+  var covAngle = covFrac * Math.PI * 2;
+  var startAngle = -Math.PI / 2;  /* 12시 방향 */
+  /* 진행 호 배경 */
+  gx.beginPath();
+  gx.arc(cx, cy, r+7, 0, Math.PI*2);
+  gx.strokeStyle = 'rgba(255,255,255,0.08)';
+  gx.lineWidth = 5;
+  gx.stroke();
+  /* 진행 호 */
+  if(covFrac > 0.01){
+    var fillColor = lastCovPct >= MIN_COV_LOCK ? 'rgba(60,210,100,0.92)' :
+                    lastCovPct >= MIN_COV_BUFFER ? 'rgba(255,170,40,0.92)' :
+                    'rgba(230,80,60,0.85)';
+    gx.beginPath();
+    gx.arc(cx, cy, r+7, startAngle, startAngle + covAngle);
+    gx.strokeStyle = fillColor;
+    gx.lineWidth = 5;
+    gx.lineCap = 'round';
+    gx.setLineDash([]);
+    gx.stroke();
+    gx.lineCap = 'butt';
+  }
+
   /* 메인 링 */
   gx.beginPath();
   gx.arc(cx,cy,r,0,Math.PI*2);
@@ -1377,11 +1419,37 @@ function drawGuideOverlay(){
     gx.stroke();
   });
 
-  /* 4. 중심 점 */
+  /* 4. 중심 점 + coverage 수치 (미달 시) */
   gx.beginPath();
   gx.arc(cx,cy,3.5,0,Math.PI*2);
   gx.fillStyle='rgba(255,255,255,0.75)';
   gx.fill();
+
+  /* coverage 수치 오버레이 — 측정 불가 상태일 때 원 위에 표시 */
+  if(liveRunning && currentMode === 'color' && lastCovPct < MIN_COV_LOCK){
+    var covTxt = lastCovPct + '%';
+    var covSubTxt = lastCovPct < MIN_COV_BUFFER ? '원두 더 채워주세요' :
+                    lastCovPct < MIN_COV_LOCK   ? '거의 됐습니다' : '';
+    gx.save();
+    gx.textAlign = 'center';
+    gx.textBaseline = 'middle';
+    /* 큰 숫자 */
+    gx.font = 'bold 28px DM Mono, monospace';
+    var covColor = lastCovPct >= MIN_COV_BUFFER ? 'rgba(255,190,60,1)' : 'rgba(230,90,70,1)';
+    /* 배경 */
+    gx.fillStyle = 'rgba(0,0,0,0.55)';
+    gx.beginPath();
+    if(gx.roundRect) gx.roundRect(cx-45, cy-28, 90, 56, 10);
+    else gx.arc(cx, cy, 52, 0, Math.PI*2);
+    gx.fill();
+    gx.fillStyle = covColor;
+    gx.fillText(covTxt, cx, cy - 4);
+    /* 보조 텍스트 */
+    gx.font = '11px -apple-system, Inter, sans-serif';
+    gx.fillStyle = 'rgba(255,255,255,0.80)';
+    gx.fillText(covSubTxt, cx, cy + 18);
+    gx.restore();
+  }
 
   /* 5. 컬러 모드만: 하단 상태 텍스트 */
   if(currentMode === 'color' && liveRunning){
@@ -1393,15 +1461,22 @@ function drawGuideOverlay(){
     } else if(lastCovPct > 90){
       subMsg = '너무 가깝습니다 — 살짝 거리를 두세요';
       subColor = '#ff6b6b';
-    } else if(lastCovPct >= 55){
-      subMsg = '원두 가득 ✓ — 이 거리 유지 (흰 배경 없어도 정확)';
+    } else if(lastCovPct >= MIN_COV_LOCK){
+      if(convergenceMode){
+        subMsg = '원두 충분 ✓  L* 수렴 잠금 중...';
+      } else {
+        subMsg = '원두 충분 ✓ (' + lastCovPct + '%) — 이 거리 유지';
+      }
       subColor = '#5dda88';
-    } else if(lastCovPct >= 25){
-      subMsg = '조금만 더 가까이 — 원두로 원을 채워주세요';
+    } else if(lastCovPct >= MIN_COV_BUFFER){
+      subMsg = '거의 됐습니다 (' + lastCovPct + '%) — 조금만 더 가까이';
       subColor = '#f0c040';
+    } else if(lastCovPct >= 15){
+      subMsg = '원두를 더 채워주세요 (' + lastCovPct + '%) — 목표 ' + MIN_COV_LOCK + '%';
+      subColor = '#ff8040';
     } else {
-      subMsg = '원 안에 원두가 가득 차도록 가까이 대주세요';
-      subColor = '#f0c040';
+      subMsg = '원 안에 원두가 차도록 가까이 대주세요';
+      subColor = '#ff6060';
     }
     gx.font = 'bold 14px -apple-system, Inter, sans-serif';
     var stw = gx.measureText(subMsg).width;
@@ -1506,12 +1581,22 @@ function frameLoop(ts){
   /* ── EMA SMOOTHING ── */
   emaL = (emaL === null) ? r.Ls : (EMA_ALPHA * r.Ls + (1-EMA_ALPHA) * emaL);
 
-  if(!isShake && !r.lowLight){
+  /* ── Coverage Gate: 원두 충전량 기준 미달 시 버퍼/잠금 차단 ── */
+  var covGateOk = (covNow >= MIN_COV_BUFFER);
+  covGatePassed = (covNow >= MIN_COV_LOCK);
+
+  if(!isShake && !r.lowLight && covGateOk){
     stableRun++;
     frameBuffer.push(r);
     if(frameBuffer.length > FRAME_BUF_SIZE) frameBuffer.shift();
   } else if(r.lowLight){
     frameBuffer = [];
+    stableRun = 0;
+    convergenceMode = false;
+    covGatePassed = false;
+  } else if(!covGateOk){
+    /* coverage 부족: 버퍼는 지우지 않되, 안정 카운트만 리셋
+       (갑자기 치워도 이전 버퍼 유지 → 다시 채우면 빠르게 복귀) */
     stableRun = 0;
     convergenceMode = false;
   }
@@ -1527,14 +1612,14 @@ function frameLoop(ts){
   /* ── LOCK CONDITIONS ──────────────────────────────────────────
      모드 A: 수렴 잠금 — 접근 중 L* 수렴 감지 → 빠른 잠금
      모드 B: 정상 잠금 — 기존 방식 (정지 + 시간 대기)        */
-  if(frameBuffer.length >= CONV_BUF_SIZE && stableRun >= CONV_MIN_RUN && convergenceMode){
+  if(covGatePassed && frameBuffer.length >= CONV_BUF_SIZE && stableRun >= CONV_MIN_RUN && convergenceMode){
     var convSigma = computeBufSigma();
     if(convSigma < CONV_SIGMA){
       autoLock('convergence');
       return;
     }
   }
-  if(frameBuffer.length >= FRAME_BUF_SIZE && stableRun >= MIN_STABLE_RUN){
+  if(covGatePassed && frameBuffer.length >= FRAME_BUF_SIZE && stableRun >= MIN_STABLE_RUN){
     var bufSigma = computeBufSigma();
     if(bufSigma < AUTO_LOCK_SIGMA){
       autoLock('normal');
@@ -1607,7 +1692,10 @@ function updateLiveReadout(r, smoothL, isShake, conv){
   var covColor = covPct >= 55 ? 'rgba(60,200,100,.9)' : covPct >= 35 ? 'rgba(255,200,60,.9)' : '#e05050';
   dom.lrCovFill.style.width   = covPct + '%';
   dom.lrCovFill.style.background = covColor;
-  var distHint = covPct > 85 ? ' — 너무 가까움, 거리를 두세요' : covPct >= 55 ? ' — 최적' : covPct >= 35 ? ' — 더 가까이 대주세요' : ' — 많이 부족';
+  var distHint = covPct > 85 ? ' — 너무 가까움' :
+                covPct >= MIN_COV_LOCK   ? ' ✓ 측정 가능' :
+                covPct >= MIN_COV_BUFFER ? ' — 조금만 더' :
+                covPct >= 15             ? ' — 원두 더 필요' : ' — 원두를 대주세요';
   dom.lrCovVal.textContent    = covPct + '%' + distHint;
 
   /* ── Indicator 2: 흰 기준 상태 — white ref 가용 여부 표시 ── */
@@ -1668,6 +1756,17 @@ function updateLiveReadout(r, smoothL, isShake, conv){
   } else if(covPct > 85){
     status = currentMode === 'color' ? '너무 가까움 — 살짝 거리를 두세요' : '너무 가까움 — 5~10cm 거리를 유지하세요';
     statusColor = '#f0a040';
+  } else if(currentMode === 'color' && covPct < MIN_COV_BUFFER){
+    /* ── Coverage Gate 미달: 원두 충전 요청 ── */
+    if(covPct < 10){
+      status = '원두를 가이드 원 안에 대주세요';
+    } else {
+      status = '원두를 더 채워주세요 — 현재 ' + covPct + '% (목표 ' + MIN_COV_LOCK + '% 이상)';
+    }
+    statusColor = '#e05050';
+  } else if(currentMode === 'color' && covPct < MIN_COV_LOCK){
+    status = '원두 거의 다 찼습니다 (' + covPct + '%) — 조금만 더 가까이';
+    statusColor = '#f0a040';
   } else if(covPct < 25){
     if(digitalZoom >= 1.5){
       status = '디지털 ' + digitalZoom.toFixed(1) + 'x 확대 분석 중 — 이 위치 유지';
@@ -1699,7 +1798,8 @@ function updateLiveReadout(r, smoothL, isShake, conv){
   } else if(covPct < 35){
     status = '더 가까이 대주세요 — 또는 멀리서 천천히 접근해보세요';
   } else if(frameBuffer.length < needed){
-    status = '분석 중 ' + prog + ' / ' + needed + ' — 이 거리 유지 또는 천천히 접근';
+    var covBar = covPct >= MIN_COV_LOCK ? '원두 충분 ✓' : '원두 ' + covPct + '%';
+    status = '측정 중 ' + prog + '/' + needed + '프레임 (' + covBar + ') — 이 거리 유지';
   } else if(computeBufSigma() >= AUTO_LOCK_SIGMA){
     var bs2 = computeBufSigma();
     status = '안정화 중 σ=' + bs2.toFixed(2) + ' — 또는 멀리서 천천히 접근해보세요';
