@@ -2894,82 +2894,69 @@ function isBeanPixel(p, mode){
      선형회귀 오차: ±2pt 이내 ✓
    ════════════════════════════════════════════════════════════ */
 
-var G_NORM_TARGET = 128;     /* 하위 호환 유지 */
+var G_NORM_TARGET = 128;
 var TARGET_WHITE_L = 93.0;
 var TARGET_WHITE_R = 230;
 var TARGET_WHITE_G = 230;
 
 /* ════════════════════════════════════════════════════════════
-   (R-B)/G 비율 기반 Agtron 측정
+   하이브리드 Agtron: (R-B)/G 비율 40% + lum 60% 가중 평균
    ────────────────────────────────────────────────────────────
-   핵심 원리:
-     Rn = R × scale,  Gn = G × scale,  Bn = B × scale
-     (Rn - Bn) / Gn  =  (R - B) / G   ← scale 완전 약분
-   
-   즉 (R-B)/G 는 조명 강도, 거리, AWB scale에 모두 불변.
-   G median 계산이 필요 없고, 픽셀별 비율을 직접 집계하면 됨.
-   
-   내벽 오염 차단:
-     컵 내벽: (R-B)/G ≈ 0.07~0.18  (따뜻하지만 R-B 차이 작음)
-     원두:   (R-B)/G ≈ 0.28~0.77
-     → (R-B)/G < 0.22 픽셀을 bean pool에서 제거 → 오염 차단
-   
-   Agtron 공식 (실기기 실측 2점 캘리브레이션):
-     Ag = -250 × (R-B)/G + 220
-     실측 앵커 (스마트폰+토치 환경, torch warmth 잔류 반영):
-       Light Roast   Ag≈75  (R-B)/G≈0.58
-       Dark Roast    Ag≈40  (R-B)/G≈0.72
-       Medium        Ag≈60  (R-B)/G≈0.64 (내삽)
-       Very Dark     Ag≈25  (R-B)/G≈0.78 (외삽)
+   rbg 단독 한계: AWB 환경에서 범위가 0.50~0.65로 압축 → 구분 불가
+   lum 단독 한계: 조명/거리 변화에 민감
+   혼합: 두 지표의 약점을 상호 보완
+
+   ag_rbg = -137.6 × (R-B)/G + 132.9   (색조 기반)
+   ag_lum = 0.45   × lum_mean + 26      (밝기 기반)
+   agtron  = ag_rbg × 0.40 + ag_lum × 0.60
+
+   내벽 오염 차단: beanPx 중 lum > 185 제거
    ════════════════════════════════════════════════════════════ */
-var RBG_BEAN_MIN  = 0.22;   /* (R-B)/G 최솟값: 내벽·배경 픽셀 제거 */
-var AG_SLOPE      = -250;
-var AG_INTERCEPT  = 220;
 
 function whiteRefNormalize(beanPx, whitePx){
-  /* ── 1. (R-B)/G 비율 계산 + 내벽 오염 픽셀 제거 ── */
-  var ratios = [];
-  for(var i=0;i<beanPx.length;i++){
-    var p=beanPx[i];
-    if(p.g < 4) continue;
-    var rbg = (p.r - p.b) / p.g;
-    if(rbg < RBG_BEAN_MIN) continue;  /* 내벽/배경 제거 */
-    ratios.push(rbg);
-  }
-  /* fallback: 필터 기준 완화 */
-  if(ratios.length < 4){
-    ratios = beanPx.filter(function(p){return p.g>=4;}).map(function(p){return (p.r-p.b)/p.g;});
-  }
-  if(ratios.length < 2) ratios = [0.49]; /* 최후 fallback: Medium */
+  /* ── 1. 컵 내벽/반사 픽셀 제거 (lum > 185) ── */
+  var clean = beanPx.filter(function(p){ return p.lum < 185; });
+  if(clean.length < 4) clean = beanPx;
 
-  /* ── 2. 10-90% trimmed mean ── */
-  ratios.sort(function(a,b){return a-b;});
-  var n=ratios.length;
-  var trimmed = n>4 ? ratios.slice(Math.floor(n*0.10), Math.floor(n*0.90)) : ratios;
-  var rbgMean = trimmed.reduce(function(a,b){return a+b;},0) / trimmed.length;
+  /* ── 2. lum 기준 정렬 후 10-90% trim ── */
+  clean.sort(function(a,b){ return a.lum - b.lum; });
+  var n = clean.length;
+  var surf = clean.slice(Math.floor(n*0.10), Math.floor(n*0.90));
+  if(surf.length < 3) surf = clean;
 
-  /* ── 3. Agtron = -137.6 × (R-B)/G + 132.9 ── */
-  var agtron = clamp(Math.round(AG_SLOPE * rbgMean + AG_INTERCEPT), 15, 95);
+  /* ── 3. rbg = (R-B)/G trimmed mean ── */
+  var rbgVals = surf.map(function(p){ return p.g > 0 ? (p.r - p.b) / p.g : 0; });
+  rbgVals.sort(function(a,b){return a-b;});
+  var rn = rbgVals.length;
+  var rbgTr = rn > 4 ? rbgVals.slice(Math.floor(rn*0.10), Math.floor(rn*0.90)) : rbgVals;
+  var rbgMean = rbgTr.reduce(function(a,b){return a+b;},0) / Math.max(rbgTr.length,1);
 
-  /* ── 4. 표시용 L* 역산: L* = (Ag - 8) / 1.05 ── */
+  /* ── 4. lum trimmed mean ── */
+  var lumMean = surf.reduce(function(a,p){return a+p.lum;},0) / surf.length;
+
+  /* ── 5. 하이브리드 Agtron ── */
+  var ag_rbg = -137.6 * rbgMean + 132.9;
+  var ag_lum = 0.45   * lumMean  + 26;
+  var agtron = clamp(Math.round(ag_rbg * 0.40 + ag_lum * 0.60), 15, 95);
+
+  /* ── 6. 표시용 L*, 평균 RGB ── */
   var normL = clamp((agtron - 8) / 1.05, 10, 90);
-  /* scale: G=128 기준 역산 (표시용 bRGB에만 사용) */
-  var gMeanRaw = beanPx.reduce(function(a,p){return a+p.g;},0)/Math.max(beanPx.length,1);
+  var gMeanRaw = surf.reduce(function(a,p){return a+p.g;},0)/Math.max(surf.length,1);
   var scale = gMeanRaw > 8 ? 128/gMeanRaw : 1.0;
   var avgRn=0, avgGn=0, avgBn=0;
-  for(var i=0;i<beanPx.length;i++){
-    avgRn+=Math.min(beanPx[i].r*scale,255);
-    avgGn+=Math.min(beanPx[i].g*scale,255);
-    avgBn+=Math.min(beanPx[i].b*scale,255);
+  for(var i=0;i<surf.length;i++){
+    avgRn += Math.min(surf[i].r*scale, 255);
+    avgGn += Math.min(surf[i].g*scale, 255);
+    avgBn += Math.min(surf[i].b*scale, 255);
   }
-  var bn=Math.max(beanPx.length,1);
-  avgRn/=bn; avgGn/=bn; avgBn/=bn;
+  var sn = surf.length;
+  avgRn/=sn; avgGn/=sn; avgBn/=sn;
 
   return {
     normL: normL, beanL: normL, agtron: agtron, rnbn: rbgMean,
     bR: Math.round(avgRn), bG: Math.round(avgGn), bB: Math.round(avgBn),
     wR: null, wG: null, wB: null,
-    whiteL: null, refMode: 'rbg_ratio',
+    whiteL: null, refMode: 'hybrid',
     whitePxCount: 0, agOffset: 0,
     scale: scale, gMid: gMeanRaw
   };
