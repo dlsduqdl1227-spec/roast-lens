@@ -2914,12 +2914,17 @@ var TARGET_WHITE_G = 230;
      원두:   (R-B)/G ≈ 0.28~0.77
      → (R-B)/G < 0.22 픽셀을 bean pool에서 제거 → 오염 차단
    
-   Agtron 공식 (7점 선형회귀, 오차 ±2pt):
-     Ag = -137.6 × (R-B)/G + 132.9
+   Agtron 공식 (실기기 실측 2점 캘리브레이션):
+     Ag = -250 × (R-B)/G + 220
+     실측 앵커 (스마트폰+토치 환경, torch warmth 잔류 반영):
+       Light Roast   Ag≈75  (R-B)/G≈0.58
+       Dark Roast    Ag≈40  (R-B)/G≈0.72
+       Medium        Ag≈60  (R-B)/G≈0.64 (내삽)
+       Very Dark     Ag≈25  (R-B)/G≈0.78 (외삽)
    ════════════════════════════════════════════════════════════ */
 var RBG_BEAN_MIN  = 0.22;   /* (R-B)/G 최솟값: 내벽·배경 픽셀 제거 */
-var AG_SLOPE      = -137.6;
-var AG_INTERCEPT  = 132.9;
+var AG_SLOPE      = -250;
+var AG_INTERCEPT  = 220;
 
 function whiteRefNormalize(beanPx, whitePx){
   /* ── 1. (R-B)/G 비율 계산 + 내벽 오염 픽셀 제거 ── */
@@ -2946,8 +2951,8 @@ function whiteRefNormalize(beanPx, whitePx){
   /* ── 3. Agtron = -137.6 × (R-B)/G + 132.9 ── */
   var agtron = clamp(Math.round(AG_SLOPE * rbgMean + AG_INTERCEPT), 15, 95);
 
-  /* ── 4. 표시용 L* 역산, 평균 RGB (색상 스와치용) ── */
-  var normL = clamp((agtron - 10) / 1.10, 10, 90);
+  /* ── 4. 표시용 L* 역산: L* = (Ag - 8) / 1.05 ── */
+  var normL = clamp((agtron - 8) / 1.05, 10, 90);
   /* scale: G=128 기준 역산 (표시용 bRGB에만 사용) */
   var gMeanRaw = beanPx.reduce(function(a,p){return a+p.g;},0)/Math.max(beanPx.length,1);
   var scale = gMeanRaw > 8 ? 128/gMeanRaw : 1.0;
@@ -2986,24 +2991,19 @@ function sRGBtoLab(r8,g8,b8){
   function f(t){return t>.008856?Math.cbrt(t):7.787*t+16/116;}
   return{L:116*f(Y/1)  -16, a:500*(f(X/.95047)-f(Y/1)), b:200*(f(Y/1)-f(Z/1.08883))};
 }
-/* ── Agtron 예상 범위: L* 기반 룩업 ──────────────────────────────
-   G-자기정규화 기반: Agtron = -1.075 × (Rn-Bn) + 132.9
-   표시용 L* 역산:    L* = (Agtron - 132.9) / -1.075  ≈ (Agtron × 0.93) - 5
-   ±5pt 불확실 범위                                               */
+/* ── Agtron 예상 범위: L* 기반 룩업 ── */
 function agtronRangeFromL(L){
-  /* L* 표시용 근사: Ag ≈ 1.10*L + 10 (새 공식 기반) */
-  var mid = Math.round(clamp(1.10*L + 10, 15, 95));
+  var mid = Math.round(clamp(1.05*L + 8, 15, 95));
   return {lo: Math.max(15, mid-5), hi: Math.min(95, mid+5), mid: mid};
 }
 
-/* ── 로스트 레벨 분류 (G-자기정규화 Agtron 기준) ── */
+/* ── 로스트 레벨 분류 ── */
 function roastName(L){
-  /* 새 공식 기반 Agtron 역산 분류 */
-  var ag = clamp(Math.round(1.10*L + 10), 15, 95);
-  if(ag >= 85) return 'Light Roast';
-  if(ag >= 70) return 'Medium-Light Roast';
-  if(ag >= 55) return 'Medium Roast';
-  if(ag >= 40) return 'Medium-Dark Roast';
+  var ag = clamp(Math.round(1.05*L + 8), 15, 95);
+  if(ag >= 82) return 'Light Roast';
+  if(ag >= 68) return 'Medium-Light Roast';
+  if(ag >= 52) return 'Medium Roast';
+  if(ag >= 38) return 'Medium-Dark Roast';
   return              'Dark Roast';
 }
 function setInst(t){dom.it.textContent=t;}
