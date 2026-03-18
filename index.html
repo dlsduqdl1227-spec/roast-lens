@@ -925,7 +925,7 @@ var MAX_LS_RANGE    = 2.5;     /* 버퍼 내 max-min L* ≤ 2.5 — 완화 */
    COV_ANCHOR_TOL:    버퍼 평균 대비 이 이상 이탈 시 버퍼 초기화           */
 var MIN_COV_BUFFER    = 22;   /* 22% — 소량 원두 / 종이컵 대응 */
 var MIN_COV_LOCK      = 30;   /* 30% — 소량으로도 잠금 허용 */
-var MAX_COV_LOCK      = 83;   /* 83% 초과 = 너무 가까움 → 잠금 차단 */
+var MAX_COV_LOCK      = 90;   /* 90% 초과 = 너무 가까움 → 잠금 차단 (원 작아져서 완화) */
 var COV_ANCHOR_TOL    = 15;   /* ±15% 이탈 시 버퍼 초기화 — 완화 */
 var COV_STABLE_NEEDED = 4;    /* 4프레임 연속으로 충분 — 빠른 잠금 */
 var MAX_COV_STDDEV    = 8.0;  /* coverage 표준편차 ≤ 8% — 완화 */
@@ -1011,8 +1011,8 @@ function applyDeviceCal(rawL){
 /* ── 고정 ROI — 원 크기 고정, 거리는 사용자가 직접 조절 ──
    가이드 원은 항상 동일 크기. 대신 감지율(coverage)에 따라
    텍스트로 "더 가까이" / "거리를 두세요" 안내한다.          */
-var FIXED_ROI     = 0.40;   /* 고정 비율 0.50→0.40: 종이컵이 원을 채우기 쉽게 */
-var ROI_CY_RATIO  = 0.42;   /* 원 세로 중심: H * 0.42 — 기본 중앙보다 약간 위 */
+var FIXED_ROI     = 0.28;   /* 작은 원: 가까이 붙여서 원두만 채우도록 */
+var ROI_CY_RATIO  = 0.42;   /* 원 세로 중심: H * 0.42 */
 var lastCovPct    = 0;      /* 최근 프레임 감지율 (0~100)   */
 
 /* ── 디지털 줌 (컵 크기로 가까이 못 가는 경우 자동 확대) ─────
