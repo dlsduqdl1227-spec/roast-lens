@@ -2901,18 +2901,24 @@ var TARGET_WHITE_G = 230;
 
 /* ── G-자기정규화 + (Rn-Bn) Agtron 계산 ── */
 function whiteRefNormalize(beanPx, whitePx){
-  /* ── 1. 5-95% trim ── */
+  /* ── 1. lum 오름차순 정렬
+     G median은 하위 40%만 사용 — 컵 내벽/반사 밝은 픽셀이 상위에 몰리므로
+     하위 픽셀 기준으로 계산해야 scale이 오염되지 않음.
+     Rn-Bn 평균은 5-95% 전체 사용 (더 많은 픽셀로 안정성 확보).    */
   beanPx.sort(function(a,b){return a.lum-b.lum;});
   var bn = beanPx.length;
+  /* G 계산용: 하위 5-45% */
+  var gLower = beanPx.slice(Math.floor(bn*0.05), Math.max(3, Math.floor(bn*0.45)));
+  if(gLower.length < 3) gLower = beanPx;
+  /* Rn-Bn 계산용: 5-95% */
   var surf = beanPx.slice(Math.floor(bn*0.05), Math.floor(bn*0.95));
   if(surf.length < 3) surf = beanPx;
 
-  /* ── 2. G 중앙값 계산 (10-90% trimmed mean) ── */
+  /* ── 2. G median: 하위 40% 픽셀 기반 (컵 내벽 오염 차단) ── */
   var gVals = [];
-  for(var i=0;i<surf.length;i++) gVals.push(surf[i].g);
+  for(var i=0;i<gLower.length;i++) gVals.push(gLower[i].g);
   gVals.sort(function(a,b){return a-b;});
-  var gn=gVals.length;
-  var gSlice=gVals.slice(Math.floor(gn*0.10),Math.floor(gn*0.90));
+  var gSlice = gVals.length > 4 ? gVals.slice(1, gVals.length-1) : gVals;
   var gMid=0; for(var i=0;i<gSlice.length;i++) gMid+=gSlice[i];
   gMid = gMid/Math.max(gSlice.length,1);
   var scale = (gMid > 8) ? G_NORM_TARGET/gMid : 1.0;
