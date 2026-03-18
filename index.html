@@ -1608,10 +1608,12 @@ function frameLoop(ts){
      → 범위 이탈 시 frameBuffer까지 초기화 (스테일 프레임 방지)          */
   var tooClose  = (covNow > MAX_COV_LOCK);
   var tooFar    = (covNow < MIN_COV_BUFFER);
-  /* 원두 순도 게이트: 원두 아닌 픽셀(흰 배경·간격)이 너무 많으면 차단 */
+  /* 원두 순도 게이트: 흰 배경 노출이 많으면 차단
+     beanPurity 조건은 제거 — classifyPixel AWB 의존성으로 신뢰도 낮음
+     whiteFraction만 사용: 흰 픽셀이 22% 초과 = 배경이 너무 많이 보임 */
   var purity     = r.beanPurity    || 0;
   var whiteFrac  = r.whiteFraction || 0;
-  purityOk       = (purity >= 0.42) && (whiteFrac <= 0.25);
+  purityOk       = (whiteFrac <= 0.22);
   var covGateOk  = (!tooClose && !tooFar && purityOk);
 
   if(covNow >= MIN_COV_LOCK && covNow <= MAX_COV_LOCK && purityOk){ covStableRun++; }
@@ -2009,11 +2011,17 @@ function autoLock(lockMode){
     }
   }
 
-  /* 신뢰도 */
+  /* 신뢰도: 안정성 + 커버리지 + 배경 노출 페널티 */
   var cov = lastR.beanCoverage || 0.6;
-  var stabScore = clamp(1 - lsStd / 2.5, 0, 1);
-  var covScore  = clamp(cov * 1.5, 0, 1);
-  var conf = Math.round(clamp(stabScore * 0.60 + covScore * 0.40, 0, 1) * 100);
+  var medWhiteF = (function(){
+    var wf = frameBuffer.map(function(f){ return f.whiteFraction || 0; });
+    wf.sort(function(a,b){return a-b;});
+    return wf[Math.floor(wf.length/2)];
+  })();
+  var stabScore  = clamp(1 - lsStd / 2.5, 0, 1);
+  var covScore   = clamp(cov * 1.5, 0, 1);
+  var pureScore  = clamp(1 - medWhiteF * 3, 0, 1);  /* 배경 10%→70점, 0%→100점 */
+  var conf = Math.round(clamp(stabScore * 0.50 + covScore * 0.30 + pureScore * 0.20, 0, 1) * 100);
 
   /* ── 분쇄도 모드: 즉시 완료 ── */
   if(currentMode === 'grind'){
@@ -2830,35 +2838,37 @@ function lum(r,g,b){return .2126*r+.7152*g+.0722*b;}
 
 /* ── 픽셀 분류 ─────────────────────────────────────────────────
    AWB(자동화이트밸런스)가 토치 3500K를 6500K로 보정하면
-   원두 픽셀의 R-B 차이가 압축되어 채도(S)가 0.10~0.17로 낮아짐.
-   S 기반 필터는 AWB 이후 라이트로스트 밝은 면을 탈락시킨다.
+   원두 픽셀의 R-B 차이가 압축되어 절대값이 줄어든다.
+   → bean 판별은 반드시 비율 기반(R/B ratio)으로 해야 AWB 불변.
 
-   bean 기준: R > B × 1.03  (AWB 후에도 원두는 R > B 유지)
-   white 기준: min(R,G,B) > 160  (흰색은 모든 채널이 밝음)
+   bean 기준: R > B × 1.04  (비율 기반 — AWB 후에도 원두는 R > B 유지)
+              lum 10~230 (극단 제외), lum>230은 스펙큘러 하이라이트
+   white 기준: low saturation AND high lum
+              — 흰 배경은 R≈G≈B(sat<15) 이면서 밝음(lum>175)
+              — 라이트로스트 원두는 채도가 있어서 구별됨
    ──────────────────────────────────────────────────────────── */
 function classifyPixel(p){
   var l   = p.lum;
-  var rDiff = p.r - p.b;                                          /* 원두 갈색 특성: R >> B */
-  var sat   = Math.max(p.r,p.g,p.b) - Math.min(p.r,p.g,p.b);    /* 채도: 흰색/회색 배제 */
-  /* Bean: 따뜻한 갈색, 명확한 R-B 차이, 충분한 채도, 과도하게 밝지 않음 */
-  if(l > 10 && l < 215 && rDiff >= 12 && p.r >= p.g * 0.86 && sat >= 14) return 'bean';
-  /* White: 매우 밝거나 전체 채도가 낮은 픽셀 */
-  if(l > 185 || Math.min(p.r,p.g,p.b) > 155) return 'white';
+  var sat = Math.max(p.r,p.g,p.b) - Math.min(p.r,p.g,p.b);
+  /* White: 밝으면서 채도가 낮은 픽셀 (흰 배경·그레이 컵 내벽) */
+  if(l > 175 && sat < 18) return 'white';
+  /* Bean: 원두 특유의 따뜻한 갈색 → R > B 비율, 극단 밝기 제외 */
+  if(p.r > p.b * 1.04 && l > 10 && l < 230) return 'bean';
   return 'ignore';
 }
 
 function isBeanPixel(p, mode){
-  var l     = p.lum;
-  var rDiff = p.r - p.b;
-  var sat   = Math.max(p.r,p.g,p.b) - Math.min(p.r,p.g,p.b);
+  var l   = p.lum;
+  var sat = Math.max(p.r,p.g,p.b) - Math.min(p.r,p.g,p.b);
   if(mode === 'strict'){
-    return rDiff >= 12 && l > 10 && l < 215 && p.r >= p.g * 0.86 && sat >= 14;
+    /* White 확실히 제외 + bean 비율 기준 */
+    return p.r > p.b * 1.04 && l > 10 && l < 230 && !(l > 175 && sat < 18);
   } else if(mode === 'relaxed'){
-    /* Light roast까지 포함: R-B 차이 조건만 느슨하게 */
-    return rDiff >= 6 && l > 8 && l < 225 && sat >= 8;
+    /* Light roast 밝은 면 포함, 단 완전 흰 픽셀만 제외 */
+    return p.r > p.b * 1.02 && l > 8 && l < 235 && !(l > 185 && sat < 12);
   }
   /* lum-only fallback (최후 수단) */
-  return l > 8 && l < 230 && rDiff >= 3;
+  return l > 8 && l < 240 && p.r >= p.b;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -3134,9 +3144,14 @@ function validateBeanSubject(frames){
     return { ok: false, reason: '원두 감지율이 낮습니다 ('+Math.round(medCov*100)+'%). 원두를 화면 중앙에 위치시키고 더 가까이 촬영해주세요.' };
   }
 
-  /* 원두 순도 검증: 배경 노출이 지속됐으면 잠금 값 자체가 오염 */
-  if(currentMode === 'color' && medPurity < 0.35){
-    return { ok: false, reason: '배경(흰 바닥·간격)이 측정값에 포함됐습니다 (원두 순도 '+Math.round(medPurity*100)+'%). 원두를 가이드 원 안에 가득 채워 다시 촬영해주세요.' };
+  /* 원두 순도 검증: 흰 배경 노출이 지속됐으면 잠금 값 자체가 오염 */
+  if(currentMode === 'color'){
+    var whiteFracs = frames.map(function(r){ return r.whiteFraction !== undefined ? r.whiteFraction : 0; });
+    whiteFracs.sort(function(a,b){return a-b;});
+    var medWhiteFrac = whiteFracs[Math.floor(whiteFracs.length/2)];
+    if(medWhiteFrac > 0.28){
+      return { ok: false, reason: '배경(흰 바닥·간격)이 측정값에 포함됐습니다 (배경 노출 '+Math.round(medWhiteFrac*100)+'%). 원두를 가이드 원 안에 가득 채워 다시 촬영해주세요.' };
+    }
   }
 
   var sigmas = frames.map(function(r){ return r.sigma; });
