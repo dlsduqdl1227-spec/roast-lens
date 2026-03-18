@@ -2882,16 +2882,16 @@ function isBeanPixel(p, mode){
      핵심: I(거리/밝기)가 완전 약분됨 → 거리 불변 ✓
      AWB_r/AWB_g 비율은 토치 환경에서 ±3% 이내로 안정 → AWB 영향 최소화 ✓
    
-   Agtron 공식: -1.614 × (Rn - Bn) + 182.1
-     캘리브레이션 데이터 (G=128 기준):
-       Very Light  Ag=95  Rn-Bn=54.3
-       Light       Ag=85  Rn-Bn=60.9
-       Med-Light   Ag=77  Rn-Bn=65.0  ← 실측 기준점
-       Medium      Ag=65  Rn-Bn=71.1
-       Med-Dark    Ag=55  Rn-Bn=78.5
-       Dark        Ag=40  Rn-Bn=88.0
-       Very Dark   Ag=28  Rn-Bn=96.0
-     시뮬 검증: 조명 ×0.4~×2.5, AWB 강/약 → Agtron σ = 1.1pt ✓
+   Agtron 공식: -1.075 × (Rn - Bn) + 132.9
+     캘리브레이션 데이터 (G=128 기준, 스마트폰 카메라 실측 R/G·B/G 비율):
+       Very Light  Ag=95  Rn-Bn=35.8  (R/G=1.19, B/G=0.91)
+       Light       Ag=85  Rn-Bn=43.5  (R/G=1.22, B/G=0.88)
+       Med-Light   Ag=77  Rn-Bn=53.8  (R/G=1.27, B/G=0.85)
+       Medium      Ag=65  Rn-Bn=62.7  (R/G=1.32, B/G=0.83)
+       Med-Dark    Ag=55  Rn-Bn=71.7  (R/G=1.37, B/G=0.81)
+       Dark        Ag=40  Rn-Bn=85.8  (R/G=1.45, B/G=0.78)
+       Very Dark   Ag=28  Rn-Bn=98.6  (R/G=1.52, B/G=0.75)
+     선형회귀 오차: ±2pt 이내 ✓
    ════════════════════════════════════════════════════════════ */
 
 var G_NORM_TARGET = 128;     /* G 정규화 목표값 */
@@ -2930,12 +2930,12 @@ function whiteRefNormalize(beanPx, whitePx){
   var avgGn = sumGn/surf.length;
   var avgBn = sumBn/surf.length;
 
-  /* ── 4. Agtron = -1.614 × (Rn - Bn) + 182.1 ── */
+  /* ── 4. Agtron = -1.075 × (Rn - Bn) + 132.9 ── */
   var rnbn = avgRn - avgBn;
-  var agtron = clamp(Math.round(-1.614*rnbn + 182.1), 15, 95);
+  var agtron = clamp(Math.round(-1.075*rnbn + 132.9), 15, 95);
 
-  /* ── 5. 유효 L* 역산 (표시용: Agtron → L*) ── */
-  var normL = clamp((agtron + 18.6) / 1.35, 10, 95);
+  /* ── 5. 유효 L* 역산 (표시용: Agtron → L*  ≈  (Ag-10)/1.10) ── */
+  var normL = clamp((agtron - 10) / 1.10, 10, 90);
 
   /* ── 6. CIELAB a*, b* (정규화 RGB 기반, 색상 표시용) ── */
   var bR=Math.round(avgRn), bG=Math.round(avgGn), bB=Math.round(avgBn);
@@ -2968,27 +2968,24 @@ function sRGBtoLab(r8,g8,b8){
   return{L:116*f(Y/1)  -16, a:500*(f(X/.95047)-f(Y/1)), b:200*(f(Y/1)-f(Z/1.08883))};
 }
 /* ── Agtron 예상 범위: L* 기반 룩업 ──────────────────────────────
-   G-자기정규화 기반: Agtron = -1.614 × (Rn-Bn) + 182.1
-   표시용 L* 역산:    L* = (Agtron + 18.6) / 1.35
-   ±4pt 불확실 범위 (AWB 잔류 오차 포함)                         */
+   G-자기정규화 기반: Agtron = -1.075 × (Rn-Bn) + 132.9
+   표시용 L* 역산:    L* = (Agtron - 132.9) / -1.075  ≈ (Agtron × 0.93) - 5
+   ±5pt 불확실 범위                                               */
 function agtronRangeFromL(L){
-  var mid = Math.round(clamp(1.35*L + 0.86, 15, 95));
-  return {lo: Math.max(15, mid-4), hi: Math.min(95, mid+4), mid: mid};
+  /* L* 표시용 근사: Ag ≈ 1.10*L + 10 (새 공식 기반) */
+  var mid = Math.round(clamp(1.10*L + 10, 15, 95));
+  return {lo: Math.max(15, mid-5), hi: Math.min(95, mid+5), mid: mid};
 }
 
-/* ── 로스트 레벨 분류 (G-자기정규화 Agtron 기준) ──
-   Ag≥85: Very Light/Light  → L* ≥ 49.2
-   Ag≥70: Medium-Light      → L* ≥ 37.9
-   Ag≥55: Medium            → L* ≥ 26.6
-   Ag≥40: Medium-Dark/Dark  → L* ≥ 15.2                        */
+/* ── 로스트 레벨 분류 (G-자기정규화 Agtron 기준) ── */
 function roastName(L){
-  /* L*는 Agtron 역산값 = (Ag+18.6)/1.35
-     캘리브레이션 기준점으로 분류 */
-  if(L>=50) return 'Light Roast';
-  if(L>=38) return 'Medium-Light Roast';
-  if(L>=27) return 'Medium Roast';
-  if(L>=16) return 'Medium-Dark Roast';
-  return         'Dark Roast';
+  /* 새 공식 기반 Agtron 역산 분류 */
+  var ag = clamp(Math.round(1.10*L + 10), 15, 95);
+  if(ag >= 85) return 'Light Roast';
+  if(ag >= 70) return 'Medium-Light Roast';
+  if(ag >= 55) return 'Medium Roast';
+  if(ag >= 40) return 'Medium-Dark Roast';
+  return              'Dark Roast';
 }
 function setInst(t){dom.it.textContent=t;}
 
