@@ -1325,8 +1325,12 @@ function drawGuideOverlay(){
     ringColor = 'rgba(255,255,255,0.90)';
   } else if(convergenceMode){
     ringColor = 'rgba(60,220,120,0.98)';   /* 수렴: 밝은 초록 */
-  } else if(lastCovPct >= 55){
+  } else if(lastCovPct > MAX_COV_LOCK){
+    ringColor = 'rgba(255,60,60,0.95)';    /* 너무 가까움: 빨강 */
+  } else if(lastCovPct >= 55 && purityOk){
     ringColor = 'rgba(60,200,100,0.95)';   /* 최적: 초록 */
+  } else if(lastCovPct >= 55 && !purityOk){
+    ringColor = 'rgba(255,160,40,0.95)';   /* coverage OK but 배경 노출: 주황 */
   } else if(lastCovPct >= 30){
     ringColor = 'rgba(200,160,64,0.95)';   /* 보통: 노랑 */
   } else {
@@ -1356,6 +1360,7 @@ function drawGuideOverlay(){
   /* 진행 호 */
   if(covFrac > 0.01){
     var fillColor = lastCovPct > MAX_COV_LOCK    ? 'rgba(255,60,60,0.95)'  :
+                    (lastCovPct >= MIN_COV_LOCK && !purityOk) ? 'rgba(255,160,40,0.92)' :
                     lastCovPct >= MIN_COV_LOCK   ? 'rgba(60,210,100,0.92)' :
                     lastCovPct >= MIN_COV_BUFFER ? 'rgba(255,170,40,0.92)' :
                     'rgba(230,80,60,0.85)';
@@ -1436,7 +1441,7 @@ function drawGuideOverlay(){
   gx.fill();
 
   /* coverage 수치 오버레이 — 측정 불가 상태일 때 원 위에 표시 */
-  if(liveRunning && currentMode === 'color' && (lastCovPct < MIN_COV_LOCK + 5 || lastCovPct > MAX_COV_LOCK)){
+  if(liveRunning && currentMode === 'color' && (lastCovPct < MIN_COV_LOCK + 5 || lastCovPct > MAX_COV_LOCK || !purityOk)){
     var covTxt = lastCovPct + '%';
     var covSubTxt = lastCovPct > MAX_COV_LOCK    ? '너무 가까움 — 잠금 차단' :
                     lastCovPct < MIN_COV_BUFFER  ? '원두 더 채워주세요' :
@@ -1609,7 +1614,7 @@ function frameLoop(ts){
   purityOk       = (purity >= 0.42) && (whiteFrac <= 0.25);
   var covGateOk  = (!tooClose && !tooFar && purityOk);
 
-  if(covNow >= MIN_COV_LOCK && covNow <= MAX_COV_LOCK){ covStableRun++; }
+  if(covNow >= MIN_COV_LOCK && covNow <= MAX_COV_LOCK && purityOk){ covStableRun++; }
   else { covStableRun = 0; }
   covGatePassed = (covStableRun >= COV_STABLE_NEEDED);
 
@@ -1630,8 +1635,9 @@ function frameLoop(ts){
     frameBuffer = []; stableRun = 0; covStableRun = 0;
     convergenceMode = false; covGatePassed = false;
   } else {
-    /* 너무 가깝거나 멀거나 흔들림: 버퍼까지 초기화 (스테일 프레임 방지) */
+    /* 너무 가깝거나 멀거나 순도 부족: 버퍼까지 초기화 (스테일 프레임 방지) */
     frameBuffer = []; stableRun = 0; covStableRun = 0; convergenceMode = false;
+    covGatePassed = false;
   }
 
   /* ── CONVERGENCE DETECTION ── */
@@ -1739,20 +1745,30 @@ function updateLiveReadout(r, smoothL, isShake, conv){
   conv = conv || { isApproaching:false, lsSlope:99, converging:false, convConf:0 };
   var displayL = smoothL !== null ? smoothL : r.Ls;
   dom.lrLstar.textContent  = displayL.toFixed(1);
-  var lrAR = agtronRangeFromL(displayL);
-  dom.lrAgtron.textContent = '예상 Ag ' + lrAR.lo + '–' + lrAR.hi;
+  /* 라이브: G-자기정규화 Agtron이 있으면 우선 표시, 없으면 L* 역산 */
+  if(r.agtron !== undefined && r.agtron !== null){
+    var liveAg = r.agtron;
+    dom.lrAgtron.textContent = '예상 Ag ' + Math.max(15,liveAg-4) + '–' + Math.min(95,liveAg+4);
+  } else {
+    var lrAR = agtronRangeFromL(displayL);
+    dom.lrAgtron.textContent = '예상 Ag ' + lrAR.lo + '–' + lrAR.hi;
+  }
 
   /* ── Indicator 1: 원두 감지율 ── */
   /* analyzeFrame returns beanCoverage if available; approximate from sigma */
   var cov = r.beanCoverage !== undefined ? r.beanCoverage : clamp(r.sigma > 5 ? 0.7 : 0.4, 0, 1);
   var covPct = Math.round(cov * 100);
-  var covColor = covPct >= 55 ? 'rgba(60,200,100,.9)' : covPct >= 35 ? 'rgba(255,200,60,.9)' : '#e05050';
+  var covColor = covPct > MAX_COV_LOCK     ? '#e05050' :
+                 (covPct >= 55 && purityOk) ? 'rgba(60,200,100,.9)' :
+                 covPct >= 55               ? 'rgba(255,160,40,.9)' :   /* coverage OK, purity 실패 */
+                 covPct >= 35               ? 'rgba(255,200,60,.9)' : '#e05050';
   dom.lrCovFill.style.width   = covPct + '%';
   dom.lrCovFill.style.background = covColor;
-  var distHint = covPct > 85 ? ' — 너무 가까움' :
-                covPct >= MIN_COV_LOCK   ? ' ✓ 측정 가능' :
-                covPct >= MIN_COV_BUFFER ? ' — 조금만 더' :
-                covPct >= 15             ? ' — 원두 더 필요' : ' — 원두를 대주세요';
+  var distHint = covPct > 85              ? ' — 너무 가까움' :
+                (covPct >= MIN_COV_LOCK && purityOk) ? ' ✓ 측정 가능' :
+                (covPct >= MIN_COV_LOCK && !purityOk) ? ' — 배경 노출' :
+                covPct >= MIN_COV_BUFFER  ? ' — 조금만 더' :
+                covPct >= 15              ? ' — 원두 더 필요' : ' — 원두를 대주세요';
   dom.lrCovVal.textContent    = covPct + '%' + distHint;
 
   /* ── Indicator 2: 흰 기준 상태 — white ref 가용 여부 표시 ── */
@@ -1842,7 +1858,10 @@ function updateLiveReadout(r, smoothL, isShake, conv){
   } else if(conv.converging){
     var convSigma = computeBufSigma();
     var framesLeft = Math.max(0, CONV_BUF_SIZE - frameBuffer.length);
-    if(!covGatePassed){
+    if(!covGatePassed && !purityOk){
+      status = '배경 노출 감지 — 원두로 가득 채워주세요';
+      statusColor = '#f0a040';
+    } else if(!covGatePassed){
       status = '수렴 중 — 원두 더 채워주세요 (' + covStableRun + '/' + COV_STABLE_NEEDED + ')';
       statusColor = '#f0c040';
     } else if(framesLeft > 0){
@@ -1868,7 +1887,10 @@ function updateLiveReadout(r, smoothL, isShake, conv){
     var bs2 = computeBufSigma();
     var buflsV2 = frameBuffer.map(function(f){return f.Ls;});
     var lsR2 = Math.max.apply(null,buflsV2) - Math.min.apply(null,buflsV2);
-    if(!covGatePassed){
+    if(!covGatePassed && !purityOk){
+      status = '배경 노출 감지 — 원두로 가득 채워주세요';
+      statusColor = '#f0a040';
+    } else if(!covGatePassed){
       status = '원두를 더 채워주세요 (' + covPct + '%) — 안정 ' + covStableRun + '/' + COV_STABLE_NEEDED + '프레임';
       statusColor = '#f0a040';
     } else if(lsR2 > MAX_LS_RANGE){
@@ -1943,10 +1965,14 @@ function autoLock(lockMode){
   var lsArr  = frameBuffer.map(function(f){return f.Ls;}).sort(function(a,b){return a-b;});
   var asArr  = frameBuffer.map(function(f){return f.As;}).sort(function(a,b){return a-b;});
   var bsArr  = frameBuffer.map(function(f){return f.Bs;}).sort(function(a,b){return a-b;});
+  /* G-자기정규화 Agtron: 프레임별 정확한 값을 직접 중앙값으로 추출 */
+  var agArr  = frameBuffer.map(function(f){return f.agtron;}).filter(function(v){return v!=null;}).sort(function(a,b){return a-b;});
   var n = lsArr.length;
   var avgLs = lsArr[Math.floor(n/2)];
   var avgAs = asArr[Math.floor(n/2)];
   var avgBs = bsArr[Math.floor(n/2)];
+  /* 중앙값 Agtron: G-자기정규화 기반 (Rn-Bn 공식) */
+  var medAgtron = agArr.length > 0 ? agArr[Math.floor(agArr.length/2)] : null;
   var lsMean = lsArr.reduce(function(a,b){return a+b;},0)/n;
   var lsStd  = Math.sqrt(lsArr.reduce(function(s,v){return s+Math.pow(v-lsMean,2);},0)/n);
 
@@ -2016,10 +2042,14 @@ function autoLock(lockMode){
   /* ── 컬러 모드 ── */
   var LsCalibrated = applyDeviceCal(avgLs);
   var agRange = agtronRangeFromL(LsCalibrated);
+  /* G-자기정규화 Agtron이 있으면 우선 사용, 없으면 L* 역산 fallback */
+  var finalAgtron  = medAgtron !== null ? medAgtron : agRange.mid;
+  var finalAgLo    = Math.max(15, finalAgtron - 4);
+  var finalAgHi    = Math.min(95, finalAgtron + 4);
 
   pendingResult = {
-    agtron: agRange.mid,
-    agRangeLo: agRange.lo, agRangeHi: agRange.hi,
+    agtron: finalAgtron,
+    agRangeLo: finalAgLo, agRangeHi: finalAgHi,
     Ls: LsCalibrated, LsRaw: avgLs, _LsRaw: avgLs,
     As: avgAs, Bs: avgBs,
     sigma: lsStd, conf: conf,
@@ -2036,7 +2066,7 @@ function autoLock(lockMode){
     dualPass: false, grindLCorr: 0, userGrindInput: 0,
   };
 
-  dom.lrStatus.textContent = '컬러 측정 완료  L*=' + LsCalibrated.toFixed(1) + '  Ag ' + agRange.lo + '–' + agRange.hi + (lockMode==='convergence' ? '  [수렴 잠금]' : '');
+  dom.lrStatus.textContent = '컬러 측정 완료  L*=' + LsCalibrated.toFixed(1) + '  Ag ' + finalAgLo + '–' + finalAgHi + (lockMode==='convergence' ? '  [수렴 잠금]' : '');
   dom.lrStatus.style.color = '';
   setInst(lockMode==='convergence' ? '수렴 잠금 완료 — L* 수렴점에서 측정됐습니다.' : '컬러 측정 완료 — 결과 확인 후 저장하세요.');
   renderResult(pendingResult);
@@ -3081,9 +3111,14 @@ function validateBeanSubject(frames){
     return { ok: false, reason: '광량이 부족합니다. 카메라 라이트(손전등)를 켜고 컵을 더 가까이 대주세요.' };
   }
 
-  /* Compute median bean coverage */
+  /* Compute median bean coverage and purity */
   var covs = frames.map(function(r){ return r.beanCoverage || 0; }).sort(function(a,b){return a-b;});
   var medCov = covs[Math.floor(covs.length/2)];
+
+  /* beanPurity: strict 원두 픽셀 비율 — 0이면 이전 버전 프레임이므로 coverage로 대체 */
+  var purities = frames.map(function(r){ return r.beanPurity !== undefined ? r.beanPurity : (r.beanCoverage||0); });
+  purities.sort(function(a,b){return a-b;});
+  var medPurity = purities[Math.floor(purities.length/2)];
 
   var minCov = currentMode==='whole' ? MIN_BEAN_COV_WHOLE
              : currentMode==='color' ? MIN_BEAN_COV_GCOL
@@ -3097,6 +3132,11 @@ function validateBeanSubject(frames){
       return { ok: false, reason: '분쇄 원두가 충분히 감지되지 않습니다 (감지율 '+ Math.round(medCov*100) +'%). 컵에 분쇄 원두를 담고 3~8cm 거리에서 다시 촬영해주세요.' };
     }
     return { ok: false, reason: '원두 감지율이 낮습니다 ('+Math.round(medCov*100)+'%). 원두를 화면 중앙에 위치시키고 더 가까이 촬영해주세요.' };
+  }
+
+  /* 원두 순도 검증: 배경 노출이 지속됐으면 잠금 값 자체가 오염 */
+  if(currentMode === 'color' && medPurity < 0.35){
+    return { ok: false, reason: '배경(흰 바닥·간격)이 측정값에 포함됐습니다 (원두 순도 '+Math.round(medPurity*100)+'%). 원두를 가이드 원 안에 가득 채워 다시 촬영해주세요.' };
   }
 
   var sigmas = frames.map(function(r){ return r.sigma; });
