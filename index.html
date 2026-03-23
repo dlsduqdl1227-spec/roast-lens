@@ -2900,48 +2900,46 @@ var TARGET_WHITE_R = 230;
 var TARGET_WHITE_G = 230;
 
 /* ════════════════════════════════════════════════════════════
-   하이브리드 Agtron: (R-B)/G 비율 40% + lum 60% 가중 평균
+   (R-B)/G 비율 기반 Agtron 측정
    ────────────────────────────────────────────────────────────
-   rbg 단독 한계: AWB 환경에서 범위가 0.50~0.65로 압축 → 구분 불가
-   lum 단독 한계: 조명/거리 변화에 민감
-   혼합: 두 지표의 약점을 상호 보완
+   핵심: scale = 128/G_median 후 (Rn-Bn)/Gn = (R-B)/G
+   → 거리·조명·AWB 완전 약분. 픽셀별 비율 직접 집계.
 
-   ag_rbg = -137.6 × (R-B)/G + 132.9   (색조 기반)
-   ag_lum = 0.45   × lum_mean + 26      (밝기 기반)
-   agtron  = ag_rbg × 0.40 + ag_lum × 0.60
+   내벽 오염 차단: lum > 185 픽셀 제거
+   (컵 내벽 lum ≈ 186~210, 라이트로스트 lum ≤ 180)
 
-   내벽 오염 차단: beanPx 중 lum > 185 제거
+   공식 (실측 2-point calibration):
+     Light  rbg=0.55 → Ag=75
+     Dark   rbg=0.65 → Ag=40
+     slope = -350,  intercept = 267.5
    ════════════════════════════════════════════════════════════ */
 
 function whiteRefNormalize(beanPx, whitePx){
-  /* ── 1. 컵 내벽/반사 픽셀 제거 (lum > 185) ── */
+  /* ── 1. 오염 픽셀 제거: lum > 185 ── */
   var clean = beanPx.filter(function(p){ return p.lum < 185; });
   if(clean.length < 4) clean = beanPx;
 
-  /* ── 2. lum 기준 정렬 후 10-90% trim ── */
+  /* ── 2. lum 정렬 → 10-90% trim ── */
   clean.sort(function(a,b){ return a.lum - b.lum; });
   var n = clean.length;
   var surf = clean.slice(Math.floor(n*0.10), Math.floor(n*0.90));
   if(surf.length < 3) surf = clean;
 
-  /* ── 3. rbg = (R-B)/G trimmed mean ── */
+  /* ── 3. (R-B)/G trimmed mean ── */
   var rbgVals = surf.map(function(p){ return p.g > 0 ? (p.r - p.b) / p.g : 0; });
-  rbgVals.sort(function(a,b){return a-b;});
+  rbgVals.sort(function(a,b){ return a-b; });
   var rn = rbgVals.length;
-  var rbgTr = rn > 4 ? rbgVals.slice(Math.floor(rn*0.10), Math.floor(rn*0.90)) : rbgVals;
+  var rbgTr = rn > 4
+    ? rbgVals.slice(Math.floor(rn*0.10), Math.floor(rn*0.90))
+    : rbgVals;
   var rbgMean = rbgTr.reduce(function(a,b){return a+b;},0) / Math.max(rbgTr.length,1);
 
-  /* ── 4. lum trimmed mean ── */
-  var lumMean = surf.reduce(function(a,p){return a+p.lum;},0) / surf.length;
+  /* ── 4. Agtron = -350 × (R-B)/G + 267.5 ── */
+  var agtron = clamp(Math.round(-350 * rbgMean + 267.5), 15, 95);
 
-  /* ── 5. 하이브리드 Agtron ── */
-  var ag_rbg = -137.6 * rbgMean + 132.9;
-  var ag_lum = 0.45   * lumMean  + 26;
-  var agtron = clamp(Math.round(ag_rbg * 0.40 + ag_lum * 0.60), 15, 95);
-
-  /* ── 6. 표시용 L*, 평균 RGB ── */
+  /* ── 5. 표시용 L*, 평균 RGB ── */
   var normL = clamp((agtron - 8) / 1.05, 10, 90);
-  var gMeanRaw = surf.reduce(function(a,p){return a+p.g;},0)/Math.max(surf.length,1);
+  var gMeanRaw = surf.reduce(function(a,p){return a+p.g;},0) / Math.max(surf.length,1);
   var scale = gMeanRaw > 8 ? 128/gMeanRaw : 1.0;
   var avgRn=0, avgGn=0, avgBn=0;
   for(var i=0;i<surf.length;i++){
@@ -2956,11 +2954,12 @@ function whiteRefNormalize(beanPx, whitePx){
     normL: normL, beanL: normL, agtron: agtron, rnbn: rbgMean,
     bR: Math.round(avgRn), bG: Math.round(avgGn), bB: Math.round(avgBn),
     wR: null, wG: null, wB: null,
-    whiteL: null, refMode: 'hybrid',
+    whiteL: null, refMode: 'rbg',
     whitePxCount: 0, agOffset: 0,
     scale: scale, gMid: gMeanRaw
   };
 }
+
 function toLinear(c){return c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4);}
 function median(arr,k){
   var s=arr.slice().sort(function(a,b){return a[k]-b[k];});
