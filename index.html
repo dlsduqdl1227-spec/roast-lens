@@ -925,7 +925,7 @@ var MAX_LS_RANGE    = 2.5;     /* 버퍼 내 max-min L* ≤ 2.5 — 완화 */
    COV_ANCHOR_TOL:    버퍼 평균 대비 이 이상 이탈 시 버퍼 초기화           */
 var MIN_COV_BUFFER    = 22;   /* 22% — 소량 원두 / 종이컵 대응 */
 var MIN_COV_LOCK      = 30;   /* 30% — 소량으로도 잠금 허용 */
-var MAX_COV_LOCK      = 90;   /* 90% 초과 = 너무 가까움 → 잠금 차단 (원 작아져서 완화) */
+var MAX_COV_LOCK      = 97;   /* 원 작아졌으므로 거의 차단 안 함 */
 var COV_ANCHOR_TOL    = 15;   /* ±15% 이탈 시 버퍼 초기화 — 완화 */
 var COV_STABLE_NEEDED = 4;    /* 4프레임 연속으로 충분 — 빠른 잠금 */
 var MAX_COV_STDDEV    = 8.0;  /* coverage 표준편차 ≤ 8% — 완화 */
@@ -1011,7 +1011,7 @@ function applyDeviceCal(rawL){
 /* ── 고정 ROI — 원 크기 고정, 거리는 사용자가 직접 조절 ──
    가이드 원은 항상 동일 크기. 대신 감지율(coverage)에 따라
    텍스트로 "더 가까이" / "거리를 두세요" 안내한다.          */
-var FIXED_ROI     = 0.28;   /* 작은 원: 가까이 붙여서 원두만 채우도록 */
+var FIXED_ROI     = 0.18;   /* 매우 작은 원: 바짝 붙여서 원두만 촬영 */
 var ROI_CY_RATIO  = 0.42;   /* 원 세로 중심: H * 0.42 */
 var lastCovPct    = 0;      /* 최근 프레임 감지율 (0~100)   */
 
@@ -2902,31 +2902,27 @@ var TARGET_WHITE_G = 230;
 /* ════════════════════════════════════════════════════════════
    (R-B)/G 비율 기반 Agtron 측정
    ────────────────────────────────────────────────────────────
-   핵심: scale = 128/G_median 후 (Rn-Bn)/Gn = (R-B)/G
-   → 거리·조명·AWB 완전 약분. 픽셀별 비율 직접 집계.
+   실측 캘리브레이션 (스마트폰+토치 환경):
+     Light Roast  (R-B)/G ≈ 0.581  →  Ag=76
+     Dark Roast   (R-B)/G ≈ 0.675  →  Ag=41
+     공식: Ag = -370.5 × (R-B)/G + 291
 
-   내벽 오염 차단: lum > 185 픽셀 제거
-   (컵 내벽 lum ≈ 186~210, 라이트로스트 lum ≤ 180)
-
-   공식 (실측 2-point calibration):
-     Light  rbg=0.55 → Ag=75
-     Dark   rbg=0.65 → Ag=40
-     slope = -350,  intercept = 267.5
+   오염 차단: beanPx 중 lum > 185 제거 (컵 내벽 그늘)
    ════════════════════════════════════════════════════════════ */
 
 function whiteRefNormalize(beanPx, whitePx){
-  /* ── 1. 오염 픽셀 제거: lum > 185 ── */
+  /* ── 1. 컵 내벽·반사 픽셀 제거 (lum > 185) ── */
   var clean = beanPx.filter(function(p){ return p.lum < 185; });
   if(clean.length < 4) clean = beanPx;
 
-  /* ── 2. lum 정렬 → 10-90% trim ── */
+  /* ── 2. lum 기준 10-90% trim ── */
   clean.sort(function(a,b){ return a.lum - b.lum; });
   var n = clean.length;
   var surf = clean.slice(Math.floor(n*0.10), Math.floor(n*0.90));
   if(surf.length < 3) surf = clean;
 
   /* ── 3. (R-B)/G trimmed mean ── */
-  var rbgVals = surf.map(function(p){ return p.g > 0 ? (p.r - p.b) / p.g : 0; });
+  var rbgVals = surf.map(function(p){ return p.g > 0 ? (p.r-p.b)/p.g : 0; });
   rbgVals.sort(function(a,b){ return a-b; });
   var rn = rbgVals.length;
   var rbgTr = rn > 4
@@ -2934,29 +2930,29 @@ function whiteRefNormalize(beanPx, whitePx){
     : rbgVals;
   var rbgMean = rbgTr.reduce(function(a,b){return a+b;},0) / Math.max(rbgTr.length,1);
 
-  /* ── 4. Agtron = -350 × (R-B)/G + 267.5 ── */
-  var agtron = clamp(Math.round(-350 * rbgMean + 267.5), 15, 95);
+  /* ── 4. Agtron = -370.5 × (R-B)/G + 291 ── */
+  var agtron = clamp(Math.round(-370.5 * rbgMean + 291), 15, 95);
 
-  /* ── 5. 표시용 L*, 평균 RGB ── */
-  var normL = clamp((agtron - 8) / 1.05, 10, 90);
+  /* ── 5. 표시용 L*, 평균 RGB (색상 스와치) ── */
+  var normL    = clamp((agtron - 8) / 1.05, 10, 90);
   var gMeanRaw = surf.reduce(function(a,p){return a+p.g;},0) / Math.max(surf.length,1);
-  var scale = gMeanRaw > 8 ? 128/gMeanRaw : 1.0;
+  var scale    = gMeanRaw > 8 ? 128/gMeanRaw : 1.0;
   var avgRn=0, avgGn=0, avgBn=0;
   for(var i=0;i<surf.length;i++){
     avgRn += Math.min(surf[i].r*scale, 255);
     avgGn += Math.min(surf[i].g*scale, 255);
     avgBn += Math.min(surf[i].b*scale, 255);
   }
-  var sn = surf.length;
+  var sn=surf.length;
   avgRn/=sn; avgGn/=sn; avgBn/=sn;
 
   return {
-    normL: normL, beanL: normL, agtron: agtron, rnbn: rbgMean,
-    bR: Math.round(avgRn), bG: Math.round(avgGn), bB: Math.round(avgBn),
-    wR: null, wG: null, wB: null,
-    whiteL: null, refMode: 'rbg',
-    whitePxCount: 0, agOffset: 0,
-    scale: scale, gMid: gMeanRaw
+    normL:normL, beanL:normL, agtron:agtron, rnbn:rbgMean,
+    bR:Math.round(avgRn), bG:Math.round(avgGn), bB:Math.round(avgBn),
+    wR:null, wG:null, wB:null,
+    whiteL:null, refMode:'rbg',
+    whitePxCount:0, agOffset:0,
+    scale:scale, gMid:gMeanRaw
   };
 }
 
@@ -2980,16 +2976,16 @@ function sRGBtoLab(r8,g8,b8){
 /* ── Agtron 예상 범위: L* 기반 룩업 ── */
 function agtronRangeFromL(L){
   var mid = Math.round(clamp(1.05*L + 8, 15, 95));
-  return {lo: Math.max(15, mid-5), hi: Math.min(95, mid+5), mid: mid};
+  return {lo:Math.max(15,mid-5), hi:Math.min(95,mid+5), mid:mid};
 }
 
 /* ── 로스트 레벨 분류 ── */
 function roastName(L){
   var ag = clamp(Math.round(1.05*L + 8), 15, 95);
   if(ag >= 82) return 'Light Roast';
-  if(ag >= 68) return 'Medium-Light Roast';
+  if(ag >= 67) return 'Medium-Light Roast';
   if(ag >= 52) return 'Medium Roast';
-  if(ag >= 38) return 'Medium-Dark Roast';
+  if(ag >= 37) return 'Medium-Dark Roast';
   return              'Dark Roast';
 }
 function setInst(t){dom.it.textContent=t;}
