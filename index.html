@@ -1,777 +1,877 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0E0E0E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Roast-Lens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg:     #0E0E0E;
+    --surf:   #181818;
+    --surf2:  #202020;
+    --surf3:  #2A2A2A;
+    --border: #2C2C2C;
+    --bdr2:   #383838;
+    --w1:     #FFFFFF;
+    --w2:     #C8C8C8;
+    --w3:     #888888;
+    --w4:     #505050;
+    --w5:     #303030;
+    --font-brand: 'Syne', sans-serif;
+    --font-mono:  'DM Mono', 'Courier New', monospace;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--w1);
+    font-family: var(--font-mono);
+    overflow-x: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100%;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  #app {
+    width: 100%;
+    max-width: 430px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    flex-shrink: 0;
+  }
+
+  .brand-name {
+    font-family: var(--font-brand);
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--w1);
+    line-height: 1;
+  }
+
+  .brand-sub {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2px;
+    margin-top: 3px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 12px;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--w4);
+    transition: background 0.3s;
+  }
+
+  .status-dot.active { background: var(--w1); }
+  .status-dot.error  { background: var(--w3); }
+
+  .status-label {
+    font-size: 10px;
+    color: var(--w4);
+    letter-spacing: 1.5px;
+  }
+
+  /* CAMERA */
+  .camera-viewport {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #080808;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  #video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  #canvas { display: none; }
+
+  .permission-screen {
+    position: absolute; inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+  }
+
+  .lens-icon {
+    width: 72px; height: 72px;
+    border: 1.5px solid var(--w4);
+    border-radius: 50%;
+    position: relative;
+    margin-bottom: 24px;
+  }
+
+  .lens-icon::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 1.5px solid var(--w4);
+  }
+
+  .lens-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--w4);
+  }
+
+  .perm-title {
+    font-size: 11px;
+    color: var(--w2);
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  .perm-desc {
+    font-size: 12px;
+    color: var(--w3);
+    text-align: center;
+    line-height: 1.7;
+    margin-bottom: 28px;
+    font-family: -apple-system, sans-serif;
+  }
+
+  .btn-start {
+    background: var(--w1);
+    color: #0E0E0E;
+    border: none;
+    padding: 14px 36px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    letter-spacing: 1.5px;
+    transition: opacity 0.15s;
+  }
+
+  .btn-start:active { opacity: 0.75; }
+
+  .cam-overlay {
+    position: absolute; inset: 0;
+    display: none;
+    pointer-events: none;
+  }
+
+  .ch-h {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 50%; height: 0;
+    border-top: 0.5px solid rgba(255,255,255,0.18);
+  }
+
+  .ch-v {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    height: 50%; width: 0;
+    border-left: 0.5px solid rgba(255,255,255,0.18);
+  }
+
+  .sample-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px;
+    border: 1.5px solid rgba(255,255,255,0.85);
+    border-radius: 50%;
+  }
+
+  .sample-ring::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--w1);
+  }
+
+  .bracket { position: absolute; width: 22px; height: 22px; }
+  .bracket.tl { top: 18px; left: 18px;   border-top: 1.5px solid rgba(255,255,255,0.55); border-left: 1.5px solid rgba(255,255,255,0.55); }
+  .bracket.tr { top: 18px; right: 18px;  border-top: 1.5px solid rgba(255,255,255,0.55); border-right: 1.5px solid rgba(255,255,255,0.55); }
+  .bracket.bl { bottom: 18px; left: 18px;  border-bottom: 1.5px solid rgba(255,255,255,0.55); border-left: 1.5px solid rgba(255,255,255,0.55); }
+  .bracket.br { bottom: 18px; right: 18px; border-bottom: 1.5px solid rgba(255,255,255,0.55); border-right: 1.5px solid rgba(255,255,255,0.55); }
+
+  .hud-color {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: #3C2210;
+    transition: background 0.1s;
+  }
+
+  .hud-L {
+    position: absolute;
+    bottom: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.72);
+    border: 0.5px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: var(--w2);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  /* CONTROLS */
+  .controls-bar {
+    display: none;
+    flex-direction: row;
+    gap: 10px;
+    padding: 14px 20px;
+    background: var(--surf);
+    border-top: 0.5px solid var(--border);
+    border-bottom: 0.5px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .btn-torch {
+    flex: 1;
+    background: var(--surf2);
+    color: var(--w4);
+    border: 0.5px solid var(--bdr2);
+    padding: 11px;
+    border-radius: 10px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .btn-torch.on {
+    color: var(--w1);
+    border-color: rgba(255,255,255,0.45);
+    background: rgba(255,255,255,0.07);
+  }
+
+  .btn-measure {
+    flex: 2.2;
+    background: var(--w1);
+    color: #0E0E0E;
+    border: none;
+    padding: 11px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    letter-spacing: 2px;
+    transition: all 0.2s;
+  }
+
+  .btn-measure:active { opacity: 0.8; transform: scale(0.98); }
+  .btn-measure.captured { background: var(--surf3); color: var(--w2); }
+
+  /* RESULTS */
+  .results-panel {
+    display: none;
+    padding: 20px 20px 0;
+    flex-shrink: 0;
+  }
+
+  .roast-display {
+    text-align: center;
+    padding: 20px 0;
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  .roast-label {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2.5px;
+    margin-bottom: 8px;
+  }
+
+  .roast-name-kr {
+    font-family: var(--font-brand);
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--w1);
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+
+  .roast-name-en {
+    font-size: 11px;
+    color: var(--w4);
+    letter-spacing: 3px;
+    margin-top: 5px;
+  }
+
+  .values-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .val-card {
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  .val-card.agtron {
+    border-color: var(--bdr2);
+    background: var(--surf3);
+  }
+
+  .val-card-label {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 1.5px;
+    margin-bottom: 5px;
+  }
+
+  .val-card-value {
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--w1);
+    line-height: 1;
+  }
+
+  .val-card-sub {
+    font-size: 9px;
+    color: var(--w4);
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  .scale-section { margin-bottom: 4px; }
+
+  .scale-label {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .scale-track {
+    position: relative;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right,
+      #120A05 0%, #1E0F07 12%, #32180B 25%,
+      #5A2E12 37%, #8B4A20 50%, #BA7030 62%,
+      #D9963C 75%, #EBB558 87%, #F5D090 100%
+    );
+    overflow: visible;
+  }
+
+  .scale-marker {
+    position: absolute;
+    top: -5px;
+    width: 2px; height: 16px;
+    background: var(--w1);
+    border-radius: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .scale-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+
+  .scale-tick { font-size: 8px; color: var(--w4); }
+
+  /* GUIDE */
+  .guide-section {
+    padding: 16px 20px 20px;
+    border-top: 0.5px solid var(--border);
+    margin-top: 16px;
+  }
+
+  .section-title {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+  }
+
+  .guide-steps { display: flex; flex-direction: column; gap: 8px; }
+
+  .guide-step { display: flex; align-items: flex-start; gap: 12px; }
+
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 0.5px solid var(--bdr2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--w2);
+    flex-shrink: 0;
+  }
+
+  .step-text {
+    font-size: 12px;
+    color: var(--w3);
+    line-height: 1.5;
+    padding-top: 3px;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  /* HISTORY */
+  .history-section { display: none; padding: 0 20px 24px; }
+
+  .history-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+
+  .history-swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 0.5px solid var(--bdr2);
+    flex-shrink: 0;
+  }
+
+  .history-info { flex: 1; min-width: 0; }
+
+  .history-roast {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--w1);
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+
+  .history-values { font-size: 10px; color: var(--w4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-time   { font-size: 9px; color: var(--w4); flex-shrink: 0; }
+
+  /* SCA REFERENCE */
+  .ref-section { padding: 0 20px 32px; }
+
+  .ref-table { width: 100%; border-collapse: collapse; }
+
+  .ref-table td {
+    padding: 7px 0;
+    border-bottom: 0.5px solid var(--border);
+    font-size: 11px;
+    color: var(--w2);
+  }
+
+  .ref-table td:first-child  { width: 36px; }
+  .ref-table td:nth-child(3) { text-align: right; color: var(--w4); }
+
+  .ref-swatch {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  /* ERROR */
+  .error-msg {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px; text-align: center; gap: 12px;
+  }
+
+  .error-msg p:first-child { font-size: 12px; color: var(--w2); letter-spacing: 1px; }
+  .error-msg p:last-child  { font-size: 11px; color: var(--w4); line-height: 1.6; font-family: -apple-system, sans-serif; }
+
+  .divider { height: 0.5px; background: var(--border); margin: 0 20px; }
+
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.25); }
+    70%  { box-shadow: 0 0 0 8px rgba(255,255,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+
+  .sample-ring.scanning { animation: pulse-ring 2s ease-out infinite; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div class="header">
+    <div>
+      <div class="brand-name">Roast-Lens</div>
+      <div class="brand-sub">ROAST COLOR ANALYZER</div>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">STANDBY</span>
+    </div>
+  </div>
+
+  <div class="camera-viewport">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div class="permission-screen" id="permissionScreen">
+      <div class="lens-icon"></div>
+      <p class="perm-title">카메라 접근 필요</p>
+      <p class="perm-desc">
+        분쇄된 원두를 종이컵에 담고<br>
+        플래시를 켜서 위에서 비추면<br>
+        로스팅 컬러를 측정합니다
+      </p>
+      <button class="btn-start" onclick="startCamera()">카메라 시작</button>
+    </div>
+
+    <div class="error-msg" id="errorMsg">
+      <p>카메라 접근 실패</p>
+      <p id="errorDetail">브라우저 설정에서<br>카메라 권한을 허용해주세요</p>
+    </div>
+
+    <div class="cam-overlay" id="camOverlay">
+      <div class="bracket tl"></div>
+      <div class="bracket tr"></div>
+      <div class="bracket bl"></div>
+      <div class="bracket br"></div>
+      <div class="ch-h"></div>
+      <div class="ch-v"></div>
+      <div class="sample-ring" id="sampleRing"></div>
+      <div class="hud-color" id="hudColor"></div>
+      <div class="hud-L" id="hudL">L* —</div>
+    </div>
+  </div>
+
+  <div class="controls-bar" id="controlsBar">
+    <button class="btn-torch" id="torchBtn" onclick="toggleTorch()">FLASH OFF</button>
+    <button class="btn-measure" id="measureBtn" onclick="capture()">MEASURE</button>
+  </div>
+
+  <div class="results-panel" id="resultsPanel">
+    <div class="roast-display">
+      <div class="roast-label">ROAST LEVEL</div>
+      <div class="roast-name-kr" id="roastKr">—</div>
+      <div class="roast-name-en" id="roastEn">MEASURE TO ANALYZE</div>
+    </div>
+
+    <div class="values-grid">
+      <div class="val-card">
+        <div class="val-card-label">CIE L*</div>
+        <div class="val-card-value" id="valL">—</div>
+        <div class="val-card-sub">밝기 / Lightness</div>
+      </div>
+      <div class="val-card agtron">
+        <div class="val-card-label">AGTRON ~</div>
+        <div class="val-card-value" id="valAgtron">—</div>
+        <div class="val-card-sub">추정치 / Estimated</div>
+      </div>
+      <div class="val-card">
+        <div class="val-card-label">CIE a*</div>
+        <div class="val-card-value" id="valA">—</div>
+        <div class="val-card-sub">적색도 / Redness</div>
+      </div>
+      <div class="val-card">
+        <div class="val-card-label">CIE b*</div>
+        <div class="val-card-value" id="valB">—</div>
+        <div class="val-card-sub">황색도 / Yellowness</div>
+      </div>
+    </div>
+
+    <div class="scale-section">
+      <div class="scale-label">AGTRON SCALE</div>
+      <div class="scale-track">
+        <div class="scale-marker" id="scaleMarker"></div>
+      </div>
+      <div class="scale-ticks">
+        <span class="scale-tick">DARK #25</span>
+        <span class="scale-tick">#45</span>
+        <span class="scale-tick">#65</span>
+        <span class="scale-tick">#85</span>
+        <span class="scale-tick">LIGHT #95</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="history-section" id="historySection">
+    <div class="section-title" style="padding: 0;">MEASUREMENT HISTORY</div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div class="divider" style="margin-top: 4px;"></div>
+
+  <div class="guide-section">
+    <div class="section-title">측정 가이드 · HOW TO MEASURE</div>
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="step-num">1</div>
+        <div class="step-text">원두를 미디엄 그라인드로 분쇄 후 종이컵에 평평하게 담기</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">2</div>
+        <div class="step-text">FLASH ON 후 핸드폰을 원두 표면 위 약 5cm에 수직으로 위치</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">3</div>
+        <div class="step-text">원 안에 원두 표면이 가득 채워지면 MEASURE 버튼 탭</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">4</div>
+        <div class="step-text">CIELAB 색공간 기반 측정 · Agtron은 L*에서 추정한 근사치</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="ref-section" style="margin-top: 16px;">
+    <div class="section-title">SCA ROAST REFERENCE</div>
+    <table class="ref-table">
+      <tr>
+        <td><span class="ref-swatch" style="background:#F5D090;"></span></td>
+        <td>라이트 Light</td>
+        <td>Agtron #85–95</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#D9963C;"></span></td>
+        <td>미디엄 라이트 Medium-Light</td>
+        <td>Agtron #70–85</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#9A5522;"></span></td>
+        <td>미디엄 Medium</td>
+        <td>Agtron #55–70</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#6B3010;"></span></td>
+        <td>미디엄 다크 Medium-Dark</td>
+        <td>Agtron #45–55</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#3C180A;"></span></td>
+        <td>다크 Dark</td>
+        <td>Agtron #35–45</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#1A0806;"></span></td>
+        <td>베리 다크 Very Dark</td>
+        <td>Agtron #25–35</td>
+      </tr>
+    </table>
+  </div>
+
+</div>
+
 <script>
-'use strict';
+let stream = null, videoTrack = null;
+let torchOn = false, torchSupported = false;
+let animFrameId = null, history = [];
 
-/* ══ PASSWORD GATE ══ */
-var PASS_HASH = '47d3f198a6fc4b7630bcb0c9bcb6fc30fbd0db8d35c046ba9389ce5e8e9abab1';
-var UNLOCK_KEY = 'rl_unlocked_v1';
-function gateInit(){
-  try{ if(localStorage.getItem(UNLOCK_KEY)===PASS_HASH){ document.body.classList.add('unlocked'); return; } }catch(e){}
-  setTimeout(function(){ var el=document.getElementById('gatePw'); if(el) el.focus(); },100);
-}
-function gateSubmit(){
-  var input=document.getElementById('gatePw').value;
-  var btn=document.getElementById('gateBtn');
-  var errEl=document.getElementById('gateErr');
-  if(!input){ errEl.textContent='비밀번호를 입력해주세요'; return; }
-  btn.disabled=true; btn.textContent='확인 중...'; errEl.textContent='';
-  crypto.subtle.digest('SHA-256',new TextEncoder().encode(input)).then(function(buf){
-    var hash=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-    if(hash===PASS_HASH){
-      try{localStorage.setItem(UNLOCK_KEY,PASS_HASH);}catch(e){}
-      document.body.classList.add('unlocked');
-    } else {
-      var inp=document.getElementById('gatePw');
-      inp.value=''; inp.classList.add('err');
-      setTimeout(function(){inp.classList.remove('err');inp.focus();},400);
-      errEl.textContent='비밀번호가 올바르지 않습니다';
-      btn.disabled=false; btn.textContent='잠금 해제';
-    }
-  }).catch(function(){ errEl.textContent='HTTPS 환경에서만 인증 가능'; btn.disabled=false; btn.textContent='잠금 해제'; });
-}
-window.addEventListener('DOMContentLoaded', gateInit);
-
-/* ══ STATE ══ */
-var pendingResult=null, pendingGrind=null;
-var store={gcol:null, grind:null};
-var stepDone={color:false, grind:false};
-var currentMode=null;
-var ctx=null, lvx=null;
-
-/* ══ LIVE VIDEO STATE ══ */
-var liveStream=null, liveTrack=null, liveRunning=false, rafId=null;
-var frameBuffer=[], FRAME_BUF_SIZE=14;
-var STABLE_SIGMA=1.5, MIN_STABLE_RUN=8, SHAKE_DELTA=5.0;
-var lastFrameL=null, emaL=null, EMA_ALPHA=0.2, stableRun=0, shakeTimeout=null;
-var lastCovPct=0, covStableRun=0, COV_MIN=28, COV_MAX=97, COV_STABLE_NEEDED=5;
-var FIXED_ROI=0.20, ROI_CY=0.42;
-var lastFrameTime=0, FRAME_INTERVAL=250;
-
-/* ══ DEVICE CALIBRATION ══ */
-var currentDeviceCal='auto';
-var DEVICE_CAL={auto:null, iphone:-1.5, galaxy:+1.0, pixel:-0.5};
-function detectDeviceOffset(){
-  var ua=navigator.userAgent||'';
-  if(/iPhone|iPad/.test(ua)) return DEVICE_CAL.iphone;
-  if(/SM-[A-Z]/i.test(ua))   return DEVICE_CAL.galaxy;
-  if(/Pixel/i.test(ua))      return DEVICE_CAL.pixel;
-  return 0;
-}
-function setDeviceCal(type){
-  currentDeviceCal=type;
-  try{localStorage.setItem('rl_device_cal',type);}catch(e){}
-  var el=G('devCalLabel');
-  if(el){ var ua=navigator.userAgent||'', d=/iPhone|iPad/.test(ua)?'iPhone':/SM-[A-Z]/i.test(ua)?'Samsung':/Pixel/i.test(ua)?'Pixel':''; el.textContent=d?'('+d+' 감지됨)':''; }
-}
-function applyDeviceCal(L){
-  var off=currentDeviceCal==='auto'?detectDeviceOffset():(DEVICE_CAL[currentDeviceCal]||0);
-  return clamp(L+off,0,100);
-}
-
-function G(id){return document.getElementById(id);}
-var dom={};
-window.addEventListener('DOMContentLoaded',function(){
-  dom={
-    upzone:G('upzone'),upph:G('upph'),prev:G('previewImg'),cvs:G('cvs'),heat:G('heatCvs'),
-    liveVideo:G('liveVideo'),liveCvs:G('liveCvs'),guideOverlay:G('guideOverlay'),
-    liveReadout:G('liveReadout'),liveBadge:G('liveBadge'),lockFlash:G('lockFlash'),torchWarn:G('torchWarn'),
-    shakeWarn:G('shakeWarn'),lrLstar:G('lrLstar'),lrAgtron:G('lrAgtron'),
-    lrCovFill:G('lrCovFill'),lrCovVal:G('lrCovVal'),lrLightFill:G('lrLightFill'),lrLightVal:G('lrLightVal'),
-    lrStabFill:G('lrStabFill'),lrStabVal:G('lrStabVal'),
-    lrGrind:G('lrGrind'),lrGrindVal:G('lrGrindVal'),lrGrindCat:G('lrGrindCat'),lrStatus:G('lrStatus'),
-    ao:G('ao'),it:G('it'),stopBtns:G('stopBtns'),rp:G('rp'),crop:G('cropGuide'),
-    badge:G('beanBadge'),stabBadge:G('stabBadge'),lowlightWarn:G('lowlightWarn'),modeBadge:G('modeBadge'),
-    flashA:G('lowlightAlert'),noRef:G('stabNotice'),decision:G('decisionBar'),exam:G('examPanel'),toast:G('toast'),
-  };
-  ctx=G('cvs').getContext('2d',{willReadFrequently:true});
-  lvx=G('liveCvs').getContext('2d',{willReadFrequently:true});
-  var noCamera=location.protocol==='file:'||(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1')||!navigator.mediaDevices;
-  if(noCamera){ G('deployNotice').style.display='flex'; setInst('HTTPS 환경에서 실행해야 카메라를 사용할 수 있습니다.'); }
-  try{ var s=localStorage.getItem('rl_device_cal'); setDeviceCal(s&&DEVICE_CAL.hasOwnProperty(s)?s:'auto'); }catch(e){ setDeviceCal('auto'); }
-  renderStepNav();
-});
-
-/* ══ SHARE ══ */
-function doShare(){
-  var url=window.location.href;
-  if(url.startsWith('file://')||url==='about:srcdoc'||url.startsWith('blob:')||url.indexOf('srcdoc')!==-1){
-    showToast('HTML 파일을 카카오톡·에어드랍으로 전송하거나\ntiiny.host에 드래그해 배포하세요.'); return;
-  }
-  var d={title:'Roast Lens',text:'CIELAB 기반 원두 로스팅 컬러 측정기',url:url};
-  if(navigator.share) navigator.share(d).catch(function(){copyFallback(url);});
-  else copyFallback(url);
-}
-function copyFallback(url){
-  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){showToast('링크가 복사됐습니다');}).catch(function(){legacyCopy(url);}); return; }
-  legacyCopy(url);
-}
-function legacyCopy(url){
-  var ta=document.createElement('textarea'); ta.value=url; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;opacity:0;top:0;left:0';
-  document.body.appendChild(ta); ta.focus(); ta.select();
-  try{document.execCommand('copy');showToast('링크가 복사됐습니다');}catch(e){showToast('링크: '+url);}
-  document.body.removeChild(ta);
-}
-function showToast(msg){ dom.toast.textContent=msg; dom.toast.classList.add('on'); setTimeout(function(){dom.toast.classList.remove('on');},3200); }
-
-/* ════════════════════════════════════════
-   COLOR MATH
-   ────────────────────────────────────────
-   핵심: G 채널 자기 정규화 + Rn-Bn → Agtron
-
-   STEP 1. 원두 픽셀 수집 (R ≥ B×1.03, 밝기 8~205)
-   STEP 2. 10~90% lum trim (그림자·반사광 제거)
-   STEP 3. G 중앙값으로 정규화: scale = 128 / G_mid
-   STEP 4. Rn = R×scale, Bn = B×scale
-   STEP 5. Agtron = -1.075 × (Rn-Bn) + 132.9
-   STEP 6. L* = (Agtron - 8) / 1.05 (화면 표시용)
-
-   캘리브레이션 (G=128 기준):
-     Ag=95 → Rn-Bn≈36  (Very Light)
-     Ag=77 → Rn-Bn≈54  (Medium-Light)
-     Ag=65 → Rn-Bn≈63  (Medium)
-     Ag=40 → Rn-Bn≈86  (Dark)
-     Ag=28 → Rn-Bn≈99  (Very Dark)
-   ────────────────────────────────────────
-   이 공식이 거리·AWB 불변인 이유:
-   카메라 픽셀 = 표면색 × AWB × 조도(I)
-   Rn-Bn = (R-B)×scale = (R-B)×(128/G)
-         = (R_true-B_true)×(AWB_r-AWB_b)/AWB_g × 128/G_true
-   I 완전 약분 → 거리 무관 ✓
-   AWB_r/AWB_g ≈ 상수 (토치 환경) ✓
-════════════════════════════════════════ */
-
-function lum(r,g,b){return 0.2126*r+0.7152*g+0.0722*b;}
-function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
-function rgbStr(c){return'rgb('+Math.round(c.r)+','+Math.round(c.g)+','+Math.round(c.b)+')';}
-function rgbTxt(c){return'RGB '+Math.round(c.r)+' '+Math.round(c.g)+' '+Math.round(c.b);}
-function toLinear(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
-function sRGBtoLab(r8,g8,b8){
-  var rl=toLinear(r8/255),gl=toLinear(g8/255),bl=toLinear(b8/255);
-  var X=rl*0.4124564+gl*0.3575761+bl*0.1804375;
-  var Y=rl*0.2126729+gl*0.7151522+bl*0.0721750;
-  var Z=rl*0.0193339+gl*0.1191920+bl*0.9503041;
-  function f(t){return t>0.008856?Math.cbrt(t):7.787*t+16/116;}
-  return{L:116*f(Y)-16, a:500*(f(X/0.95047)-f(Y)), b:200*(f(Y)-f(Z/1.08883))};
-}
-
-/* ── 픽셀 분류 ──────────────────────────────────────────────
-   원두(모든 로스트): 따뜻한 색 (R ≥ B×1.03), lum 8~205
-   흰 배경/컵내벽:   lum>205 or (R>200 & G>190 & B>175)
-   그림자:           lum<8
-   ─────────────────────────────────────────────────────────── */
-function classifyPixel(p){
-  var lm=p.lum;
-  if(lm>205) return 'white';
-  if(p.r>200&&p.g>190&&p.b>175) return 'white';
-  if(lm<8)   return 'ignore';
-  if(p.r>=p.b*1.03&&p.g>=8&&lm<200) return 'bean';
-  return 'ignore';
-}
-function isBeanPixel(p,mode){
-  if(p.lum>210||p.lum<6) return false;
-  if(mode==='lum')     return p.lum>10&&p.lum<200;
-  if(mode==='relaxed') return p.r>=p.b&&p.lum>8&&p.lum<200;
-  return p.r>=p.b*1.02&&p.lum>10&&p.lum<198;
-}
-
-/* ── G 자기정규화 + Rn-Bn Agtron ─────────────────────────── */
-function gNormAgtron(beanPx){
-  if(!beanPx||beanPx.length<5) return null;
-  var clean=beanPx.filter(function(p){return p.lum>8&&p.lum<205;});
-  if(clean.length<3) clean=beanPx.slice();
-  clean.sort(function(a,b){return a.lum-b.lum;});
-  var n=clean.length;
-  var trimmed=clean.slice(Math.floor(n*0.10),Math.floor(n*0.90));
-  if(trimmed.length<3) trimmed=clean;
-
-  var gArr=trimmed.map(function(p){return p.g;}).sort(function(a,b){return a-b;});
-  var gMid=gArr[Math.floor(gArr.length/2)];
-  if(gMid<5) return null;
-  var scale=128/gMid;
-
-  /* Rn-Bn 분포 → 중앙값 */
-  var rnbn=trimmed.map(function(p){
-    return Math.min(p.r*scale,255)-Math.min(p.b*scale,255);
-  }).sort(function(a,b){return a-b;});
-  var rnbnMed=rnbn[Math.floor(rnbn.length/2)];
-
-  /* ★ 올바른 Agtron 공식 */
-  var agtron=clamp(Math.round(-1.075*rnbnMed+132.9),15,95);
-
-  /* L* 는 Agtron 에서 역산 (거리불변) */
-  var Ls=clamp((agtron-8)/1.05,5,90);
-
-  /* CIELAB a*, b* 는 정규화 RGB 에서 */
-  var rS=0,gS=0,bS=0;
-  trimmed.forEach(function(p){ rS+=Math.min(p.r*scale,255); gS+=Math.min(p.g*scale,255); bS+=Math.min(p.b*scale,255); });
-  var nn=trimmed.length;
-  var avgR=rS/nn, avgG=gS/nn, avgB=bS/nn;
-  var lab=sRGBtoLab(avgR,avgG,avgB);
-
-  /* sigma: Rn-Bn 분포 → L* 단위 변환 */
-  var mean=rnbn.reduce(function(s,v){return s+v;},0)/rnbn.length;
-  var variance=rnbn.reduce(function(s,v){return s+Math.pow(v-mean,2);},0)/rnbn.length;
-  var sigmaL=Math.sqrt(variance)*1.075/1.05;
-
-  return{Ls:Ls, agtron:agtron, rnbn:rnbnMed, As:lab.a, Bs:lab.b, sigma:sigmaL,
-         bR:Math.round(avgR), bG:Math.round(avgG), bB:Math.round(avgB), gMid:gMid, scale:scale, pixelCount:trimmed.length};
-}
-
-function agtronRangeFromL(L){
-  var mid=clamp(Math.round(1.05*L+8),15,95);
-  return{lo:Math.max(15,mid-5), hi:Math.min(95,mid+5), mid:mid};
-}
-function roastName(L){
-  var ag=clamp(Math.round(1.05*L+8),15,95);
-  if(ag>=82) return'Light Roast';
-  if(ag>=67) return'Medium-Light Roast';
-  if(ag>=52) return'Medium Roast';
-  if(ag>=37) return'Medium-Dark Roast';
-  return          'Dark Roast';
-}
-
-/* ── Frame Analysis ── */
-function analyzeFrame(context,W,H){
-  try{
-    var step=Math.max(3,Math.floor(Math.min(W,H)/100));
-    var cx=W/2, cy=H*ROI_CY;
-    var r=Math.min(W,H)*FIXED_ROI, r2=r*r;
-    var bx0=Math.max(0,Math.round(cx-r-4)), by0=Math.max(0,Math.round(cy-r-4));
-    var bx1=Math.min(W,Math.round(cx+r+4)), by1=Math.min(H,Math.round(cy+r+4));
-    var allPx=[],beanPx=[],whitePx=[];
-    for(var y=by0;y<by1;y+=step) for(var x=bx0;x<bx1;x+=step){
-      var dx=x-cx,dy=y-cy;
-      if(dx*dx+dy*dy>r2) continue;
-      var d=context.getImageData(x,y,1,1).data;
-      var px={r:d[0],g:d[1],b:d[2],lum:lum(d[0],d[1],d[2])};
-      allPx.push(px);
-      var cls=classifyPixel(px);
-      if(cls==='bean')  beanPx.push(px);
-      if(cls==='white') whitePx.push(px);
-    }
-    if(allPx.length<20) return null;
-    if(beanPx.length<15) beanPx=allPx.filter(function(p){return isBeanPixel(p,'relaxed');});
-    if(beanPx.length<8)  beanPx=allPx.filter(function(p){return isBeanPixel(p,'lum');});
-    if(beanPx.length<5)  return null;
-
-    var result=gNormAgtron(beanPx);
-    if(!result) return null;
-
-    var beanCov=clamp(beanPx.length/Math.max(allPx.length,1),0,1);
-    var whiteFrac=whitePx.length/Math.max(allPx.length,1);
-    lastCovPct=Math.round(beanCov*100);
-    beanPx.sort(function(a,b){return a.lum-b.lum;});
-    var hiPx=beanPx.slice(Math.floor(beanPx.length*0.9));
-    var hiLum=hiPx.reduce(function(s,p){return s+p.lum;},0)/Math.max(hiPx.length,1);
-    var lowLight=hiLum<25;
-    var grindResult=(currentMode==='grind')?estimateGrindMicrons(context,W,H):null;
-    return{
-      Ls:result.Ls, As:result.As, Bs:result.Bs, agtron:result.agtron, sigma:result.sigma,
-      beanCoverage:beanCov, whiteFraction:whiteFrac, beanPurity:beanPx.length/Math.max(allPx.length,1),
-      lowLight:lowLight, wallL:hiLum,
-      bRGB:{r:result.bR,g:result.bG,b:result.bB}, wRGB:{r:result.bR,g:result.bG,b:result.bB},
-      whiteRefMode:'gnorm', gScale:result.scale, beanType:'ground',
-      grindMicron:grindResult?grindResult.microns:null, grindBlobCount:grindResult?(grindResult.blobCount||0):0,
-    };
-  }catch(e){return null;}
-}
-
-/* ════════════════════════════════════════
-   LIVE VIDEO ENGINE
-════════════════════════════════════════ */
-function startLive(mode){
-  if(liveRunning) stopLive();
-  currentMode=mode||currentMode;
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-    showToast('카메라 API 없음 — HTTPS 환경 필요'); setInst('HTTPS 환경에서 실행해주세요.'); return;
-  }
-  G('guideBody').classList.remove('open');
-  dom.upzone.scrollIntoView({behavior:'smooth',block:'start'});
-  dom.it.textContent='카메라 권한 요청 중...';
-  pendingResult=null; pendingGrind=null;
-  dom.rp.classList.remove('on'); dom.decision.classList.remove('on'); hideValBlock();
-
-  var steps=[
-    {video:{facingMode:{exact:'environment'},width:{ideal:1280},height:{ideal:960}}},
-    {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}}},
-    {video:{facingMode:{ideal:'environment'}}},{video:true}
-  ];
-  function tryCamera(idx){
-    if(idx>=steps.length){ showToast('카메라를 열 수 없습니다.'); setInst('카메라 오류'); return; }
-    navigator.mediaDevices.getUserMedia(steps[idx]).then(function(stream){
-      liveStream=stream; liveTrack=stream.getVideoTracks()[0];
-      dom.liveVideo.srcObject=stream; dom.liveVideo.style.display='block';
-      dom.guideOverlay.style.display='block'; dom.upph.style.display='none';
-      dom.prev.style.display='none'; dom.upzone.classList.add('loaded');
-      dom.stopBtns.style.display='flex'; dom.liveBadge.style.display='block';
-      dom.liveReadout.classList.add('on');
-      frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0; lastCovPct=0; covStableRun=0;
-      liveRunning=true;
-      dom.liveVideo.addEventListener('loadedmetadata',function(){
-        enableTorch(); rafId=requestAnimationFrame(frameLoop);
-        setInst(currentMode==='color'?'원두를 컵/접시에 담고 가이드 원에 가득 채우세요 (3~8cm)':'A4 흰 종이 위에 원두를 얇게 뿌리고 수직 촬영 (7~9cm)');
-      },{once:true});
-      var bmi=G('beanModeIndicator');
-      if(bmi){ bmi.textContent=currentMode==='color'?'그라운드 컬러 측정':'분쇄도 입자 측정'; bmi.className='bean-mode-indicator on ground'; }
-    }).catch(function(err){
-      if(err.name==='NotAllowedError'||err.name==='PermissionDeniedError'){
-        showToast('카메라 권한 거부 — 주소창 🔒 → 카메라 허용 → 새로고침'); setInst('카메라 권한 허용 후 재시도');
-      } else if(err.name==='NotReadableError'||err.name==='TrackStartError'){
-        showToast('카메라 다른 앱 사용 중 — 종료 후 재시도'); setInst('카메라 점유 중 — 다른 앱 종료 후 재시도');
-      } else { tryCamera(idx+1); }
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1920 } }
     });
-  }
-  tryCamera(0);
-}
-
-function enableTorch(){
-  if(!liveTrack) return;
-  var caps=liveTrack.getCapabilities?liveTrack.getCapabilities():{};
-  if(caps.torch) liveTrack.applyConstraints({advanced:[{torch:true}]}).then(function(){dom.torchWarn.style.display='none';}).catch(function(){dom.torchWarn.style.display='block';});
-  else dom.torchWarn.style.display='block';
-}
-
-function _killCamera(){
-  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
-  if(liveTrack){try{liveTrack.applyConstraints({advanced:[{torch:false}]});}catch(e){} liveTrack.stop();liveTrack=null;}
-  if(liveStream){liveStream.getTracks().forEach(function(t){t.stop();});liveStream=null;}
-  dom.liveVideo.srcObject=null; dom.liveVideo.style.display='none';
-  dom.guideOverlay.style.display='none'; dom.liveReadout.classList.remove('on');
-  dom.torchWarn.style.display='none'; dom.shakeWarn.classList.remove('on');
-  dom.liveBadge.style.display='none'; dom.stopBtns.style.display='none';
-  dom.upph.style.display='flex';
-}
-function stopLiveAfterLock(){ liveRunning=false; _killCamera(); }
-function stopLive(){
-  liveRunning=false; _killCamera();
-  if(shakeTimeout){clearTimeout(shakeTimeout);shakeTimeout=null;}
-  frameBuffer=[]; lastFrameL=null; emaL=null; stableRun=0; lastCovPct=0; covStableRun=0;
-  dom.lrStatus.style.color=''; dom.upzone.classList.remove('loaded');
-  dom.badge.style.display='none'; dom.stabBadge.style.display='none'; dom.lowlightWarn.style.display='none';
-  var bmi=G('beanModeIndicator'); if(bmi) bmi.classList.remove('on');
-  setInst('측정이 중단됐습니다.'); renderStepNav();
-}
-
-function frameLoop(ts){
-  if(!liveRunning) return;
-  rafId=requestAnimationFrame(frameLoop);
-  if(ts-lastFrameTime<FRAME_INTERVAL) return;
-  lastFrameTime=ts;
-  drawGuideOverlay();
-  var v=dom.liveVideo;
-  if(v.readyState<2) return;
-  var W=v.videoWidth,H=v.videoHeight;
-  if(!W||!H) return;
-  G('liveCvs').width=W; G('liveCvs').height=H; lvx.drawImage(v,0,0,W,H);
-  var r=analyzeFrame(lvx,W,H);
-  if(!r) return;
-
-  /* 손떨림 감지 */
-  var isShake=lastFrameL!==null&&Math.abs(r.Ls-lastFrameL)>SHAKE_DELTA;
-  if(isShake){
-    frameBuffer=[]; stableRun=0; emaL=null; covStableRun=0;
-    dom.shakeWarn.classList.add('on');
-    if(shakeTimeout) clearTimeout(shakeTimeout);
-    shakeTimeout=setTimeout(function(){dom.shakeWarn.classList.remove('on');},700);
-  }
-  lastFrameL=r.Ls;
-  emaL=emaL===null?r.Ls:EMA_ALPHA*r.Ls+(1-EMA_ALPHA)*emaL;
-
-  /* Coverage 게이트 */
-  var cov=r.beanCoverage*100;
-  var covOk=cov>=COV_MIN&&cov<=COV_MAX;
-  if(covOk) covStableRun++; else{covStableRun=0;frameBuffer=[];stableRun=0;}
-  var covGateOk=covStableRun>=COV_STABLE_NEEDED;
-
-  if(!isShake&&!r.lowLight&&covOk){
-    stableRun++; frameBuffer.push(r);
-    if(frameBuffer.length>FRAME_BUF_SIZE+4) frameBuffer.shift();
-  } else if(r.lowLight||!covOk){
-    frameBuffer=[]; stableRun=0;
-  }
-
-  updateLiveReadout(r,emaL,isShake);
-
-  /* 잠금 조건 */
-  if(covGateOk&&!isShake&&!r.lowLight&&frameBuffer.length>=FRAME_BUF_SIZE&&stableRun>=MIN_STABLE_RUN){
-    var sigma=computeBufSigma();
-    if(sigma<STABLE_SIGMA) autoLock();
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('permissionScreen').style.display = 'none';
+    document.getElementById('camOverlay').style.display = 'block';
+    document.getElementById('controlsBar').style.display = 'flex';
+    document.getElementById('resultsPanel').style.display = 'block';
+    setStatus('active', 'ACTIVE');
+    videoTrack = stream.getVideoTracks()[0];
+    const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+    if (caps.torch) { torchSupported = true; await applyTorch(true); }
+    else { document.getElementById('torchBtn').textContent = 'NO FLASH'; }
+    video.addEventListener('loadeddata', startLiveSampling);
+    document.getElementById('sampleRing').classList.add('scanning');
+  } catch (err) {
+    document.getElementById('permissionScreen').style.display = 'none';
+    const em = document.getElementById('errorMsg');
+    em.style.display = 'flex';
+    document.getElementById('errorDetail').textContent =
+      err.name === 'NotAllowedError'
+        ? '카메라 권한을 거부하셨습니다.\n브라우저 설정에서 권한을 허용해주세요.'
+        : '카메라를 찾을 수 없습니다.\n(' + err.message + ')';
+    setStatus('error', 'ERROR');
   }
 }
 
-function computeBufSigma(){
-  if(frameBuffer.length<2) return 99;
-  var vals=frameBuffer.map(function(r){return r.Ls;});
-  var mean=vals.reduce(function(a,b){return a+b;},0)/vals.length;
-  return Math.sqrt(vals.reduce(function(s,v){return s+Math.pow(v-mean,2);},0)/vals.length);
-}
-
-/* ── Guide Overlay ── */
-function drawGuideOverlay(){
-  var ov=dom.guideOverlay;
-  if(!ov) return;
-  var W=ov.offsetWidth||dom.upzone.offsetWidth, H=ov.offsetHeight||dom.upzone.offsetHeight;
-  ov.width=W; ov.height=H;
-  var gx=ov.getContext('2d');
-  var cx=W/2, cy=H*ROI_CY;
-  gx.clearRect(0,0,W,H);
-  var r=Math.min(W,H)*FIXED_ROI;
-  /* vignette */
-  gx.save(); gx.beginPath(); gx.rect(0,0,W,H); gx.arc(cx,cy,r,0,Math.PI*2,true);
-  gx.fillStyle='rgba(0,0,0,0.50)'; gx.fill('evenodd'); gx.restore();
-  /* progress ring */
-  var cov=lastCovPct, covFrac=clamp(cov/50,0,1);
-  if(covFrac>0.01){
-    var fc=cov>COV_MAX?'rgba(255,60,60,0.95)':cov>=COV_MIN?'rgba(60,210,100,0.92)':'rgba(255,170,40,0.92)';
-    gx.beginPath(); gx.arc(cx,cy,r+7,-Math.PI/2,-Math.PI/2+covFrac*Math.PI*2);
-    gx.strokeStyle=fc; gx.lineWidth=5; gx.lineCap='round'; gx.stroke(); gx.lineCap='butt';
-  }
-  /* main ring */
-  var ringColor=cov>COV_MAX?'rgba(255,60,60,0.95)':cov>=55?'rgba(60,200,100,0.95)':cov>=COV_MIN?'rgba(200,160,64,0.95)':'rgba(224,80,80,0.90)';
-  gx.beginPath(); gx.arc(cx,cy,r,0,Math.PI*2); gx.strokeStyle=ringColor; gx.lineWidth=3; gx.stroke();
-  /* corner markers */
-  [0,Math.PI/2,Math.PI,Math.PI*1.5].forEach(function(a){
-    var px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r, tx=-Math.sin(a), ty=Math.cos(a);
-    gx.beginPath(); gx.moveTo(px-tx*18,py-ty*18); gx.lineTo(px+tx*18,py+ty*18);
-    gx.strokeStyle='rgba(255,255,255,0.85)'; gx.lineWidth=2.5; gx.stroke();
-  });
-  gx.beginPath(); gx.arc(cx,cy,3,0,Math.PI*2); gx.fillStyle='rgba(255,255,255,0.7)'; gx.fill();
-  /* status text */
-  if(liveRunning){
-    var msg,mc;
-    if(cov>COV_MAX){msg='너무 가까움 — 거리를 멀리하세요';mc='#ff4444';}
-    else if(cov>=COV_MIN){var rem=Math.max(0,FRAME_BUF_SIZE-frameBuffer.length); msg=rem>0?'안정화 중 ('+rem+'프레임 남음)':'잠금 준비 완료'; mc='#5dda88';}
-    else if(cov>=15){msg='더 가까이 대주세요 ('+cov+'%)';mc='#f0c040';}
-    else{msg=currentMode==='color'?'원두를 원 안에 채워주세요':'A4 위 원두를 화면에 채워주세요';mc='#ff6060';}
-    gx.save(); gx.font='bold 13px -apple-system,Inter,sans-serif'; gx.textAlign='center'; gx.textBaseline='middle';
-    var tw=gx.measureText(msg).width, my=cy+r+26;
-    gx.fillStyle='rgba(0,0,0,0.72)';
-    gx.beginPath(); if(gx.roundRect) gx.roundRect(cx-tw/2-10,my-14,tw+20,24,5); else gx.rect(cx-tw/2-10,my-14,tw+20,24);
-    gx.fill(); gx.fillStyle=mc; gx.fillText(msg,cx,my-2); gx.restore();
+async function applyTorch(on) {
+  try {
+    await videoTrack.applyConstraints({ advanced: [{ torch: on }] });
+    torchOn = on;
+    const btn = document.getElementById('torchBtn');
+    btn.textContent = on ? 'FLASH ON' : 'FLASH OFF';
+    if (on) btn.classList.add('on'); else btn.classList.remove('on');
+  } catch (e) {
+    torchSupported = false;
+    document.getElementById('torchBtn').textContent = 'NO FLASH';
   }
 }
 
-/* ── Live Readout ── */
-function updateLiveReadout(r,smoothL,isShake){
-  var dL=smoothL!==null?smoothL:r.Ls;
-  dom.lrLstar.textContent=dL.toFixed(1);
-  var agR=agtronRangeFromL(dL); dom.lrAgtron.textContent='예상 Ag '+agR.lo+'–'+agR.hi;
-  var cov=Math.round((r.beanCoverage||0)*100);
-  var cc=cov>COV_MAX?'#e05050':cov>=COV_MIN?'rgba(60,200,100,.9)':'rgba(255,200,60,.9)';
-  dom.lrCovFill.style.width=cov+'%'; dom.lrCovFill.style.background=cc;
-  dom.lrCovVal.textContent=cov+'%'+(cov>COV_MAX?' — 너무 가까움':cov>=COV_MIN?' ✓ 측정 가능':cov>=15?' — 더 가까이':' — 원두 대기');
-  var hiLum=r.wallL||50, lightPct=r.lowLight?20:Math.min(100,Math.round(hiLum/2));
-  dom.lrLightFill.style.width=lightPct+'%'; dom.lrLightFill.style.background=r.lowLight?'#e05050':'rgba(60,200,100,.9)';
-  dom.lrLightVal.textContent=r.lowLight?'광량 부족 — 라이트 ON':'G-보정 ×'+(r.gScale||1).toFixed(2);
-  var bs=computeBufSigma(), sp=frameBuffer.length<3?0:Math.round(clamp(1-bs/3,0,1)*100);
-  var sc=sp>=75?'rgba(60,200,100,.9)':sp>=45?'rgba(255,200,60,.9)':'#e05050';
-  dom.lrStabFill.style.width=sp+'%'; dom.lrStabFill.style.background=sc;
-  dom.lrStabVal.textContent=isShake?'흔들림!':(frameBuffer.length<4?'대기':'σ='+bs.toFixed(2));
-  var status,statusColor='';
-  if(r.lowLight){status='광량 부족 — 라이트를 켜고 더 가까이';statusColor='#e05050';}
-  else if(isShake){status='손떨림 — 잠시 정지해주세요';statusColor='#e05050';}
-  else if(cov>COV_MAX){status='너무 가까움 — 거리를 멀리하세요';statusColor='#ff4444';}
-  else if(cov<COV_MIN){status=cov<15?'원두를 화면에 대주세요':'더 채워주세요 ('+cov+'%)';statusColor='#f0a040';}
-  else if(frameBuffer.length<FRAME_BUF_SIZE){status='측정 중 — '+frameBuffer.length+'/'+FRAME_BUF_SIZE+'프레임';}
-  else if(bs>=STABLE_SIGMA){status='안정화 중 σ='+bs.toFixed(2)+' — 이 거리 유지';statusColor='#f0c040';}
-  else{status='잠금 준비 완료';statusColor='#5dda88';}
-  dom.lrStatus.textContent=status; dom.lrStatus.style.color=statusColor;
-  if(currentMode==='grind'&&r.grindMicron){
-    var gi=grindInfo(r.grindMicron);
-    dom.lrGrind.classList.add('on'); dom.lrGrindVal.textContent=r.grindMicron+' µm';
-    dom.lrGrindCat.textContent=gi.cat+(r.grindBlobCount?' · '+r.grindBlobCount+'개':'');
-  } else dom.lrGrind.classList.remove('on');
-  dom.badge.textContent='● Ground Bean'; dom.badge.style.display='block';
-  dom.lowlightWarn.style.display=r.lowLight?'block':'none';
+async function toggleTorch() {
+  if (!videoTrack || !torchSupported) return;
+  await applyTorch(!torchOn);
 }
 
-/* ── Auto Lock ── */
-function autoLock(){
-  liveRunning=false; cancelAnimationFrame(rafId); rafId=null;
-  var validation=validateBeanSubject(frameBuffer);
-  if(!validation.ok){
-    if(liveTrack){try{liveTrack.applyConstraints({advanced:[{torch:false}]});}catch(e){}}
-    dom.shakeWarn.classList.remove('on'); dom.liveBadge.style.display='none'; dom.stopBtns.style.display='none';
-    showValBlock(validation.reason); renderStepNav(); return;
-  }
-  dom.lockFlash.classList.add('on'); setTimeout(function(){dom.lockFlash.classList.remove('on');},400);
-  if(liveTrack){try{liveTrack.applyConstraints({advanced:[{torch:false}]});}catch(e){}}
-  dom.shakeWarn.classList.remove('on'); dom.liveBadge.style.display='none'; dom.stopBtns.style.display='none';
-
-  /* 중앙값 추출 */
-  function medArr(arr){arr.sort(function(a,b){return a-b;}); return arr[Math.floor(arr.length/2)];}
-  var n=frameBuffer.length, mid=Math.floor(n/2);
-  var lsArr=frameBuffer.map(function(f){return f.Ls;}); lsArr.sort(function(a,b){return a-b;});
-  var asArr=frameBuffer.map(function(f){return f.As;}); asArr.sort(function(a,b){return a-b;});
-  var bsArr=frameBuffer.map(function(f){return f.Bs;}); bsArr.sort(function(a,b){return a-b;});
-  var agArr=frameBuffer.map(function(f){return f.agtron;}); agArr.sort(function(a,b){return a-b;});
-  var avgLs=lsArr[mid], avgAs=asArr[mid], avgBs=bsArr[mid], avgAg=agArr[mid];
-  var lsMean=lsArr.reduce(function(a,b){return a+b;},0)/n;
-  var lsStd=Math.sqrt(lsArr.reduce(function(s,v){return s+Math.pow(v-lsMean,2);},0)/n);
-
-  var LsCal=applyDeviceCal(avgLs);
-  var finalAg=avgAg;
-  var stabGrade=lsStd<0.8?'high':lsStd<1.5?'med':'low';
-  var medCov=medArr(frameBuffer.map(function(f){return f.beanCoverage||0;}));
-  var conf=Math.round(clamp(clamp(1-lsStd/2.5,0,1)*0.6+clamp(medCov*1.5,0,1)*0.4,0,1)*100);
-  var lastR=frameBuffer[frameBuffer.length-1];
-
-  /* 분쇄도 */
-  var gVals=frameBuffer.map(function(f){return f.grindMicron;}).filter(function(v){return v!=null;});
-  var gMicron=null,gSpread=null;
-  if(gVals.length){ gVals.sort(function(a,b){return a-b;}); gMicron=gVals[Math.floor(gVals.length/2)];
-    if(gVals.length>=4){ var q1=gVals[Math.floor(gVals.length*0.25)],q3=gVals[Math.floor(gVals.length*0.75)]; gSpread=q3-q1; } }
-
-  if(currentMode==='grind'){
-    pendingGrind={grindMicron:gMicron,grindSpread:gSpread,grindFrames:gVals.length,frameCount:n,blobCount:lastR.grindBlobCount||0};
-    renderGrindOnly(pendingGrind); renderStepNav();
-    dom.lrStatus.textContent='분쇄도 측정 완료'+(gMicron?' — '+gMicron+'µm':'');
-    setInst('분쇄도 측정 완료.'); setTimeout(function(){stopLiveAfterLock();},500); return;
-  }
-
-  pendingResult={
-    agtron:finalAg, agRangeLo:Math.max(15,finalAg-5), agRangeHi:Math.min(95,finalAg+5),
-    Ls:LsCal, LsRaw:avgLs, _LsRaw:avgLs, As:avgAs, Bs:avgBs,
-    sigma:lsStd, conf:conf, beanType:'ground', isLocked:true, lowLight:false,
-    stabSigma:lsStd, lsStd:lsStd, uniformity:lsStd, stabGrade:stabGrade, needsRetake:stabGrade==='low',
-    wallL:lastR.wallL, bRGB:lastR.bRGB, wRGB:lastR.bRGB, frameCount:n,
-    grindMicron:gMicron, grindSpread:gSpread, dualPass:false, grindLCorr:0, userGrindInput:0,
-  };
-  dom.lrStatus.textContent='컬러 측정 완료  L*='+LsCal.toFixed(1)+'  Ag '+pendingResult.agRangeLo+'–'+pendingResult.agRangeHi;
-  dom.lrStatus.style.color=''; setInst('컬러 측정 완료 — 결과 확인 후 저장하세요.');
-  renderResult(pendingResult); renderStepNav();
-  setTimeout(function(){stopLiveAfterLock();},500);
-}
-
-/* ════════════════════════════════════════
-   GRIND SIZE — A4 Blob Detection
-════════════════════════════════════════ */
-function estimateGrindMicrons(context,W,H){
-  try{
-    var x0=Math.round(W*0.15),y0=Math.round(H*0.15);
-    var x1=Math.round(W*0.85),y1=Math.round(H*0.85);
-    var rw=x1-x0,rh=y1-y0;
-    if(rw<80||rh<80) return null;
-    var imgData=context.getImageData(x0,y0,rw,rh), data=imgData.data, n=rw*rh;
-    var lums=new Float32Array(n);
-    for(var i=0;i<n;i++){var ri=i*4; lums[i]=0.299*data[ri]+0.587*data[ri+1]+0.114*data[ri+2];}
-    var ls=Array.from(lums).sort(function(a,b){return b-a;});
-    var bgLum=ls[Math.floor(n*0.25*0.5)]||200;
-    if(bgLum<140) return null;
-    var threshold=bgLum*0.70;
-    var binaryMap=new Uint8Array(n), beanCount=0;
-    for(var i=0;i<n;i++){if(lums[i]<threshold&&lums[i]>5){binaryMap[i]=1;beanCount++;}}
-    var beanRatio=beanCount/n;
-    if(beanRatio<0.005||beanRatio>0.60) return null;
-    var estDist=clamp(6+(240-bgLum)*0.05,5,12);
-    var pxPerMm=clamp(8.5-(estDist-6)*0.43,4.5,9.5);
-    var visited=new Uint8Array(n), blobAreas=[];
-    var maxBlobPx=Math.round(Math.PI*Math.pow(pxPerMm*3.0,2));
-    var minBlobPx=Math.max(2,Math.round(Math.PI*Math.pow(pxPerMm*0.05,2)));
-    for(var startIdx=0;startIdx<n;startIdx++){
-      if(!binaryMap[startIdx]||visited[startIdx]) continue;
-      var stack=[startIdx],area=0; visited[startIdx]=1;
-      while(stack.length>0){
-        var idx=stack.pop(); area++;
-        if(area>maxBlobPx*1.5) break;
-        var py=Math.floor(idx/rw),px=idx%rw;
-        var nb=[];
-        if(px>0) nb.push(idx-1); if(px<rw-1) nb.push(idx+1);
-        if(py>0) nb.push(idx-rw); if(py<rh-1) nb.push(idx+rw);
-        for(var ni=0;ni<nb.length;ni++){var nIdx=nb[ni]; if(binaryMap[nIdx]&&!visited[nIdx]){visited[nIdx]=1;stack.push(nIdx);}}
-      }
-      if(area>=minBlobPx&&area<=maxBlobPx) blobAreas.push(area);
+function sampleCenter() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || video.videoWidth === 0) return null;
+  const canvas = document.getElementById('canvas');
+  const vw = video.videoWidth, vh = video.videoHeight;
+  canvas.width = vw; canvas.height = vh;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  const cx = Math.floor(vw/2), cy = Math.floor(vh/2);
+  const r = Math.floor(Math.min(vw, vh) * 0.14);
+  let totalR=0, totalG=0, totalB=0, count=0;
+  try {
+    const d = ctx.getImageData(cx-r, cy-r, r*2, r*2).data;
+    const r2 = r*r;
+    for (let i=0; i<d.length; i+=4) {
+      const idx=i/4, px=(idx%(r*2))-r, py=Math.floor(idx/(r*2))-r;
+      if (px*px+py*py<=r2) { totalR+=d[i]; totalG+=d[i+1]; totalB+=d[i+2]; count++; }
     }
-    if(blobAreas.length<8) return null;
-    var diameters=blobAreas.map(function(a){return Math.round(2*Math.sqrt(a/Math.PI)/pxPerMm*1000/10)*10;});
-    diameters.sort(function(a,b){return a-b;});
-    var nd=diameters.length;
-    var d50=clamp(diameters[Math.floor(nd*0.50)],80,2500);
-    return{microns:d50, spread:diameters[Math.floor(nd*0.90)]-diameters[Math.floor(nd*0.10)], blobCount:nd};
-  }catch(e){return null;}
+  } catch(e) { return null; }
+  if (!count) return null;
+  return { r: Math.round(totalR/count), g: Math.round(totalG/count), b: Math.round(totalB/count) };
 }
 
-function grindInfo(µm){
-  if(µm<350)  return{cat:'Espresso',  badge:'esp',   note:'에스프레소  '+µm+'µm'};
-  if(µm<600)  return{cat:'Fine Filter',badge:'fine',  note:'파인 필터  '+µm+'µm'};
-  if(µm<800)  return{cat:'Brewing',   badge:'brew',  note:'브루잉 적합  '+µm+'µm'};
-  if(µm<=870) return{cat:'Cupping',   badge:'cup',   note:'커핑 적합  '+µm+'µm'};
-  if(µm<1300) return{cat:'Coarse',    badge:'coarse',note:'코스  '+µm+'µm'};
-  return             {cat:'Cold Brew', badge:'cold',  note:'콜드브루  '+µm+'µm'};
+function rgbToLab(r, g, b) {
+  const lin = c => { c/=255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  const lr=lin(r), lg=lin(g), lb=lin(b);
+  const X=lr*0.4124564+lg*0.3575761+lb*0.1804375;
+  const Y=lr*0.2126729+lg*0.7151522+lb*0.0721750;
+  const Z=lr*0.0193339+lg*0.1191920+lb*0.9503041;
+  const f=t=>t>0.008856?Math.cbrt(t):7.787*t+16/116;
+  const fx=f(X/0.95047), fy=f(Y/1.00000), fz=f(Z/1.08883);
+  return {
+    L: parseFloat((116*fy-16).toFixed(2)),
+    a: parseFloat((500*(fx-fy)).toFixed(2)),
+    b: parseFloat((200*(fy-fz)).toFixed(2))
+  };
 }
 
-/* ══ VALIDATION ══ */
-function validateBeanSubject(frames){
-  if(!frames||frames.length===0) return{ok:false,reason:'분석 데이터가 없습니다. 다시 촬영해주세요.'};
-  var lightFails=frames.filter(function(r){return r.lowLight;}).length;
-  if(lightFails>frames.length*0.5) return{ok:false,reason:'광량이 부족합니다. 라이트를 켜고 더 가까이 대주세요.'};
-  var covs=frames.map(function(r){return r.beanCoverage||0;}).sort(function(a,b){return a-b;});
-  var medCov=covs[Math.floor(covs.length/2)];
-  var minCov=currentMode==='grind'?0.09:0.13;
-  if(medCov<minCov){
-    if(medCov<0.05) return{ok:false,reason:'원두가 감지되지 않습니다. 원두를 직접 촬영해주세요.'};
-    return{ok:false,reason:'원두 감지율 낮음 ('+Math.round(medCov*100)+'%) — 더 가까이 촬영해주세요.'};
+function estimateAgtron(L) {
+  return Math.max(25, Math.min(95, Math.round(L*1.35+6.5)));
+}
+
+function getRoastLevel(agtron) {
+  if (agtron>=85) return { kr:'라이트',       en:'LIGHT' };
+  if (agtron>=70) return { kr:'미디엄 라이트', en:'MEDIUM-LIGHT' };
+  if (agtron>=55) return { kr:'미디엄',        en:'MEDIUM' };
+  if (agtron>=45) return { kr:'미디엄 다크',   en:'MEDIUM-DARK' };
+  if (agtron>=35) return { kr:'다크',          en:'DARK' };
+  return               { kr:'베리 다크',      en:'VERY DARK' };
+}
+
+function startLiveSampling() {
+  function loop() {
+    const c = sampleCenter();
+    if (c) {
+      const lab = rgbToLab(c.r, c.g, c.b);
+      document.getElementById('hudColor').style.background = `rgb(${c.r},${c.g},${c.b})`;
+      document.getElementById('hudL').textContent = `L* ${lab.L.toFixed(1)}`;
+    }
+    animFrameId = requestAnimationFrame(loop);
   }
-  return{ok:true};
-}
-function showValBlock(msg){
-  var vb=G('valBlock'),vm=G('valBlockMsg');
-  if(vb) vb.classList.add('on'); if(vm) vm.textContent=msg;
-  dom.rp.classList.remove('on'); dom.decision.classList.remove('on');
-  setInst('측정 불가 — 재촬영 필요');
-}
-function hideValBlock(){ var vb=G('valBlock'); if(vb) vb.classList.remove('on'); }
-function doValRetry(){ hideValBlock(); if(currentMode) launchMode(currentMode); else renderStepNav(); }
-
-/* ══ RENDER RESULT ══ */
-function renderResult(r){
-  dom.rp.classList.remove('grind-mode');
-  G('pL').textContent=r.Ls.toFixed(1);
-  G('pA').textContent=r.agRangeLo+'–'+r.agRangeHi; G('rRange').textContent='';
-  G('rName').textContent=roastName(r.Ls);
-  var unifEl=G('uniformityVal'); if(unifEl&&r.uniformity!==undefined){ unifEl.textContent=r.uniformity.toFixed(2); unifEl.style.color=r.uniformity<0.8?'#5dda88':r.uniformity<1.5?'#d4a820':'#e05050'; }
-  var gcorrEl=G('grindCorrNote'); if(gcorrEl) gcorrEl.style.display='none';
-  G('rhTag').textContent='그라운드 컬러  σ='+r.sigma.toFixed(1);
-  var deltaEl=G('rhDelta'); if(deltaEl) deltaEl.style.display='none';
-  dom.flashA.classList.toggle('on',!!r.lowLight);
-  var sn=G('stabNotice'),st=G('stabNoticeTxt');
-  if(!r.lowLight&&sn&&st){
-    sn.classList.add('on');
-    var gl=r.stabGrade==='high'?'신뢰도 높음':r.stabGrade==='med'?'신뢰도 보통':'재촬영 권장';
-    var gc=r.stabGrade==='high'?{bg:'#f0fff6',bd:'#a0d8b8',tc:'#1a7a46'}:r.stabGrade==='med'?{bg:'#fffbf0',bd:'#f0d890',tc:'#8a6800'}:{bg:'#fff0f0',bd:'#e8a0a0',tc:'#8a1a1a'};
-    sn.style.background=gc.bg; sn.style.borderColor=gc.bd; st.style.color=gc.tc;
-    st.textContent=gl+'  σ='+r.lsStd.toFixed(2)+'  '+r.frameCount+'프레임'+(r.needsRetake?' — 재측정 권장':'');
-  } else if(sn) sn.classList.remove('on');
-  var cf=G('confFill'); cf.style.width=r.conf+'%'; cf.className='conf-fill '+(r.conf>=70?'cg':'cy');
-  var cs=confStateLabel(r.conf);
-  G('confTxt').innerHTML=r.conf+'%  <span class="conf-state '+cs.cls+'">'+cs.text+'</span>  '+(r.lowLight?'광량 부족 — 라이트 ON':r.conf>=70?'측정 조건 양호':'원두를 원 안에 가득 채워주세요');
-  G('ndA').style.left=(((r.agtron-25)/70)*90+5)+'%'; G('ndL').style.left=r.Ls+'%';
-  G('lL').textContent=r.Ls.toFixed(2); G('lA').textContent=r.As.toFixed(2); G('lB').textContent=r.Bs.toFixed(2);
-  G('wSw').style.background=rgbStr(r.wRGB||r.bRGB); G('wVal').textContent=rgbTxt(r.wRGB||r.bRGB);
-  G('bSw').style.background=rgbStr(r.bRGB); G('bVal').textContent=rgbTxt(r.bRGB);
-  G('grindSec').classList.remove('on');
-  dom.decision.classList.add('on');
-  var dq=dom.decision.querySelector('.decision-q'); if(dq) dq.textContent='이 결과를 사용하시겠습니까?';
-  hideValBlock(); dom.rp.classList.add('on');
-  setInst('분석 완료 — L* '+r.Ls.toFixed(1)+'  Agtron '+r.agtron+'  '+roastName(r.Ls));
-  dom.rp.scrollIntoView({behavior:'smooth',block:'start'}); renderStepNav();
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = requestAnimationFrame(loop);
 }
 
-function renderGrindOnly(g){
-  var gs=G('grindSec');
-  if(g.grindMicron!=null){
-    var gi=grindInfo(g.grindMicron); gs.classList.add('on');
-    G('grindNum').textContent=g.grindMicron;
-    var gb=G('grindBadge'); gb.textContent=gi.cat; gb.className='grind-badge '+gi.badge;
-    var gl=G('grindLabel');
-    if(gi.badge==='brew')       gl.innerHTML='브루잉 적합<br><small>600–800µm</small>';
-    else if(gi.badge==='cup')   gl.innerHTML='커핑 적합<br><small>800–850µm</small>';
-    else if(gi.badge==='esp')   gl.innerHTML='에스프레소<br><small>~400µm</small>';
-    else if(gi.badge==='fine')  gl.innerHTML='파인 필터<br><small>400–600µm</small>';
-    else if(gi.badge==='coarse')gl.innerHTML='코스<br><small>850–1300µm</small>';
-    else                        gl.innerHTML='콜드브루<br><small>1300µm+</small>';
-    G('grindNd').style.left=clamp(((g.grindMicron-100)/(2500-100))*95+2.5,2.5,97.5)+'%';
-    var gc=g.grindSpread!=null?Math.round(clamp((1-g.grindSpread/300)*100,30,95)):60;
-    var cf=G('confFill'); if(cf){cf.style.width=gc+'%';cf.className='conf-fill '+(gc>=70?'cg':'cy');}
-    var ct=G('confTxt'); if(ct) ct.textContent=gc+'%  '+g.grindFrames+'프레임  blob='+g.blobCount;
-    G('grindNote').innerHTML=gi.note+(g.grindSpread!=null?'  IQR ±'+Math.round(g.grindSpread/2)+'µm':'');
-    setInst('분쇄도 완료 — '+g.grindMicron+'µm  '+gi.cat);
-  } else {
-    gs.classList.remove('on');
-    var ct=G('confTxt'); if(ct) ct.textContent='A4 위 원두를 얇게 뿌리고 7~9cm 수직 촬영';
-    setInst('측정 실패 — A4(흰 종이) 위 원두 얇게 뿌리고 재촬영');
-  }
-  G('rhTag').textContent='분쇄도 측정';
-  dom.rp.classList.add('grind-mode'); dom.decision.classList.add('on');
-  var dq=dom.decision.querySelector('.decision-q'); if(dq) dq.textContent='이 분쇄도 결과를 저장하시겠습니까?';
-  hideValBlock(); dom.rp.classList.add('on'); dom.rp.scrollIntoView({behavior:'smooth',block:'nearest'}); renderStepNav();
+function capture() {
+  const c = sampleCenter();
+  if (!c) return;
+  const lab = rgbToLab(c.r, c.g, c.b);
+  const agtron = estimateAgtron(lab.L);
+  const roast = getRoastLevel(agtron);
+  document.getElementById('valL').textContent = lab.L.toFixed(1);
+  document.getElementById('valA').textContent = lab.a.toFixed(1);
+  document.getElementById('valB').textContent = lab.b.toFixed(1);
+  document.getElementById('valAgtron').textContent = '#' + agtron;
+  document.getElementById('roastKr').textContent = roast.kr;
+  document.getElementById('roastEn').textContent = roast.en;
+  const pct = ((agtron-25)/70)*100;
+  document.getElementById('scaleMarker').style.left = pct + '%';
+  const ts = new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  history.unshift({ lab, agtron, roast, color: c, ts });
+  if (history.length>5) history.pop();
+  renderHistory();
+  document.getElementById('historySection').style.display = 'block';
+  const btn = document.getElementById('measureBtn');
+  btn.classList.add('captured');
+  btn.textContent = 'CAPTURED';
+  setTimeout(() => { btn.classList.remove('captured'); btn.textContent = 'MEASURE'; }, 900);
 }
 
-/* ══ EXAM PANEL ══ */
-function updateExamPanel(){
-  var hasAny=store.gcol||store.grind;
-  if(!hasAny){if(dom.exam) dom.exam.style.display='none'; return;}
-  if(dom.exam) dom.exam.style.display='block';
-  G('examSub').textContent=(store.gcol&&store.grind)?'컬러+분쇄도 완료':store.gcol?'컬러 완료':'분쇄도 완료';
-  var gc2=G('examGcol');
-  if(gc2){ if(store.gcol){gc2.classList.remove('missing');G('examGcolLsVal').textContent=store.gcol.Ls.toFixed(1);G('examGcolAg').textContent='Ag '+store.gcol.agtron;G('examGcolRoast').textContent=roastName(store.gcol.Ls);var sw=G('examGcolSw');if(sw&&store.gcol.bRGB)sw.style.background=rgbStr(store.gcol.bRGB);}else{gc2.classList.add('missing');G('examGcolLsVal').textContent='—';G('examGcolAg').textContent='미측정';G('examGcolRoast').textContent='';}}
-  var gg=G('examGrind');
-  if(gg){ if(store.grind&&store.grind.grindMicron){gg.classList.remove('missing');var gi=grindInfo(store.grind.grindMicron);G('examGrindMicron').textContent=store.grind.grindMicron+' µm';G('examGrindCat').textContent=gi.cat;G('examGrindNote').textContent=gi.note;var ndPct=clamp(((store.grind.grindMicron-100)/(2500-100))*95+2.5,2.5,97.5);var nd=G('examGrindNd');if(nd)nd.style.left=ndPct+'%';}else{gg.classList.add('missing');G('examGrindMicron').textContent='—';G('examGrindCat').textContent='미측정';G('examGrindNote').textContent='';}}
-  dom.exam.scrollIntoView({behavior:'smooth',block:'nearest'});
+function renderHistory() {
+  document.getElementById('historyList').innerHTML = history.map(m => `
+    <div class="history-item">
+      <div class="history-swatch" style="background:rgb(${m.color.r},${m.color.g},${m.color.b});"></div>
+      <div class="history-info">
+        <div class="history-roast">${m.roast.kr} <span style="color:#505050;">#${m.agtron}</span></div>
+        <div class="history-values">L* ${m.lab.L.toFixed(1)} · a* ${m.lab.a.toFixed(1)} · b* ${m.lab.b.toFixed(1)}</div>
+      </div>
+      <div class="history-time">${m.ts}</div>
+    </div>
+  `).join('');
 }
 
-/* ══ STEP NAVIGATOR ══ */
-var TILE_IDS={color:'tileColor',grind:'tileGrind'};
-var TILE_VAL_IDS={color:'tileColorVal',grind:'tileGrindVal'};
-var TILE_CHIP_IDS={color:'tileColorChip',grind:'tileGrindChip'};
-
-function renderStepNav(){
-  var statusEl=G('stepNavStatus');
-  ['color','grind'].forEach(function(k){
-    var tile=G(TILE_IDS[k]),valEl=G(TILE_VAL_IDS[k]),chipEl=G(TILE_CHIP_IDS[k]);
-    if(!tile||!valEl) return;
-    var hasPending=(currentMode===k&&(pendingResult!==null||pendingGrind!==null));
-    var cls='step-tile ';
-    if(currentMode===k&&liveRunning) cls+='active-mode';
-    else if(hasPending) cls+='pending-confirm';
-    else if(stepDone[k]) cls+='done';
-    else cls+='idle';
-    tile.className=cls;
-    if(currentMode===k&&liveRunning) valEl.textContent='분석 중…';
-    else if(k==='color'){var src=stepDone[k]?store.gcol:(currentMode===k?pendingResult:null); valEl.textContent=src?'L* '+src.Ls.toFixed(1)+'  Ag '+src.agtron:'—';}
-    else if(k==='grind'){var gs=stepDone[k]?store.grind:(currentMode===k?pendingGrind:null); valEl.textContent=(gs&&gs.grindMicron)?gs.grindMicron+' µm':'—';}
-    if(chipEl) chipEl.textContent=currentMode===k&&liveRunning?'● 측정 중 — 탭하면 중단':hasPending?'▲ 결과 확인':stepDone[k]?'완료 — 재측정 가능':'탭하여 측정';
-  });
-  if(!statusEl) return;
-  var dc=(stepDone.color?1:0)+(stepDone.grind?1:0);
-  if(liveRunning) statusEl.textContent=(currentMode==='color'?'그라운드 컬러':'분쇄도 입자')+' — 분석 중';
-  else if(pendingResult!==null) statusEl.textContent='그라운드 컬러 — 결과 확인 후 저장 또는 재측정';
-  else if(pendingGrind!==null) statusEl.textContent='분쇄도 입자 — 결과 확인 후 저장 또는 재측정';
-  else if(dc===2) statusEl.textContent='두 항목 완료  |  정밀검사 확인';
-  else if(dc===1) statusEl.textContent='1항목 완료  |  나머지 탭하여 측정';
-  else statusEl.textContent='탭하여 측정 시작';
-}
-
-function tileAction(mode){
-  if(liveRunning&&currentMode===mode){stopLive();return;}
-  if(liveRunning&&currentMode!==mode) stopLive();
-  if((mode==='color'&&pendingResult!==null&&currentMode===mode)||(mode==='grind'&&pendingGrind!==null&&currentMode===mode)){dom.rp.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
-  launchMode(mode);
-}
-function launchMode(mode){ if(liveRunning) stopLive(); currentMode=mode; hideValBlock(); renderStepNav(); startLive(mode); }
-function toggleGuideTab(){ var b=G('guideBody'); b.classList.toggle('open'); if(b.classList.contains('open')) b.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-
-/* ══ CONFIRM / RETAKE / RESET ══ */
-function doConfirm(){
-  dom.decision.classList.remove('on');
-  var dq=dom.decision.querySelector('.decision-q'); if(dq) dq.textContent='이 결과를 사용하시겠습니까?';
-  if(currentMode==='grind'&&pendingGrind!==null){store.grind=pendingGrind;stepDone.grind=true;pendingGrind=null;setInst('분쇄도 저장 완료.');}
-  else if(pendingResult!==null){store.gcol=pendingResult;stepDone.color=true;pendingResult=null;setInst('그라운드 컬러 저장 완료.');}
-  currentMode=null; updateExamPanel(); renderStepNav(); window.scrollTo({top:0,behavior:'smooth'});
-}
-function doRetake(){
-  stopLive(); pendingResult=null; pendingGrind=null; dom.lrStatus.style.color='';
-  dom.decision.classList.remove('on'); dom.rp.classList.remove('on');
-  dom.badge.style.display='none'; dom.stabBadge.style.display='none'; dom.lowlightWarn.style.display='none';
-  hideValBlock(); startLive(); renderStepNav();
-}
-function doReset(){
-  pendingResult=null; pendingGrind=null; store={gcol:null,grind:null}; stepDone={color:false,grind:false}; currentMode=null;
-  stopLive(); dom.lrStatus.style.color='';
-  dom.prev.style.display='none'; dom.prev.src=''; dom.upph.style.display='flex';
-  dom.upzone.classList.remove('loaded'); dom.badge.style.display='none';
-  dom.stabBadge.style.display='none'; dom.lowlightWarn.style.display='none';
-  dom.rp.classList.remove('on'); dom.decision.classList.remove('on');
-  if(dom.exam) dom.exam.style.display='none';
-  var bmi=G('beanModeIndicator'); if(bmi) bmi.classList.remove('on');
-  hideValBlock(); renderStepNav(); setInst('측정을 시작하세요.'); window.scrollTo({top:0,behavior:'smooth'});
-}
-
-/* ══ HELPERS ══ */
-function setInst(t){ dom.it.textContent=t; }
-function confStateLabel(conf){
-  if(conf>=75) return{cls:'high',text:'신뢰도 높음'};
-  if(conf>=50) return{cls:'med', text:'신뢰도 보통'};
-  if(conf>=25) return{cls:'low', text:'신뢰도 낮음'};
-  return           {cls:'blocked',text:'측정 불가'};
+function setStatus(type, label) {
+  document.getElementById('statusDot').className = 'status-dot ' + type;
+  document.getElementById('statusLabel').textContent = label;
 }
 </script>
+</body>
+</html>
