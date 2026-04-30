@@ -616,6 +616,11 @@
         <div class="val-card-sub">추정치 / Estimated</div>
       </div>
       <div class="val-card">
+        <div class="val-card-label">CONFIDENCE</div>
+        <div class="val-card-value" id="valConfidence">—</div>
+        <div class="val-card-sub" id="valQuality">자동 보정 상태</div>
+      </div>
+      <div class="val-card">
         <div class="val-card-label">CIE a*</div>
         <div class="val-card-value" id="valA">—</div>
         <div class="val-card-sub">적색도 / Redness</div>
@@ -662,11 +667,11 @@
       </div>
       <div class="guide-step">
         <div class="step-num">3</div>
-        <div class="step-text">원 안에 원두 표면이 가득 채워지면 MEASURE 버튼 탭</div>
+        <div class="step-text">원두는 중앙 원 안에, 흰 종이컵 면은 화면 가장자리에 일부 보이게 맞춘 뒤 MEASURE</div>
       </div>
       <div class="guide-step">
         <div class="step-num">4</div>
-        <div class="step-text">CIELAB 색공간 기반 측정 · Agtron은 L*에서 추정한 근사치</div>
+        <div class="step-text">흰 종이컵 기준 자동 보정 + 30프레임 평균 측정 · Agtron은 L* 기반 추정치</div>
       </div>
     </div>
   </div>
@@ -715,11 +720,30 @@
 let stream = null, videoTrack = null;
 let torchOn = false, torchSupported = false;
 let animFrameId = null, history = [];
+let lastLiveTs = 0;
+
+const AUTO_CAL = {
+  sampleRadius: 0.14,       // 중앙 원두 측정 영역. 화면 짧은 변 기준 14%
+  whiteMinLuma: 130,        // 흰 종이컵 후보 최소 밝기
+  whiteMaxChroma: 34,       // 흰 종이컵 후보 최대 색 편차. 낮을수록 무채색만 허용
+  targetWhite: 242,         // 보정 후 기준 흰색 밝기
+  frames: 30,               // 측정 시 평균낼 프레임 수
+  frameGap: 38,             // 프레임 간격 ms. 30프레임이면 약 1.1초
+  minWhitePixels: 350,      // 흰 기준 영역 최소 픽셀 수
+  liveInterval: 300         // 라이브 L* 표시 갱신 간격 ms
+};
 
 async function startCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1920 } }
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1920 },
+        exposureMode: { ideal: 'continuous' },
+        whiteBalanceMode: { ideal: 'continuous' },
+        focusMode: { ideal: 'continuous' }
+      }
     });
     const video = document.getElementById('video');
     video.srcObject = stream;
@@ -756,6 +780,7 @@ async function applyTorch(on) {
     if (on) btn.classList.add('on'); else btn.classList.remove('on');
   } catch (e) {
     torchSupported = false;
+    torchOn = false;
     document.getElementById('torchBtn').textContent = 'NO FLASH';
   }
 }
@@ -765,27 +790,213 @@ async function toggleTorch() {
   await applyTorch(!torchOn);
 }
 
-function sampleCenter() {
+function clamp(v, min=0, max=255) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function luma(r, g, b) {
+  return 0.2126*r + 0.7152*g + 0.0722*b;
+}
+
+function chroma(r, g, b) {
+  const mean = (r+g+b)/3;
+  return Math.sqrt(((r-mean)**2 + (g-mean)**2 + (b-mean)**2) / 3);
+}
+
+function median(arr) {
+  if (!arr.length) return 0;
+  const a = arr.slice().sort((x, y) => x-y);
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid-1] + a[mid]) / 2;
+}
+
+function mean(arr) {
+  return arr.reduce((s, v) => s + v, 0) / Math.max(1, arr.length);
+}
+
+function stdev(arr) {
+  if (arr.length < 2) return 0;
+  const m = mean(arr);
+  return Math.sqrt(mean(arr.map(v => (v-m)**2)));
+}
+
+function avgRGB(list) {
+  if (!list.length) return null;
+  return {
+    r: Math.round(mean(list.map(p => p.r))),
+    g: Math.round(mean(list.map(p => p.g))),
+    b: Math.round(mean(list.map(p => p.b)))
+  };
+}
+
+function getFrameData() {
   const video = document.getElementById('video');
   if (!video || video.readyState < 2 || video.videoWidth === 0) return null;
+
   const canvas = document.getElementById('canvas');
   const vw = video.videoWidth, vh = video.videoHeight;
   canvas.width = vw; canvas.height = vh;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-  const cx = Math.floor(vw/2), cy = Math.floor(vh/2);
-  const r = Math.floor(Math.min(vw, vh) * 0.14);
-  let totalR=0, totalG=0, totalB=0, count=0;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, vw, vh);
+
   try {
-    const d = ctx.getImageData(cx-r, cy-r, r*2, r*2).data;
-    const r2 = r*r;
-    for (let i=0; i<d.length; i+=4) {
-      const idx=i/4, px=(idx%(r*2))-r, py=Math.floor(idx/(r*2))-r;
-      if (px*px+py*py<=r2) { totalR+=d[i]; totalG+=d[i+1]; totalB+=d[i+2]; count++; }
+    return { data: ctx.getImageData(0, 0, vw, vh).data, width: vw, height: vh };
+  } catch(e) {
+    return null;
+  }
+}
+
+function sampleFrame() {
+  const frame = getFrameData();
+  if (!frame) return null;
+
+  const d = frame.data;
+  const w = frame.width, h = frame.height;
+  const cx = Math.floor(w/2), cy = Math.floor(h/2);
+  const shortSide = Math.min(w, h);
+  const r = Math.floor(shortSide * AUTO_CAL.sampleRadius);
+  const r2 = r*r;
+
+  const samplePixels = [];
+  const whitePixels = [];
+  const step = Math.max(1, Math.floor(shortSide / 420)); // 고해상도에서 과한 루프 방지
+
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const i = (y*w + x) * 4;
+      const R = d[i], G = d[i+1], B = d[i+2];
+      const dx = x - cx, dy = y - cy;
+      const dist2 = dx*dx + dy*dy;
+
+      // 중앙 원두 측정 영역
+      if (dist2 <= r2) {
+        const Y = luma(R, G, B);
+        // 반사 하이라이트/깊은 그림자 일부 제외
+        if (Y > 8 && Y < 248) samplePixels.push({ r:R, g:G, b:B, y:Y });
+        continue;
+      }
+
+      // 화면 바깥쪽의 밝고 무채색에 가까운 영역을 흰 종이컵 기준으로 추정
+      const inOuterArea = x < w*0.22 || x > w*0.78 || y < h*0.22 || y > h*0.78;
+      if (inOuterArea) {
+        const Y = luma(R, G, B);
+        const C = chroma(R, G, B);
+        if (Y >= AUTO_CAL.whiteMinLuma && Y < 252 && C <= AUTO_CAL.whiteMaxChroma) {
+          whitePixels.push({ r:R, g:G, b:B, y:Y });
+        }
+      }
     }
-  } catch(e) { return null; }
-  if (!count) return null;
-  return { r: Math.round(totalR/count), g: Math.round(totalG/count), b: Math.round(totalB/count) };
+  }
+
+  if (samplePixels.length < 80) return null;
+
+  // 원두 영역은 극단값을 제외한 trimmed mean
+  const ys = samplePixels.map(p => p.y).sort((a,b)=>a-b);
+  const lo = ys[Math.floor(ys.length * 0.08)] || 0;
+  const hi = ys[Math.floor(ys.length * 0.92)] || 255;
+  const trimmedSample = samplePixels.filter(p => p.y >= lo && p.y <= hi);
+  const raw = avgRGB(trimmedSample);
+  if (!raw) return null;
+
+  // 흰 기준 영역은 중앙값 기반. 기준점이 없으면 raw만 반환하되 신뢰도 낮게 처리
+  let white = null;
+  if (whitePixels.length >= AUTO_CAL.minWhitePixels) {
+    white = {
+      r: median(whitePixels.map(p => p.r)),
+      g: median(whitePixels.map(p => p.g)),
+      b: median(whitePixels.map(p => p.b)),
+      y: median(whitePixels.map(p => p.y)),
+      count: whitePixels.length
+    };
+  }
+
+  const corrected = correctByWhite(raw, white);
+  return { raw, corrected, white, whiteCount: whitePixels.length, sampleCount: trimmedSample.length };
+}
+
+function correctByWhite(raw, white) {
+  if (!white) return raw;
+
+  // 채널별 gain으로 조명색과 밝기를 보정한다.
+  // 과보정을 막기 위해 gain 범위를 제한한다.
+  const gr = clamp(AUTO_CAL.targetWhite / Math.max(1, white.r), 0.72, 1.38);
+  const gg = clamp(AUTO_CAL.targetWhite / Math.max(1, white.g), 0.72, 1.38);
+  const gb = clamp(AUTO_CAL.targetWhite / Math.max(1, white.b), 0.72, 1.38);
+
+  return {
+    r: Math.round(clamp(raw.r * gr)),
+    g: Math.round(clamp(raw.g * gg)),
+    b: Math.round(clamp(raw.b * gb))
+  };
+}
+
+function getQuality(frames, labs) {
+  const validWhite = frames.filter(f => f.white).length;
+  const whiteRatio = validWhite / Math.max(1, frames.length);
+  const lStd = stdev(labs.map(l => l.L));
+  const avgWhiteCount = mean(frames.map(f => f.whiteCount || 0));
+
+  let score = 100;
+  if (!torchOn) score -= 18;
+  if (whiteRatio < 0.8) score -= 28;
+  if (avgWhiteCount < AUTO_CAL.minWhitePixels * 1.5) score -= 14;
+  if (lStd > 1.5) score -= 18;
+  if (lStd > 3.0) score -= 22;
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  let label = 'LOW';
+  if (score >= 78) label = 'HIGH';
+  else if (score >= 55) label = 'MID';
+
+  const messages = [];
+  messages.push(frames[0] && frames[0].white ? '흰 컵 기준 보정' : '흰 기준 부족');
+  messages.push(`흔들림 ±${lStd.toFixed(1)}`);
+  if (!torchOn) messages.push('플래시 미사용');
+
+  return { score, label, text: messages.join(' · ') };
+}
+
+async function captureAutoCalibrated() {
+  const frames = [];
+  const btn = document.getElementById('measureBtn');
+  btn.disabled = true;
+  btn.textContent = 'CALIBRATING';
+  setStatus('active', 'CALIBRATING');
+
+  // 카메라 자동 노출이 안정될 시간을 조금 준다.
+  await sleep(250);
+
+  for (let i = 0; i < AUTO_CAL.frames; i++) {
+    const f = sampleFrame();
+    if (f) frames.push(f);
+    await sleep(AUTO_CAL.frameGap);
+  }
+
+  if (frames.length < Math.max(10, AUTO_CAL.frames * 0.45)) {
+    btn.disabled = false;
+    btn.textContent = 'MEASURE';
+    setStatus('error', 'RETRY');
+    alert('측정 가능한 프레임이 부족합니다. 카메라를 원두 표면 위에 고정하고 다시 측정해 주세요.');
+    return null;
+  }
+
+  const colors = frames.map(f => f.corrected);
+  const color = avgRGB(colors);
+  const lab = rgbToLab(color.r, color.g, color.b);
+  const frameLabs = frames.map(f => rgbToLab(f.corrected.r, f.corrected.g, f.corrected.b));
+  const quality = getQuality(frames, frameLabs);
+
+  btn.disabled = false;
+  btn.classList.add('captured');
+  btn.textContent = 'CAPTURED';
+  setStatus('active', quality.label);
+  setTimeout(() => { btn.classList.remove('captured'); btn.textContent = 'MEASURE'; }, 900);
+
+  return { color, lab, quality, white: frames.find(f => f.white)?.white || null };
 }
 
 function rgbToLab(r, g, b) {
@@ -817,12 +1028,17 @@ function getRoastLevel(agtron) {
 }
 
 function startLiveSampling() {
-  function loop() {
-    const c = sampleCenter();
-    if (c) {
-      const lab = rgbToLab(c.r, c.g, c.b);
-      document.getElementById('hudColor').style.background = `rgb(${c.r},${c.g},${c.b})`;
-      document.getElementById('hudL').textContent = `L* ${lab.L.toFixed(1)}`;
+  function loop(ts) {
+    if (!lastLiveTs || ts - lastLiveTs >= AUTO_CAL.liveInterval) {
+      const f = sampleFrame();
+      if (f) {
+        const c = f.corrected;
+        const lab = rgbToLab(c.r, c.g, c.b);
+        const refText = f.white ? 'REF OK' : 'NO REF';
+        document.getElementById('hudColor').style.background = `rgb(${c.r},${c.g},${c.b})`;
+        document.getElementById('hudL').textContent = `L* ${lab.L.toFixed(1)} · ${refText}`;
+      }
+      lastLiveTs = ts;
     }
     animFrameId = requestAnimationFrame(loop);
   }
@@ -830,29 +1046,31 @@ function startLiveSampling() {
   animFrameId = requestAnimationFrame(loop);
 }
 
-function capture() {
-  const c = sampleCenter();
-  if (!c) return;
-  const lab = rgbToLab(c.r, c.g, c.b);
+async function capture() {
+  const result = await captureAutoCalibrated();
+  if (!result) return;
+
+  const { color, lab, quality } = result;
   const agtron = estimateAgtron(lab.L);
   const roast = getRoastLevel(agtron);
+
   document.getElementById('valL').textContent = lab.L.toFixed(1);
   document.getElementById('valA').textContent = lab.a.toFixed(1);
   document.getElementById('valB').textContent = lab.b.toFixed(1);
   document.getElementById('valAgtron').textContent = '#' + agtron;
+  document.getElementById('valConfidence').textContent = quality.label;
+  document.getElementById('valQuality').textContent = quality.text;
   document.getElementById('roastKr').textContent = roast.kr;
   document.getElementById('roastEn').textContent = roast.en;
+
   const pct = ((agtron-25)/70)*100;
   document.getElementById('scaleMarker').style.left = pct + '%';
+
   const ts = new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-  history.unshift({ lab, agtron, roast, color: c, ts });
+  history.unshift({ lab, agtron, roast, color, ts, quality });
   if (history.length>5) history.pop();
   renderHistory();
   document.getElementById('historySection').style.display = 'block';
-  const btn = document.getElementById('measureBtn');
-  btn.classList.add('captured');
-  btn.textContent = 'CAPTURED';
-  setTimeout(() => { btn.classList.remove('captured'); btn.textContent = 'MEASURE'; }, 900);
 }
 
 function renderHistory() {
@@ -860,7 +1078,7 @@ function renderHistory() {
     <div class="history-item">
       <div class="history-swatch" style="background:rgb(${m.color.r},${m.color.g},${m.color.b});"></div>
       <div class="history-info">
-        <div class="history-roast">${m.roast.kr} <span style="color:#505050;">#${m.agtron}</span></div>
+        <div class="history-roast">${m.roast.kr} <span style="color:#505050;">#${m.agtron}</span> <span style="color:#888;">${m.quality ? m.quality.label : ''}</span></div>
         <div class="history-values">L* ${m.lab.L.toFixed(1)} · a* ${m.lab.a.toFixed(1)} · b* ${m.lab.b.toFixed(1)}</div>
       </div>
       <div class="history-time">${m.ts}</div>
