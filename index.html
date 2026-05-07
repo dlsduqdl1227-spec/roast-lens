@@ -1620,6 +1620,12 @@ const GRIND = {
   frac: 0.70,
   innerFrac: 0.50,
   physicalMM: 34,
+  // Grind calibration: previous clean build was reading slightly fine.
+  // Increase particle diameter estimate without touching the color analyzer.
+  diameterBoost: 1.22,
+  boxBoost: 0.90,
+  maxParticleUm: 2600,
+  clumpBaseUm: 1900,
   maxDim: 1800,
   previewDim: 420,
   frames: 5,
@@ -1878,17 +1884,19 @@ function analyzeGrindCanvas(canvas, preview=false){
     if (area < 2) continue;
     const bw=maxx-minx+1, bh=maxy-miny+1, aspect=Math.max(bw,bh)/Math.max(1,Math.min(bw,bh)), fill=area/Math.max(1,bw*bh);
     const eqPx = Math.sqrt((4*area)/Math.PI);
-    const boxPx = Math.sqrt(bw*bh)*0.78;
-    const px = fill > .38 ? (eqPx*.68 + boxPx*.32) : (eqPx*.48 + boxPx*.52);
-    const dia = px * roi.umPerPx * 0.78;
-    if (dia >= 70 && dia <= 1800) comps.push({d:dia, area, weight:area, minx,miny,maxx,maxy, aspect, fill});
+    const boxPx = Math.sqrt(bw*bh) * GRIND.boxBoost;
+    const px = fill > .38 ? (eqPx*.58 + boxPx*.42) : (eqPx*.40 + boxPx*.60);
+    const dia = px * roi.umPerPx * GRIND.diameterBoost;
+    if (dia >= 70 && dia <= GRIND.maxParticleUm) comps.push({d:dia, area, weight:area, minx,miny,maxx,maxy, aspect, fill});
   }
   if (comps.length < (preview ? 5 : GRIND.minValid)) throw new Error('입자 부족');
   const raw = comps.map(c=>c.d);
   const med = median(raw), sd = stdev(raw);
   const valid=[]; let clumps=0;
   for (const c of comps){
-    if ((c.d > Math.max(1300, med+2.5*sd) && c.fill < .55) || (c.aspect > 4 && c.d > 600)) clumps++;
+    const clearCluster = c.d > Math.max(GRIND.clumpBaseUm, med + 3.0*sd) && c.fill < .45;
+    const chaffLike = c.aspect > 4.8 && c.d > 900 && c.fill < .45;
+    if (clearCluster || chaffLike) clumps++;
     else valid.push(c);
   }
   if (valid.length < (preview ? 4 : 10)) throw new Error('입자 겹침');
@@ -1954,7 +1962,7 @@ function renderGrindClean(r){
     const width = Math.max(2, b.pct/maxPct*100);
     return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
   }).join('');
-  document.getElementById('grindQualityNote').innerHTML = `<strong>${r.qLabel} · ${r.qScore}/100</strong><br>D50 ${fmt(r.d50)}µm · ${r.light.label} · COUNT D50 ${fmt(r.countD50)}µm<br>체눈 근사: ${sieve.mesh} / ${sieve.um}µm · 제외 ${r.clumps}개`;
+  document.getElementById('grindQualityNote').innerHTML = `<strong>${r.qLabel} · ${r.qScore}/100</strong><br>D50 ${fmt(r.d50)}µm · ${r.light.label} · COUNT D50 ${fmt(r.countD50)}µm<br>체눈 근사: ${sieve.mesh} / ${sieve.um}µm · 보정 v2 · 제외 ${r.clumps}개`;
 }
 function bestResult(list){
   const ok = list.filter(Boolean).sort((a,b)=>a.d50-b.d50);
