@@ -1294,176 +1294,120 @@ function showCameraError_(err){
   const detail = document.getElementById('errorDetail');
   if (permission) permission.style.display = 'none';
   if (em) em.style.display = 'flex';
-  const msg = !err ? '카메라를 시작하지 못했습니다.' : (
-    err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
-      ? `카메라 권한을 허용해주세요.
-브라우저 설정에서 카메라 접근을 허용한 뒤 다시 시도해 주세요.`
-      : err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError'
-        ? `사용 가능한 카메라를 찾지 못했습니다.
-다른 앱에서 카메라를 사용 중인지 확인해 주세요.`
-        : err.name === 'NotReadableError' || err.name === 'TrackStartError'
-          ? `카메라를 다른 앱이 사용 중일 수 있습니다.
-카메라 앱을 종료한 뒤 다시 시도해 주세요.`
-          : err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError'
-            ? `기기에서 요청한 카메라 설정을 지원하지 않습니다.
-기본 카메라 설정으로 다시 시도해 주세요.`
-            : `카메라 시작 중 문제가 발생했습니다.
-(${err.message || err.name || 'unknown error'})`
-  );
-  if (detail) detail.textContent = msg;
+  if (detail) {
+    const name = err && err.name ? err.name : '';
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      detail.textContent = '카메라 권한을 허용한 뒤 다시 시도해 주세요.';
+    } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      detail.textContent = '사용 가능한 카메라를 찾지 못했습니다.';
+    } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+      detail.textContent = '다른 앱에서 카메라를 사용 중인지 확인해 주세요.';
+    } else {
+      detail.textContent = '카메라를 다시 시작해 주세요' + (err && err.message ? '\n(' + err.message + ')' : '');
+    }
+  }
   setStatus('error', 'ERROR');
 }
 
-function waitForVideoReady_(video){
-  return new Promise(resolve => {
-    if (!video) return resolve();
-    if (video.readyState >= 2 && video.videoWidth > 0) return resolve();
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      video.removeEventListener('loadedmetadata', finish);
-      video.removeEventListener('loadeddata', finish);
-      resolve();
-    };
-    video.addEventListener('loadedmetadata', finish, { once:true });
-    video.addEventListener('loadeddata', finish, { once:true });
-    setTimeout(finish, 1200);
+function withTimeout_(promise, ms, label){
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label || 'camera timeout')), ms);
   });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function startCamera(forceRestart = false) {
-  const permission = document.getElementById('permissionScreen');
-  const overlay = document.getElementById('camOverlay');
-  const controls = document.getElementById('controlsBar');
-  const results = document.getElementById('resultsPanel');
+async function requestCameraStream_(){
+  const tries = [
+    { audio:false, video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:1280 } } },
+    { audio:false, video:{ facingMode:{ ideal:'environment' } } },
+    { audio:false, video:true }
+  ];
+  let lastErr = null;
+  for (const constraints of tries) {
+    try {
+      return await withTimeout_(navigator.mediaDevices.getUserMedia(constraints), 12000, 'camera start timeout');
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('camera start failed');
+}
+
+async function startCamera() {
   const video = document.getElementById('video');
   const startBtn = document.querySelector('#permissionScreen .btn-start');
-
   clearCameraError_();
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showCameraError_({ name:'UnsupportedError', message:'이 브라우저는 카메라 API를 지원하지 않습니다.' });
+    showCameraError_({ name:'UnsupportedError', message:'이 브라우저는 카메라를 지원하지 않습니다.' });
     return false;
   }
 
-  if (stream && !forceRestart) {
+  if (stream) {
     if (video) {
+      video.srcObject = stream;
       video.style.display = 'block';
-      if (!video.srcObject) video.srcObject = stream;
+      try { await video.play(); } catch(e) {}
     }
-    if (permission) permission.style.display = 'none';
-    if (overlay) overlay.style.display = 'block';
-    if (controls) controls.style.display = currentAnalyzer === 'color' ? 'flex' : 'none';
-    if (results) results.style.display = currentAnalyzer === 'color' ? 'block' : 'none';
-    updateModeUI();
+    if (typeof updateModeUI === 'function') updateModeUI();
+    setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
     return true;
   }
 
-  if (stream && forceRestart) stopCamera();
-
   if (startBtn) {
     startBtn.disabled = true;
-    startBtn.textContent = '카메라 연결 중…';
+    startBtn.textContent = '카메라 시작 중';
   }
-  setStatus('active', 'CONNECTING');
-
-  const attempts = [
-    {
-      audio: false,
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1920 },
-        aspectRatio: { ideal: 1 }
-      }
-    },
-    {
-      audio: false,
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 1280 }
-      }
-    },
-    { audio: false, video: { facingMode: { ideal: 'environment' } } },
-    { audio: false, video: true }
-  ];
-
-  let nextStream = null;
-  let lastErr = null;
+  setStatus('active', 'STARTING');
 
   try {
-    for (const constraints of attempts) {
-      try {
-        nextStream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (nextStream) break;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-
-    if (!nextStream) throw (lastErr || new Error('getUserMedia failed'));
-
-    stream = nextStream;
-    videoTrack = stream.getVideoTracks()[0] || null;
-    torchOn = false;
-    torchSupported = false;
-    lastLiveTs = 0;
+    // COLOR 측정이 안정적으로 동작하던 기본 카메라 방식으로 복귀.
+    // 기기별 지원 차이가 큰 exposure/focus/whiteBalance 강제 조건은 사용하지 않는다.
+    stream = await requestCameraStream_();
 
     if (video) {
       video.srcObject = stream;
       video.style.display = 'block';
       try { await video.play(); } catch(e) {}
-      await waitForVideoReady_(video);
     }
 
-    if (videoTrack && videoTrack.applyConstraints) {
-      try {
-        const advanced = [];
-        const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
-        if (caps.focusMode) advanced.push({ focusMode:'continuous' });
-        if (caps.exposureMode) advanced.push({ exposureMode:'continuous' });
-        if (caps.whiteBalanceMode) advanced.push({ whiteBalanceMode:'continuous' });
-        if (advanced.length) await videoTrack.applyConstraints({ advanced });
-      } catch(e) {}
-    }
-
+    videoTrack = stream.getVideoTracks()[0] || null;
     const caps = videoTrack && videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
     torchSupported = !!caps.torch;
 
-    if (permission) permission.style.display = 'none';
-    if (overlay) overlay.style.display = 'block';
-    if (controls) controls.style.display = currentAnalyzer === 'color' ? 'flex' : 'none';
-    if (results) results.style.display = currentAnalyzer === 'color' ? 'block' : 'none';
-    clearCameraError_();
-    setStatus('active', currentAnalyzer === 'color' ? 'ACTIVE' : 'GRIND');
+    document.getElementById('permissionScreen').style.display = 'none';
+    document.getElementById('errorMsg').style.display = 'none';
+    document.getElementById('camOverlay').style.display = 'block';
 
-    if (torchSupported) await applyTorch(currentAnalyzer === 'color');
-    else {
-      ['torchBtn','floatTorchBtn'].forEach(id => {
-        const b = document.getElementById(id);
-        if (b) {
-          b.textContent = 'NO FLASH';
-          b.classList.remove('on');
-        }
-      });
+    if (torchSupported) {
+      await applyTorch(currentAnalyzer === 'grind' ? false : true);
+    } else {
+      const torchBtn = document.getElementById('torchBtn');
+      if (torchBtn) torchBtn.textContent = 'NO FLASH';
+      const floatTorchBtn = document.getElementById('floatTorchBtn');
+      if (floatTorchBtn) floatTorchBtn.textContent = 'NO FLASH';
     }
 
-    startLiveSampling();
-
     const ring = document.getElementById('sampleRing');
-    if (ring) ring.classList.toggle('scanning', currentAnalyzer === 'color');
-    updateModeUI();
+    if (ring) ring.classList.toggle('scanning', currentAnalyzer !== 'grind');
+
+    lastLiveTs = 0;
+    startLiveSampling();
+    if (typeof updateModeUI === 'function') updateModeUI();
+    setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
     return true;
   } catch (err) {
-    if (nextStream) nextStream.getTracks().forEach(t => t.stop());
-    stream = null;
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
     videoTrack = null;
     if (video) {
       video.srcObject = null;
       video.style.display = 'none';
     }
-    showCameraError_(err || lastErr);
+    showCameraError_(err);
     return false;
   } finally {
     if (startBtn) {
@@ -2287,13 +2231,6 @@ applyTorch = async function(on){
   syncTorchButtons();
 };
 
-const __baseStartCamera = startCamera;
-startCamera = async function(forceRestart = false){
-  const ok = await __baseStartCamera(forceRestart);
-  if (ok && stream && torchSupported) await applyTorch(currentAnalyzer === 'color');
-  updateModeUI();
-  return !!ok;
-};
 
 function updateModeUI(){
   ensureGrindOverlay();
