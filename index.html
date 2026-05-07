@@ -876,7 +876,8 @@
   }
   .camera-viewport.grind-mode .floating-grind-ctrl { display: flex; }
   .float-torch,
-  .float-capture {
+  .float-capture,
+  .float-reset {
     min-height: 48px;
     border-radius: 14px;
     border: 1px solid rgba(255,255,255,.18);
@@ -898,15 +899,41 @@
     border-color: rgba(255,255,255,.38);
   }
   .float-capture {
-    flex: 1.6;
+    flex: 1.55;
     background: #fff;
     color: #0E0E0E;
     border-color: #fff;
     font-size: 14px;
   }
+  .float-reset {
+    flex: .78;
+    background: rgba(16,16,16,.72);
+    color: #d6d6d6;
+    font-size: 12px;
+  }
   .float-capture:active,
-  .float-torch:active { transform: scale(.985); opacity: .86; }
-  .float-capture:disabled { opacity: .55; }
+  .float-torch:active,
+  .float-reset:active { transform: scale(.985); opacity: .86; }
+  .float-capture:disabled,
+  .float-reset:disabled { opacity: .55; }
+  .grind-reset-btn {
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 0;
+    background: var(--surf2);
+    color: var(--w3);
+    border: 0.5px solid var(--bdr2);
+  }
+  .grind-retry {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.10);
+    color: var(--w1);
+    font-size: 11px;
+    border: .5px solid rgba(255,255,255,.22);
+  }
   .camera-viewport.grind-mode .hud-L {
     bottom: 74px;
     left: 12px;
@@ -1028,6 +1055,7 @@
       <div class="floating-grind-ctrl" id="floatingGrindCtrl">
         <button class="float-torch" id="floatTorchBtn" onclick="toggleTorch()">FLASH OFF</button>
         <button class="float-capture" id="floatCaptureBtn" onclick="handleMeasure()">CAPTURE</button>
+        <button class="float-reset" id="floatResetBtn" onclick="resetGrindA4State(true)">RESET</button>
       </div>
     </div>
   </div>
@@ -1048,6 +1076,7 @@
         </div>
       </div>
       <div class="grind-quality" id="grindLoadStatus">A4 전체가 화면 안에 들어오도록 맞춘 뒤 CAPTURE 하세요.</div>
+      <button class="btn-grind secondary grind-reset-btn" id="grindResetBtn" onclick="resetGrindA4State(true)">RESET / 다시 촬영</button>
     </div>
 
     <div class="grind-canvas-wrap" id="grindCanvasWrap">
@@ -3252,7 +3281,10 @@ captureGrindCupMode = async function() {
     return;
   }
   const btns = [document.getElementById('measureBtn'), document.getElementById('floatCaptureBtn')].filter(Boolean);
-  btns.forEach(b => { b.disabled = true; b.textContent = 'ANALYZING'; });
+  btns.forEach(b => {
+    b.disabled = true;
+    if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'ANALYZING';
+  });
   setStatus('active', 'CAPTURING');
   await sleep(90);
 
@@ -3284,10 +3316,14 @@ captureGrindCupMode = async function() {
       if (res) res.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 120);
   } catch (err) {
-    alert(err.message || String(err));
-    setStatus('error', 'RETRY');
+    showGrindA4Retry('분석을 완료하지 못했습니다.', err.message || String(err));
   } finally {
-    btns.forEach(b => { b.disabled = false; b.textContent = 'CAPTURE'; });
+    btns.forEach(b => {
+      b.disabled = false;
+      if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'CAPTURE';
+      if (b.id === 'floatResetBtn') b.textContent = 'RESET';
+      if (b.id === 'grindResetBtn') b.textContent = 'RESET / 다시 촬영';
+    });
   }
 };
 
@@ -3695,7 +3731,7 @@ renderGrindResults = function(r) {
 const A4_FINAL = {
   shortMM: 210,
   longMM: 297,
-  maxCaptureDim: 2600,
+  maxCaptureDim: 2000,
   liveDim: 360,
   paperInset: 0.055,
   minPaperCoverage: 0.24,
@@ -3714,6 +3750,15 @@ function applyA4GrindCopy() {
   if (settings) settings.innerHTML = '<div class="grind-field"><label>기준 규격</label><div class="grind-pill">A4 · 210×297mm</div></div><div class="grind-field"><label>권장 샘플량</label><div class="grind-pill">원두 2~4알 분량</div></div>';
   const status = document.getElementById('grindLoadStatus');
   if (status) status.textContent = 'A4 전체가 화면 안에 들어오도록 맞춘 뒤 CAPTURE 하세요.';
+  if (status && !document.getElementById('grindResetBtn')) {
+    const btn = document.createElement('button');
+    btn.className = 'btn-grind secondary grind-reset-btn';
+    btn.id = 'grindResetBtn';
+    btn.type = 'button';
+    btn.textContent = 'RESET / 다시 촬영';
+    btn.onclick = function(){ resetGrindA4State(true); };
+    status.insertAdjacentElement('afterend', btn);
+  }
 
   const guide = document.getElementById('grindGuideSection');
   if (guide) guide.innerHTML = '<div class="section-title">분쇄도 측정 가이드 · A4 MODE</div><div class="guide-steps"><div class="guide-step"><div class="step-num">1</div><div class="step-text">흰 A4 용지를 어두운 테이블 위에 평평하게 펼칩니다. 흰 테이블 위에서는 A4 경계가 잡히지 않아 오차가 커질 수 있습니다.</div></div><div class="guide-step"><div class="step-num">2</div><div class="step-text">분쇄 원두는 2~4알 분량만 사용해 A4 중앙부에 한 겹으로 넓게 흩뿌립니다. 겹침이 생기면 평균값이 크게 튈 수 있습니다.</div></div><div class="guide-step"><div class="step-num">3</div><div class="step-text">A4 네 모서리가 화면 안에 들어오도록 휴대폰을 최대한 수직으로 잡습니다. 화면의 사각 가이드에 A4 비율을 맞춘 뒤 촬영합니다.</div></div><div class="guide-step"><div class="step-num">4</div><div class="step-text">기본은 FLASH OFF입니다. 어두우면 FLASH ON을 사용하되, 흰 종이가 번지거나 반짝이면 FLASH OFF로 다시 촬영하세요.</div></div><div class="guide-step"><div class="step-num">TIP</div><div class="step-text">대표값은 면적가중 D50입니다. COUNT D50은 미분까지 많이 반영되므로, 전체 평균감은 대표값과 히스토그램을 함께 보세요.</div></div></div>';
@@ -4074,7 +4119,7 @@ function analyzeGrindA4Canvas(sourceCanvas) {
   const paper = detectA4PaperFinal(full, w, h);
   const light = assessA4Light(full, w, h, paper);
   if (!paper.detected) throw new Error('A4 용지를 충분히 감지하지 못했습니다. 흰 A4를 어두운 배경 위에 두고, 네 모서리가 모두 보이게 다시 촬영해 주세요.');
-  if (paper.touchesEdge) throw new Error('A4가 화면 끝에 닿아 배율 기준이 불안정합니다. 네 모서리 주변에 약간의 여백이 보이도록 다시 촬영해 주세요.');
+  // A4가 화면 끝에 닿아도 앱을 멈추지 않습니다. 결과는 표시하되 신뢰도를 낮추고 재촬영을 권장합니다.
   if (paper.ratioError > A4_FINAL.maxRatioError) throw new Error('A4 비율이 크게 틀어졌습니다. 휴대폰을 종이와 더 수직에 가깝게 맞춘 뒤 다시 촬영해 주세요.');
 
   const insetX = Math.max(8, Math.round(paper.bw * A4_FINAL.paperInset));
@@ -4195,6 +4240,7 @@ function analyzeGrindA4Canvas(sourceCanvas) {
   if (paper.ratioError > 0.10) qScore -= 10;
   if (paper.ratioError > 0.18) qScore -= 12;
   if (paper.coverage < 0.34) qScore -= 10;
+  if (paper.touchesEdge) qScore -= 24;
   if (light.score < 78) qScore -= Math.round((78 - light.score) * 0.48);
   if (valid.length < A4_FINAL.minValidParticles) qScore -= 16;
   if (darkCoverage < 0.00045 || darkCoverage > 0.13) qScore -= 12;
@@ -4224,7 +4270,7 @@ function sampleGrindA4LiveFrame() {
   let align = 'A4 ALIGN';
   let advice = 'A4 네 모서리가 모두 보이게 맞추세요.';
   if (paper.detected) {
-    if (paper.touchesEdge) { align = 'MOVE UP'; advice = 'A4가 화면 끝에 닿았습니다. 여백이 보이게 조금 멀리 잡으세요.'; }
+    if (paper.touchesEdge) { align = 'EDGE WARNING'; advice = 'A4가 화면 끝에 닿았습니다. 멈추지 않고 측정은 가능하지만 정확도는 낮아집니다. 여백이 보이게 조금 멀리 잡으세요.'; }
     else if (paper.ratioError > A4_FINAL.maxRatioError) { align = 'TILT CHECK'; advice = '비율이 틀어졌습니다. 휴대폰을 종이와 더 수직으로 맞추세요.'; }
     else if (paper.coverage < 0.34) { align = 'MOVE CLOSER'; advice = 'A4가 너무 작습니다. 네 모서리가 남는 범위에서 조금 더 가까이 가세요.'; }
     else { align = 'A4 OK'; advice = '정렬 좋음 · 흔들리지 않게 CAPTURE'; }
@@ -4285,11 +4331,54 @@ function drawGrindA4Overlay(ctx, r) {
   ctx.restore();
 }
 
+function resetGrindA4State(showMsg=true) {
+  grindLastAnalysis = null;
+  if (typeof grindManualCorners !== 'undefined') grindManualCorners = [];
+  const wrap = document.getElementById('grindCanvasWrap');
+  const results = document.getElementById('grindResults');
+  const view = document.getElementById('grindCanvas');
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  if (wrap) wrap.style.display = 'none';
+  if (results) results.style.display = 'none';
+  if (view) {
+    const ctx = view.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, view.width || 1, view.height || 1);
+  }
+  ['measureBtn', 'floatCaptureBtn', 'floatResetBtn', 'grindResetBtn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.disabled = false;
+    if (id === 'floatCaptureBtn' || id === 'measureBtn') b.textContent = 'CAPTURE';
+  });
+  if (status) {
+    status.innerHTML = showMsg
+      ? '<strong>RESET 완료</strong><br>A4 네 모서리에 여백이 보이도록 맞춘 뒤 다시 CAPTURE 하세요.'
+      : 'A4 전체가 화면 안에 들어오도록 맞춘 뒤 CAPTURE 하세요.';
+  }
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = 'A4 전체를 사각 가이드에 맞추세요';
+  setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
+  if (currentAnalyzer === 'grind' && stream && !animFrameId) startLiveSampling();
+}
+
+function showGrindA4Retry(message, detail='') {
+  const status = document.getElementById('grindLoadStatus');
+  if (status) {
+    status.innerHTML = `<strong>${message}</strong><br>${detail || 'A4 위치를 다시 맞춘 뒤 CAPTURE 하세요.'}<br><button class="grind-retry" type="button" onclick="resetGrindA4State(true)">RESET / 다시 촬영</button>`;
+  }
+  setStatus('error', 'RETRY');
+  const hudL = document.getElementById('hudL');
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = 'RETRY · RESET 후 다시 촬영';
+}
+
 captureGrindA4Mode = async function() {
   const video = document.getElementById('video');
-  if (!video || video.readyState < 2 || !video.videoWidth) { alert('카메라가 준비되지 않았습니다. 카메라 시작 후 다시 시도해 주세요.'); return; }
-  const btns = [document.getElementById('measureBtn'), document.getElementById('floatCaptureBtn')].filter(Boolean);
-  btns.forEach(b => { b.disabled = true; b.textContent = 'ANALYZING'; });
+  if (!video || video.readyState < 2 || !video.videoWidth) { showGrindA4Retry('카메라 준비 전입니다.', '카메라 시작 후 다시 시도해 주세요.'); return; }
+  const btns = [document.getElementById('measureBtn'), document.getElementById('floatCaptureBtn'), document.getElementById('floatResetBtn'), document.getElementById('grindResetBtn')].filter(Boolean);
+  btns.forEach(b => {
+    b.disabled = true;
+    if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'ANALYZING';
+  });
   setStatus('active', 'ANALYZING');
   await sleep(90);
   const scale = Math.min(1, A4_FINAL.maxCaptureDim / Math.max(video.videoWidth, video.videoHeight));
@@ -4313,10 +4402,14 @@ captureGrindA4Mode = async function() {
     setStatus('active', result.qLabel);
     setTimeout(() => { const res = document.getElementById('grindResults'); if (res) res.scrollIntoView({ behavior:'smooth', block:'start' }); }, 120);
   } catch (err) {
-    alert(err.message || String(err));
-    setStatus('error', 'RETRY');
+    showGrindA4Retry('분석을 완료하지 못했습니다.', err.message || String(err));
   } finally {
-    btns.forEach(b => { b.disabled = false; b.textContent = 'CAPTURE'; });
+    btns.forEach(b => {
+      b.disabled = false;
+      if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'CAPTURE';
+      if (b.id === 'floatResetBtn') b.textContent = 'RESET';
+      if (b.id === 'grindResetBtn') b.textContent = 'RESET / 다시 촬영';
+    });
   }
 };
 
@@ -4344,7 +4437,7 @@ renderGrindResults = function(r) {
     const width = Math.max(2, b.pct / maxPct * 100);
     return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
   }).join('');
-  const edgeText = `A4 감지 · 점유율 ${(r.paper.coverage*100).toFixed(0)}% · 비율오차 ${(r.paper.ratioError*100).toFixed(1)}%`;
+  const edgeText = `A4 감지 · 점유율 ${(r.paper.coverage*100).toFixed(0)}% · 비율오차 ${(r.paper.ratioError*100).toFixed(1)}%${r.paper.touchesEdge ? ' · 화면 끝 접촉 경고' : ''}`;
   document.getElementById('grindQualityNote').innerHTML =
     `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
     `${edgeText}<br>` +
