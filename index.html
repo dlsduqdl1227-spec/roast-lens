@@ -1062,6 +1062,55 @@
   #v10GrindControls button:active { transform: scale(.97); opacity:.86; }
   #v10GrindControls button:disabled { opacity:.55; }
 
+
+
+  /* v11 final control bar */
+  #finalActionBar {
+    position: fixed;
+    left: 50%;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(430px, calc(100vw - 20px));
+    display: none;
+    grid-template-columns: 1fr 1fr 1.25fr;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(0,0,0,0.82);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 16px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 2147483647;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+  }
+  #finalActionBar button {
+    min-height: 52px;
+    border: none;
+    border-radius: 13px;
+    font-family: var(--font-main, Pretendard, sans-serif);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: .2px;
+    cursor: pointer;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+  }
+  #finalFlashBtn,
+  #finalResetBtn {
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.16);
+  }
+  #finalCaptureBtn {
+    background: #fff;
+    color: #111;
+  }
+  #finalActionBar button:active { transform: scale(.98); }
+  #finalActionBar button:disabled { opacity: .6; }
+
 </style>
 </head>
 <body>
@@ -5189,6 +5238,174 @@ switchAnalyzer(currentAnalyzer || 'color');
 
   v10Refresh();
   setInterval(v10Refresh, 350);
+})();
+
+
+
+(function(){
+  function $(id){ return document.getElementById(id); }
+
+  // Hide all previous experimental control bars. Keep one final stable bar only.
+  function hideOldBars(){
+    ['floatingGrindCtrl','v9GrindControls','v10GrindControls'].forEach(function(id){
+      var el = $(id);
+      if (el) el.style.display = 'none';
+    });
+  }
+
+  var bar = $('finalActionBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'finalActionBar';
+    bar.innerHTML = '' +
+      '<button type="button" id="finalFlashBtn">FLASH OFF</button>' +
+      '<button type="button" id="finalResetBtn">RESET</button>' +
+      '<button type="button" id="finalCaptureBtn">CAPTURE</button>';
+    document.body.appendChild(bar);
+  }
+
+  function setBtnText(){
+    var flash = $('finalFlashBtn');
+    if (flash) {
+      try {
+        flash.textContent = (typeof torchSupported !== 'undefined' && torchSupported)
+          ? ((typeof torchOn !== 'undefined' && torchOn) ? 'FLASH ON' : 'FLASH OFF')
+          : 'NO FLASH';
+      } catch(e) {
+        flash.textContent = 'FLASH';
+      }
+    }
+    var cap = $('finalCaptureBtn');
+    if (cap) {
+      try { cap.textContent = (typeof currentAnalyzer !== 'undefined' && currentAnalyzer === 'grind') ? 'CAPTURE' : 'MEASURE'; }
+      catch(e) { cap.textContent = 'CAPTURE'; }
+    }
+  }
+
+  function syncBar(){
+    hideOldBars();
+    var show = false;
+    try { show = !!window.stream; } catch(e) { show = false; }
+    if (bar) bar.style.display = show ? 'grid' : 'none';
+    var controlsBar = $('controlsBar');
+    if (controlsBar) controlsBar.style.display = 'none';
+    setBtnText();
+  }
+
+  function colorReset(){
+    var results = $('resultsPanel');
+    var history = $('historySection');
+    if (results) results.style.display = 'none';
+    if (history && !(window.history && window.history.length)) history.style.display = 'none';
+    try { setStatus('active', 'ACTIVE'); } catch(e) {}
+    var hud = $('hudL');
+    if (hud) hud.textContent = 'L* —';
+  }
+
+  function finalReset(){
+    try {
+      if (typeof currentAnalyzer !== 'undefined' && currentAnalyzer === 'grind') {
+        if (typeof resetGrindCapture === 'function') resetGrindCapture({ noScroll:true });
+      } else {
+        colorReset();
+      }
+    } catch(e) {
+      console.error(e);
+    }
+    syncBar();
+  }
+
+  async function finalCapture(){
+    var cap = $('finalCaptureBtn');
+    var reset = $('finalResetBtn');
+    [cap, reset].forEach(function(b){ if (b) b.disabled = true; });
+    try {
+      if (cap) {
+        try { cap.textContent = (typeof currentAnalyzer !== 'undefined' && currentAnalyzer === 'grind') ? 'CAPTURING' : 'MEASURING'; }
+        catch(e) { cap.textContent = 'CAPTURING'; }
+      }
+      if (typeof currentAnalyzer !== 'undefined' && currentAnalyzer === 'grind') {
+        if (typeof captureGrindCupMode === 'function') await captureGrindCupMode();
+      } else {
+        if (typeof capture === 'function') await capture();
+      }
+    } catch(e) {
+      console.error(e);
+    } finally {
+      [cap, reset].forEach(function(b){ if (b) b.disabled = false; });
+      syncBar();
+    }
+  }
+
+  async function finalFlash(){
+    try { if (typeof toggleTorch === 'function') await toggleTorch(); }
+    catch(e){ console.error(e); }
+    syncBar();
+  }
+
+  // Bind direct handlers
+  var flash = $('finalFlashBtn');
+  var reset = $('finalResetBtn');
+  var cap = $('finalCaptureBtn');
+  if (flash) flash.onclick = finalFlash;
+  if (reset) reset.onclick = finalReset;
+  if (cap) cap.onclick = finalCapture;
+
+  // Also add robust delegated listeners for mobile browsers.
+  function route(ev){
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest('#finalFlashBtn,#finalResetBtn,#finalCaptureBtn');
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    if (btn.id === 'finalFlashBtn') finalFlash();
+    if (btn.id === 'finalResetBtn') finalReset();
+    if (btn.id === 'finalCaptureBtn') finalCapture();
+    return false;
+  }
+  ['click','touchstart','pointerdown'].forEach(function(type){
+    document.addEventListener(type, route, true);
+  });
+
+  // Wrap mode/camera changes so the bar always stays in sync.
+  try {
+    var prevSwitch = window.switchAnalyzer;
+    if (typeof prevSwitch === 'function') {
+      window.switchAnalyzer = function(mode){
+        var r = prevSwitch(mode);
+        setTimeout(syncBar, 0);
+        return r;
+      };
+      switchAnalyzer = window.switchAnalyzer;
+    }
+  } catch(e){}
+  try {
+    var prevStart = window.startCamera;
+    if (typeof prevStart === 'function') {
+      window.startCamera = async function(){
+        var r = await prevStart();
+        setTimeout(syncBar, 0);
+        return r;
+      };
+      startCamera = window.startCamera;
+    }
+  } catch(e){}
+  try {
+    var prevStop = window.stopCamera;
+    if (typeof prevStop === 'function') {
+      window.stopCamera = function(){
+        var r = prevStop();
+        setTimeout(syncBar, 0);
+        return r;
+      };
+      stopCamera = window.stopCamera;
+    }
+  } catch(e){}
+
+  syncBar();
+  setInterval(syncBar, 300);
 })();
 
 </script>
