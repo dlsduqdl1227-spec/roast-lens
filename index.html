@@ -4648,6 +4648,297 @@ switchAnalyzer(currentAnalyzer || 'color');
   switchAnalyzer(currentAnalyzer || 'color');
 })();
 
+
+/* =========================================================
+   FINAL v9 EMERGENCY TOUCH FIX
+   - Uses a fixed, body-level control bar so buttons cannot be blocked by camera overlays.
+   - Adds a second, reliable scale slider + +/- buttons for the dotted guide circle.
+   - Keeps top copyright only and hides/removes bottom footer display.
+========================================================= */
+(function finalV9EmergencyTouchFix(){
+  function $(id){ return document.getElementById(id); }
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, Number(n) || 0)); }
+
+  const style = document.createElement('style');
+  style.textContent = `
+    .copyright{display:none!important;height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}
+    #floatingGrindCtrl{display:none!important;}
+    #v9GrindControls{
+      position:fixed;
+      left:50%;
+      bottom:max(12px, env(safe-area-inset-bottom, 0px));
+      transform:translateX(-50%);
+      width:min(430px, calc(100vw - 20px));
+      z-index:2147483647;
+      display:none;
+      pointer-events:auto!important;
+      touch-action:auto!important;
+      font-family:var(--font-main, Pretendard, sans-serif);
+    }
+    #v9GrindControls *{pointer-events:auto!important;touch-action:manipulation!important;}
+    .v9-scale-row{
+      display:grid;
+      grid-template-columns:42px 1fr 42px 48px;
+      gap:6px;
+      align-items:center;
+      padding:8px;
+      margin-bottom:7px;
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:14px;
+      background:rgba(0,0,0,.72);
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      box-shadow:0 10px 24px rgba(0,0,0,.38);
+    }
+    .v9-scale-row button,
+    .v9-buttons button{
+      border:none;
+      border-radius:12px;
+      min-height:44px;
+      font-weight:900;
+      letter-spacing:.4px;
+      font-family:inherit;
+      -webkit-user-select:none;
+      user-select:none;
+    }
+    .v9-scale-row button{background:rgba(255,255,255,.14);color:#fff;font-size:18px;}
+    #v9ScaleRange{
+      width:100%;
+      -webkit-appearance:none;
+      appearance:none;
+      height:5px;
+      border-radius:999px;
+      background:rgba(255,255,255,.45);
+      outline:none;
+      touch-action:pan-x!important;
+    }
+    #v9ScaleRange::-webkit-slider-thumb{
+      -webkit-appearance:none;
+      appearance:none;
+      width:28px;height:28px;border-radius:50%;background:#fff;border:2px solid #111;
+    }
+    #v9ScaleRange::-moz-range-thumb{
+      width:28px;height:28px;border-radius:50%;background:#fff;border:2px solid #111;
+    }
+    #v9ScaleLabel{color:#fff;font-size:12px;font-weight:900;text-align:right;}
+    .v9-buttons{display:grid;grid-template-columns:.9fr .9fr 1.45fr;gap:7px;}
+    #v9FlashBtn{background:rgba(20,20,20,.82);color:#eee;border:1px solid rgba(255,255,255,.18);}
+    #v9ResetBtn{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.18);}
+    #v9CaptureBtn{background:#fff;color:#0E0E0E;font-size:14px;}
+    #v9CaptureBtn:disabled,#v9ResetBtn:disabled{opacity:.55;}
+    .camera-viewport.grind-mode .hud-L{bottom:128px!important;}
+  `;
+  document.head.appendChild(style);
+
+  let bar = $('v9GrindControls');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'v9GrindControls';
+    bar.innerHTML = `
+      <div class="v9-scale-row" aria-label="점선 원 크기 조절">
+        <button type="button" id="v9ScaleMinus" aria-label="점선 원 줄이기">−</button>
+        <input type="range" id="v9ScaleRange" min="30" max="85" step="1" value="50" aria-label="점선 원 크기">
+        <button type="button" id="v9ScalePlus" aria-label="점선 원 키우기">＋</button>
+        <div id="v9ScaleLabel">50%</div>
+      </div>
+      <div class="v9-buttons">
+        <button type="button" id="v9FlashBtn">FLASH</button>
+        <button type="button" id="v9ResetBtn">RESET</button>
+        <button type="button" id="v9CaptureBtn">CAPTURE</button>
+      </div>`;
+    document.body.appendChild(bar);
+  }
+
+  function v9SetScale(v, silent){
+    const n = clamp(v, 30, 85);
+    window.grindBottomRatio = n / 100;
+    // if the variable was declared with let in page scope, direct assignment above may not bind in all browsers.
+    try { grindBottomRatio = n / 100; } catch(e) {}
+    document.documentElement.style.setProperty('--grind-bottom-size', n + '%');
+    const ring = $('sampleRing');
+    if (ring) {
+      ring.style.setProperty('--grind-bottom-size', n + '%');
+      ring.style.display = 'none';
+      ring.offsetHeight;
+      ring.style.display = '';
+    }
+    const fixedRange = $('v9ScaleRange');
+    const fixedLabel = $('v9ScaleLabel');
+    if (fixedRange && String(fixedRange.value) !== String(n)) fixedRange.value = n;
+    if (fixedLabel) fixedLabel.textContent = n + '%';
+    const oldRange = $('grindBottomRatio');
+    const oldLabel = $('grindBottomRatioLabel');
+    if (oldRange && String(oldRange.value) !== String(n)) oldRange.value = n;
+    if (oldLabel) oldLabel.textContent = n + '%';
+    if (!silent) {
+      const status = $('grindLoadStatus');
+      if (status && (typeof currentAnalyzer === 'undefined' || currentAnalyzer === 'grind') && !window.grindLastAnalysis) {
+        status.innerHTML = '<strong>점선 원 ' + n + '%</strong><br>컵 안쪽 바닥 원과 점선 원이 겹치도록 맞춘 뒤 CAPTURE 하세요.';
+      }
+    }
+    try { if (typeof sampleGrindLiveFrame === 'function' && currentAnalyzer === 'grind' && stream) sampleGrindLiveFrame(); } catch(e) {}
+  }
+  window.v9SetScale = v9SetScale;
+  updateGrindScaleRatio = function(v){ v9SetScale(v); };
+
+  function v9Reset(noScroll){
+    try { grindSrcCanvas = null; } catch(e) {}
+    try { grindLastAnalysis = null; } catch(e) {}
+    window.grindLastAnalysis = null;
+    const wrap = $('grindCanvasWrap');
+    const results = $('grindResults');
+    const canvas = $('grindCanvas');
+    if (wrap) wrap.style.display = 'none';
+    if (results) results.style.display = 'none';
+    if (canvas) {
+      const ctx = canvas.getContext && canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0,0,canvas.width || 0,canvas.height || 0);
+    }
+    const n = Math.round(((typeof grindBottomRatio !== 'undefined' ? grindBottomRatio : 0.5) || 0.5) * 100);
+    const hud = $('hudL');
+    if (hud && currentAnalyzer === 'grind') hud.textContent = 'SCALE GUIDE ' + n + '%';
+    const sel = $('cupPreset');
+    const label = sel && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '10oz · 48mm';
+    const status = $('grindLoadStatus');
+    if (status) status.innerHTML = '<strong>다시 촬영 준비 완료</strong><br>' + label + ' 기준 · 컵 안쪽 바닥 원을 점선 원과 겹치게 맞춘 뒤 CAPTURE 하세요.';
+    if (stream && currentAnalyzer === 'grind') { try { setStatus('active','GRIND'); } catch(e) {} }
+    if (!noScroll) {
+      const vp = document.querySelector('.camera-viewport');
+      if (vp && vp.scrollIntoView) vp.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+  }
+  window.resetGrindCapture = function(options){ v9Reset(options && options.noScroll); };
+  resetGrindCapture = window.resetGrindCapture;
+
+  async function v9Capture(){
+    const video = $('video');
+    if (!video || video.readyState < 2 || !video.videoWidth) {
+      alert('카메라가 준비되지 않았습니다. 카메라 시작 후 다시 시도해 주세요.');
+      return;
+    }
+    const cap = $('v9CaptureBtn'), reset = $('v9ResetBtn');
+    [cap, reset].forEach(function(b){ if(b) b.disabled = true; });
+    if (cap) cap.textContent = 'CAPTURING';
+    try { setStatus('active','CAPTURING'); } catch(e) {}
+    try {
+      v9Reset(true);
+      await (typeof sleep === 'function' ? sleep(60) : new Promise(r => setTimeout(r,60)));
+      const scale = Math.min(1, 2200 / Math.max(video.videoWidth, video.videoHeight));
+      const w = Math.max(1, Math.round(video.videoWidth * scale));
+      const h = Math.max(1, Math.round(video.videoHeight * scale));
+      const src = document.createElement('canvas');
+      src.width = w; src.height = h;
+      const sctx = src.getContext('2d', {willReadFrequently:true});
+      sctx.drawImage(video, 0, 0, w, h);
+      grindSrcCanvas = src;
+      const result = analyzeCupGrindCanvas(src);
+      grindLastAnalysis = result;
+      window.grindLastAnalysis = result;
+      const view = $('grindCanvas');
+      if (view) {
+        view.width = w; view.height = h;
+        const vctx = view.getContext('2d', {willReadFrequently:true});
+        vctx.drawImage(src, 0, 0);
+        if (typeof drawGrindOverlay === 'function') drawGrindOverlay(vctx, result.guide, result.roi, result.valid, result);
+      }
+      const wrap = $('grindCanvasWrap');
+      if (wrap) wrap.style.display = 'block';
+      renderGrindResults(result);
+      const results = $('grindResults');
+      if (results) results.style.display = 'block';
+      try { setStatus('active', result.qLabel || 'DONE'); } catch(e) {}
+    } catch(err) {
+      console.error(err);
+      try { setStatus('error','RETRY'); } catch(e) {}
+      alert((err && err.message) ? err.message : '분석 중 오류가 발생했습니다. RESET 후 다시 촬영해 주세요.');
+    } finally {
+      [cap, reset].forEach(function(b){ if(b) b.disabled = false; });
+      if (cap) cap.textContent = 'CAPTURE';
+    }
+  }
+  window.captureGrindCupMode = v9Capture;
+  captureGrindCupMode = v9Capture;
+  window.handleMeasure = function(){
+    if (currentAnalyzer === 'grind') return v9Capture();
+    return capture();
+  };
+  handleMeasure = window.handleMeasure;
+
+  function oncePerTap(fn){
+    let last = 0;
+    return function(ev){
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      const now = Date.now();
+      if (now - last < 280) return false;
+      last = now;
+      fn();
+      return false;
+    };
+  }
+  function bindButton(id, fn){
+    const el = $(id);
+    if (!el) return;
+    const wrapped = oncePerTap(fn);
+    el.onclick = wrapped;
+    el.addEventListener('touchend', wrapped, {passive:false});
+    el.addEventListener('pointerup', wrapped, {passive:false});
+  }
+  bindButton('v9CaptureBtn', v9Capture);
+  bindButton('v9ResetBtn', function(){ v9Reset(true); });
+  bindButton('v9FlashBtn', function(){ try { toggleTorch(); } catch(e) {} });
+  bindButton('v9ScaleMinus', function(){ v9SetScale(((typeof grindBottomRatio !== 'undefined' ? grindBottomRatio : 0.5) * 100) - 2); });
+  bindButton('v9ScalePlus', function(){ v9SetScale(((typeof grindBottomRatio !== 'undefined' ? grindBottomRatio : 0.5) * 100) + 2); });
+
+  const fixedRange = $('v9ScaleRange');
+  if (fixedRange) {
+    fixedRange.addEventListener('input', function(ev){ ev.stopPropagation(); v9SetScale(this.value); }, {passive:true});
+    fixedRange.addEventListener('change', function(ev){ ev.stopPropagation(); v9SetScale(this.value); }, {passive:true});
+    fixedRange.addEventListener('touchstart', function(ev){ ev.stopPropagation(); }, {passive:true});
+    fixedRange.addEventListener('pointerdown', function(ev){ ev.stopPropagation(); }, {passive:true});
+  }
+
+  function refreshV9Controls(){
+    const show = (typeof currentAnalyzer !== 'undefined' && currentAnalyzer === 'grind' && !!stream);
+    if (bar) bar.style.display = show ? 'block' : 'none';
+    const oldFloat = $('floatingGrindCtrl');
+    if (oldFloat) oldFloat.style.display = 'none';
+    const controls = $('controlsBar');
+    if (controls && currentAnalyzer === 'grind') controls.style.display = 'none';
+    const flash = $('v9FlashBtn');
+    if (flash) flash.textContent = torchOn ? 'FLASH ON' : 'FLASH OFF';
+  }
+  window.v9RefreshControls = refreshV9Controls;
+
+  const prevSwitchV9 = switchAnalyzer;
+  switchAnalyzer = function(mode){
+    const r = prevSwitchV9(mode);
+    setTimeout(refreshV9Controls, 0);
+    return r;
+  };
+  const prevStartV9 = startCamera;
+  startCamera = async function(){
+    const r = await prevStartV9();
+    setTimeout(refreshV9Controls, 0);
+    return r;
+  };
+  const prevStopV9 = stopCamera;
+  stopCamera = function(){
+    const r = prevStopV9();
+    setTimeout(refreshV9Controls, 0);
+    return r;
+  };
+  const prevToggleTorchV9 = toggleTorch;
+  toggleTorch = async function(){
+    const r = await prevToggleTorchV9();
+    setTimeout(refreshV9Controls, 0);
+    return r;
+  };
+
+  v9SetScale((typeof grindBottomRatio !== 'undefined' ? Math.round(grindBottomRatio * 100) : 50), true);
+  refreshV9Controls();
+  setInterval(refreshV9Controls, 500);
+})();
+
 </script>
 </body>
 </html>
