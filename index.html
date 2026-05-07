@@ -785,6 +785,64 @@
     .grind-grid { grid-template-columns: repeat(2, 1fr); }
   }
 
+
+  .camera-viewport.grind-mode .sample-ring {
+    width: var(--grind-ring-size, 230px);
+    height: var(--grind-ring-size, 230px);
+    border-width: 2px;
+  }
+  .camera-viewport.grind-mode .sample-ring::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 58%; height: 58%;
+    border-radius: 50%;
+    border: 1px dashed rgba(255,255,255,0.50);
+  }
+  .camera-viewport.grind-mode .hud-color { display: none; }
+  .camera-viewport.grind-mode .hud-L {
+    bottom: 10px;
+    font-size: 10px;
+    max-width: calc(100% - 24px);
+    white-space: normal;
+    text-align: center;
+    line-height: 1.45;
+    padding: 7px 10px;
+  }
+  .grind-settings { grid-template-columns: 1fr 1fr; }
+  .grind-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .grind-field label {
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: #787878;
+  }
+  .grind-field select {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-family: var(--font-main);
+    font-size: 13px;
+    color: #111;
+  }
+  .grind-pill {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: 13px;
+    color: #111;
+  }
+
 </style>
 </head>
 <body>
@@ -813,8 +871,8 @@
 
     <div class="permission-screen" id="permissionScreen">
       <div class="lens-icon"></div>
-      <p class="perm-title">카메라 접근 필요</p>
-      <p class="perm-desc">
+      <p class="perm-title" id="permTitle">카메라 접근 필요</p>
+      <p class="perm-desc" id="permDesc">
         분쇄된 원두를 종이컵에 담고<br>
         플래시를 켜서 위에서 비추면<br>
         로스팅 컬러를 측정합니다
@@ -843,20 +901,26 @@
 
   <div class="grind-panel" id="grindPanel">
     <div class="grind-card">
-      <div class="grind-title">Grind-Lens</div>
+      <div class="grind-title">Grind-Lens · Cup Mode</div>
       <div class="grind-desc">
-        A4 하얀 종이를 기준 면으로 사용해 분쇄 입자의 크기 분포를 추정합니다.<br>
-        라이브 모드에서 A4 감지·조명·촬영 거리를 실시간으로 확인한 뒤 측정하세요.
+        컬러 측정처럼 카메라를 켠 상태에서 <strong>종이컵 안쪽 바닥 원</strong>을 가이드선에 맞춘 뒤 한 번만 캡처하여 분쇄도를 분석합니다.<br>
+        라이브는 <strong>가이드 정렬 + 조명 상태</strong>만 가볍게 보여주고, 실제 분석은 캡처 순간 1회만 수행합니다.
       </div>
-      <div class="grind-actions">
-        <button class="btn-grind" id="grindLiveBtn" onclick="startGrindLive()">LIVE</button>
-        <button class="btn-grind" id="grindCaptureBtn" onclick="captureGrindLive()" disabled>CAPTURE</button>
-        <button class="btn-grind secondary" onclick="document.getElementById('grindFile').click()">PHOTO</button>
-        <button class="btn-grind" id="grindAnalyzeBtn" onclick="analyzeGrind()" disabled>ANALYZE</button>
+      <div class="grind-actions grind-settings">
+        <div class="grind-field">
+          <label for="cupPreset">컵 바닥 지름</label>
+          <select id="cupPreset" onchange="updateCupPreset()">
+            <option value="43">6.5oz · 43mm</option>
+            <option value="48" selected>10oz · 48mm</option>
+            <option value="50">13oz · 50mm</option>
+          </select>
+        </div>
+        <div class="grind-field">
+          <label for="grindDoseHint">권장 샘플량</label>
+          <div class="grind-pill" id="grindDoseHint">원두 1~2알 분량</div>
+        </div>
       </div>
-      <input type="file" id="grindFile" accept="image/*" capture="environment" onchange="loadGrindImage(this)">
-      <video id="grindVideo" autoplay playsinline muted style="display:none"></video>
-      <div class="grind-quality" id="grindLoadStatus">LIVE를 켜고 A4 4개 모서리가 화면 안쪽에 들어오게 맞추세요. 조명은 직사 플래시보다 밝은 확산광을 우선 권장합니다.</div>
+      <div class="grind-quality" id="grindLoadStatus">카메라를 시작한 뒤 종이컵 안쪽 바닥 원을 가이드 원에 맞추세요. 너무 어두우면 FLASH ON, 반사가 강하면 FLASH OFF를 권장합니다.</div>
     </div>
 
     <div class="grind-canvas-wrap" id="grindCanvasWrap">
@@ -918,7 +982,7 @@
 
   <div class="controls-bar" id="controlsBar">
     <button class="btn-torch" id="torchBtn" onclick="toggleTorch()">FLASH OFF</button>
-    <button class="btn-measure" id="measureBtn" onclick="capture()">MEASURE</button>
+    <button class="btn-measure" id="measureBtn" onclick="handleMeasure()">MEASURE</button>
   </div>
 
   <div class="results-panel" id="resultsPanel">
@@ -1005,23 +1069,23 @@
     <div class="guide-steps">
       <div class="guide-step">
         <div class="step-num">1</div>
-        <div class="step-text">A4 하얀 종이를 어두운 테이블 위에 놓고, 4개 모서리가 모두 화면 안쪽에 보이게 준비</div>
+        <div class="step-text">흰 종이컵 바닥에 원두 1~2알 정도만 분쇄해 넣고, 뭉치지 않게 가볍게 퍼뜨리기</div>
       </div>
       <div class="guide-step">
         <div class="step-num">2</div>
-        <div class="step-text">0.2~0.3g 정도만 중앙 10×10cm 안에 한 겹으로 흩뿌리기 · 덩어리는 손으로 살짝 분리</div>
+        <div class="step-text">GRIND SIZE 탭에서 컵 규격을 고른 뒤, 컵 <strong>안쪽 바닥 원</strong>이 가이드 원과 비슷한 크기로 보이도록 높이를 맞추기</div>
       </div>
       <div class="guide-step">
         <div class="step-num">3</div>
-        <div class="step-text">LIVE 모드에서 A4 OK · LIGHT OK가 나올 때까지 높이와 각도 조정 · 기본은 플래시 OFF, 어두울 때만 확산광/플래시 사용</div>
+        <div class="step-text">기본은 FLASH OFF. 화면이 어두우면 FLASH ON, 반사가 강하면 FLASH OFF로 바꾸고, live 안내 문구가 LIGHT OK에 가까워질 때 CAPTURE</div>
       </div>
       <div class="guide-step">
         <div class="step-num">4</div>
-        <div class="step-text">CAPTURE 또는 PHOTO → ANALYZE · 기본 D50은 입자 개수 기준, AREA D50은 큰 입자 영향이 큰 참고값</div>
+        <div class="step-text">가이드 정렬이 끝나면 CAPTURE 1회로 분석합니다. D10/D50/D90은 입자 개수 기준이고, AREA D50은 큰 입자의 영향을 더 받는 비교용 값입니다.</div>
       </div>
       <div class="guide-step">
         <div class="step-num">TIP</div>
-        <div class="step-text">커핑/브루잉 기준 확인용이라면 D50이 대략 800~1,000µm 전후인지, 미분·거대입자 비율이 과도한지 함께 보세요.</div>
+        <div class="step-text">값이 너무 높게 나오면 대개 컵 바닥 원 정렬 오차, 입자 겹침, 강한 반사가 원인입니다. 원두 양을 더 줄이고 컵 바닥 원을 다시 맞춰 재측정하세요.</div>
       </div>
     </div>
   </div>
@@ -1509,6 +1573,9 @@ let grindStream = null;
 let grindVideoTrack = null;
 let grindLiveFrameId = null;
 let grindLiveLastTs = 0;
+let grindManualCorners = [];
+let grindCanvasInteractionReady = false;
+const GRIND_CORNER_LABELS = ['좌상', '우상', '우하', '좌하'];
 
 const GRIND_CAL = {
   maxDim: 2600,
@@ -1522,7 +1589,8 @@ const GRIND_CAL = {
   boulderUm: 1200,
   minValidParticles: 80,
   liveInterval: 650,
-  strictA4: true
+  strictA4: true,
+  particleCorrection: 0.92
 };
 
 function loadGrindImage(input) {
@@ -1542,17 +1610,135 @@ function loadGrindImage(input) {
       sctx.drawImage(img, 0, 0, w, h);
       const canvas = document.getElementById('grindCanvas');
       canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(grindSrcCanvas, 0, 0);
+      canvas.getContext('2d', { willReadFrequently: true }).drawImage(grindSrcCanvas, 0, 0);
       document.getElementById('grindCanvasWrap').style.display = 'block';
       document.getElementById('grindAnalyzeBtn').disabled = false;
       document.getElementById('grindResults').style.display = 'none';
-      document.getElementById('grindLoadStatus').textContent = `이미지 준비 완료 · ${w}×${h}px · A4 모서리가 보이면 분석 정확도가 올라갑니다.`;
+      grindManualCorners = [];
+      setupGrindCanvasInteractions();
+      quickCheckGrindImage();
       setStatus('active', 'READY');
     };
     img.onerror = function(){ alert('이미지를 불러오지 못했습니다. 다른 사진으로 다시 시도해 주세요.'); };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function setupGrindCanvasInteractions() {
+  const canvas = document.getElementById('grindCanvas');
+  if (!canvas || grindCanvasInteractionReady) return;
+  canvas.addEventListener('pointerdown', function(ev) {
+    if (!grindSrcCanvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (ev.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (ev.clientY - rect.top) * (canvas.height / rect.height);
+    if (grindManualCorners.length >= 4) grindManualCorners = [];
+    grindManualCorners.push({x, y});
+    redrawGrindSourceWithCorners();
+    const next = grindManualCorners.length < 4 ? GRIND_CORNER_LABELS[grindManualCorners.length] : '완료';
+    document.getElementById('grindLoadStatus').innerHTML = grindManualCorners.length < 4
+      ? `A4 모서리 지정 중 · ${grindManualCorners.length}/4 · 다음: <strong>${next}</strong>`
+      : '<strong>A4 모서리 직접 지정 완료</strong> · ANALYZE를 누르세요.';
+  });
+  grindCanvasInteractionReady = true;
+}
+
+function resetGrindCorners(showMsg=true) {
+  grindManualCorners = [];
+  redrawGrindSourceWithCorners();
+  if (showMsg) {
+    document.getElementById('grindLoadStatus').textContent = 'A4 모서리 지정이 초기화되었습니다. 자동 감지가 어렵다면 좌상·우상·우하·좌하 순서로 다시 터치하세요.';
+  }
+}
+
+function redrawGrindSourceWithCorners() {
+  if (!grindSrcCanvas) return;
+  const canvas = document.getElementById('grindCanvas');
+  canvas.width = grindSrcCanvas.width;
+  canvas.height = grindSrcCanvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(grindSrcCanvas, 0, 0);
+  drawManualCornerMarkers(ctx);
+}
+
+function drawManualCornerMarkers(ctx) {
+  if (!grindManualCorners.length) return;
+  ctx.save();
+  const r = Math.max(10, ctx.canvas.width / 90);
+  ctx.lineWidth = Math.max(3, ctx.canvas.width / 600);
+  ctx.font = `${Math.max(18, ctx.canvas.width/50)}px Pretendard, sans-serif`;
+  for (let i = 0; i < grindManualCorners.length; i++) {
+    const p = grindManualCorners[i];
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(String(i+1), p.x + r*1.2, p.y - r*1.2);
+  }
+  if (grindManualCorners.length === 4) {
+    ctx.beginPath();
+    ctx.moveTo(grindManualCorners[0].x, grindManualCorners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(grindManualCorners[i].x, grindManualCorners[i].y);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function dist2(p, q) {
+  const dx = p.x - q.x, dy = p.y - q.y;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function paperFromManualCorners(w, h) {
+  if (grindManualCorners.length !== 4) return null;
+  const p = grindManualCorners;
+  const top = dist2(p[0], p[1]);
+  const right = dist2(p[1], p[2]);
+  const bottom = dist2(p[2], p[3]);
+  const left = dist2(p[3], p[0]);
+  const avgLongPx = Math.max((top+bottom)/2, (left+right)/2);
+  const avgShortPx = Math.min((top+bottom)/2, (left+right)/2);
+  const mmPerPxLong = GRIND_CAL.a4LongMM / Math.max(1, avgLongPx);
+  const mmPerPxShort = GRIND_CAL.a4ShortMM / Math.max(1, avgShortPx);
+  const mmPerPx = (mmPerPxLong + mmPerPxShort) / 2;
+  const minX = Math.max(0, Math.floor(Math.min(...p.map(v => v.x))));
+  const minY = Math.max(0, Math.floor(Math.min(...p.map(v => v.y))));
+  const maxX = Math.min(w-1, Math.ceil(Math.max(...p.map(v => v.x))));
+  const maxY = Math.min(h-1, Math.ceil(Math.max(...p.map(v => v.y))));
+  const bw = maxX - minX + 1;
+  const bh = maxY - minY + 1;
+  const ratio = avgLongPx / Math.max(1, avgShortPx);
+  const expected = GRIND_CAL.a4LongMM / GRIND_CAL.a4ShortMM;
+  const ratioError = Math.abs(ratio - expected) / expected;
+  const touchesEdge = minX < w*0.01 || minY < h*0.01 || maxX > w*0.99 || maxY > h*0.99;
+  const coverage = (bw*bh) / (w*h);
+  return { minX, minY, maxX, maxY, bw, bh, mmPerPx, mmPerPxX:mmPerPx, mmPerPxY:mmPerPx, ratioError, whiteRatio:0, detected:true, manual:true, touchesEdge, coverage };
+}
+
+function quickCheckGrindImage() {
+  if (!grindSrcCanvas) return;
+  const canvas = document.getElementById('grindCanvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const w = canvas.width, h = canvas.height;
+  try {
+    const full = ctx.getImageData(0, 0, w, h);
+    const paper = detectA4Paper(full, w, h);
+    const light = assessGrindLight(full, w, h, paper);
+    if (paper.detected) {
+      const warn = paper.touchesEdge ? ' · A4가 화면 끝에 너무 가까움' : '';
+      document.getElementById('grindLoadStatus').innerHTML = `<strong>이미지 준비 완료 · 자동 A4 후보 감지</strong><br>${w}×${h}px · ${light.label}${warn} · 수치가 이상하면 A4 모서리 4개를 직접 터치하세요.`;
+    } else {
+      document.getElementById('grindLoadStatus').innerHTML = `<strong>자동 A4 감지가 불안정합니다.</strong><br>A4 4개 모서리를 좌상 → 우상 → 우하 → 좌하 순서로 터치한 뒤 ANALYZE를 누르세요.`;
+    }
+  } catch (e) {
+    document.getElementById('grindLoadStatus').textContent = `이미지 준비 완료 · ${w}×${h}px · A4 모서리 4개를 직접 지정할 수 있습니다.`;
+  }
 }
 
 function detectA4Paper(imageData, w, h) {
@@ -1813,12 +1999,15 @@ function analyzeGrindCore(sourceCanvas, opts={}) {
   }
   const w = canvas.width, h = canvas.height;
   const full = ctx.getImageData(0, 0, w, h);
-  const paper = detectA4Paper(full, w, h);
+  const manualPaper = !preview ? paperFromManualCorners(w, h) : null;
+  const paper = manualPaper || detectA4Paper(full, w, h);
   const light = assessGrindLight(full, w, h, paper);
 
-  if (strict && !paper.detected) throw new Error('A4 기준을 감지하지 못했습니다. 흰 A4를 어두운 배경 위에 놓고 4개 모서리가 보이게 다시 촬영해 주세요.');
-  if (strict && paper.touchesEdge) throw new Error('A4가 화면 끝에 닿아 스케일이 커질 수 있습니다. A4 4개 모서리가 화면 안쪽에 들어오도록 조금 더 멀리서 촬영해 주세요.');
-  if (strict && paper.ratioError > 0.22) throw new Error('카메라 각도 오차가 큽니다. A4가 직사각형에 가깝게 보이도록 수직으로 촬영해 주세요.');
+  if (strict && !paper.detected) throw new Error('A4 기준을 감지하지 못했습니다. 사진 위에서 A4 4개 모서리를 좌상 → 우상 → 우하 → 좌하 순서로 터치한 뒤 다시 분석해 주세요.');
+  if (strict && !paper.manual && paper.touchesEdge) {
+    // 사진 방식에서는 막지 않고 신뢰도만 낮춘다. 자동 감지가 불안정하면 수동 모서리 지정으로 보정 가능.
+  }
+  if (strict && !paper.manual && paper.ratioError > 0.30) throw new Error('카메라 각도 오차가 큽니다. 수직에 가깝게 다시 촬영하거나 A4 4개 모서리를 직접 지정해 주세요.');
 
   const insetX = Math.round(paper.bw * GRIND_CAL.paperInset);
   const insetY = Math.round(paper.bh * GRIND_CAL.paperInset);
@@ -1841,7 +2030,7 @@ function analyzeGrindCore(sourceCanvas, opts={}) {
   const bgCandidates = lumas.filter(v => v > 150).sort((a,b)=>a-b);
   const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length * 0.55)] : median(lumas);
   const otsu = otsuThreshold(lumas);
-  const threshold = Math.max(28, Math.min(178, Math.min(otsu + 6, bgL - 38)));
+  const threshold = Math.max(24, Math.min(150, Math.min(otsu - 4, bgL - 52)));
 
   const mask = new Uint8Array(rw * rh);
   let darkArea = 0;
@@ -1852,7 +2041,7 @@ function analyzeGrindCore(sourceCanvas, opts={}) {
       const Y = luma(R, G, B);
       const C = chroma(R, G, B);
       // 흰 종이에 생긴 연한 그림자가 입자로 잡히지 않도록 어둡기와 대비를 함께 본다.
-      if (Y < threshold && (bgL - Y) > 34 && !(C < 8 && Y > 75)) {
+      if (Y < threshold && (bgL - Y) > 48 && !(C < 8 && Y > 70)) {
         mask[y*rw + x] = 1;
         darkArea++;
       }
@@ -1889,9 +2078,9 @@ function analyzeGrindCore(sourceCanvas, opts={}) {
     const fill = area / Math.max(1, bw*bh);
     const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
     // 그림자 테두리 영향을 줄이기 위한 보수적 면적 보정. 작은 입자 과삭감 방지를 위해 하한을 둔다.
-    const edgeLoss = Math.max(0, (bw + bh) * 0.32);
-    const effectiveArea = Math.max(area * 0.62, area - edgeLoss);
-    const eqDiaUm = Math.sqrt((4 * effectiveArea) / Math.PI) * paper.mmPerPx * 1000;
+    const edgeLoss = Math.max(0, (bw + bh) * 0.36);
+    const effectiveArea = Math.max(area * 0.56, area - edgeLoss);
+    const eqDiaUm = Math.sqrt((4 * effectiveArea) / Math.PI) * paper.mmPerPx * 1000 * GRIND_CAL.particleCorrection;
     if (eqDiaUm >= GRIND_CAL.minParticleUm && eqDiaUm <= GRIND_CAL.maxParticleUm) {
       comps.push({ d: eqDiaUm, area, minx, miny, maxx, maxy, fill, aspect });
     }
@@ -1906,7 +2095,7 @@ function analyzeGrindCore(sourceCanvas, opts={}) {
   const valid = [];
   let clumpCount = 0, clumpArea = 0;
   for (const c of comps) {
-    const likelyClump = (c.d > clumpLimit && c.fill < 0.48) || (c.aspect > 3.8 && c.d > 620) || c.d > 3000;
+    const likelyClump = (c.d > clumpLimit && c.fill < 0.55) || (c.aspect > 3.2 && c.d > 580) || c.d > 2600;
     if (likelyClump) { clumpCount++; clumpArea += c.area; }
     else valid.push(c);
   }
@@ -1963,6 +2152,7 @@ function analyzeGrind() {
       grindLastAnalysis = result;
       renderGrindResults(grindLastAnalysis);
       drawGrindOverlay(ctx, result.paper, result.roi, result.valid, result);
+      drawManualCornerMarkers(ctx);
       setStatus('active', result.qLabel);
     } catch (err) {
       alert(err.message || String(err));
@@ -1999,7 +2189,7 @@ function renderGrindResults(r) {
     </div>`;
   }).join('');
 
-  const paperText = r.paper.detected ? 'A4 기준 감지' : 'A4 기준 미확실';
+  const paperText = r.paper.manual ? 'A4 수동 기준 적용' : (r.paper.detected ? 'A4 자동 기준 감지' : 'A4 기준 미확실');
   const edgeText = r.paper.touchesEdge ? ' · 모서리 일부가 화면 끝에 닿음' : '';
   const coverageText = `A4 점유율 ${(r.paper.coverage*100).toFixed(0)}%`;
   document.getElementById('grindQualityNote').innerHTML =
@@ -2042,6 +2232,465 @@ function drawGrindOverlay(ctx, paper, roi, valid, result) {
   ctx.restore();
 }
 
+
+
+let currentAnalyzer = 'color';
+let grindCupBaseMM = 48;
+let grindLiveTinyCanvas = null;
+let grindLiveTinyCtx = null;
+
+function handleMeasure() {
+  if (currentAnalyzer === 'grind') return captureGrindCupMode();
+  return capture();
+}
+
+function updateCupPreset() {
+  const sel = document.getElementById('cupPreset');
+  grindCupBaseMM = Number(sel ? sel.value : 48) || 48;
+  const label = sel && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : `${grindCupBaseMM}mm`;
+  const status = document.getElementById('grindLoadStatus');
+  if (status) status.textContent = `${label} 기준으로 분석합니다. 종이컵 안쪽 바닥 원을 가이드 원에 맞춘 뒤 CAPTURE 하세요.`;
+}
+
+function updateModeUI() {
+  const colorMode = currentAnalyzer === 'color';
+  const viewport = document.querySelector('.camera-viewport');
+  if (viewport) viewport.classList.toggle('grind-mode', !colorMode);
+  const ring = document.getElementById('sampleRing');
+  const vp = document.querySelector('.camera-viewport');
+  if (ring && vp) {
+    const rect = vp.getBoundingClientRect();
+    const size = colorMode ? 110 : Math.max(180, Math.min(260, Math.round(Math.min(rect.width, rect.height) * 0.68)));
+    ring.style.width = size + 'px';
+    ring.style.height = size + 'px';
+  }
+
+  const permTitle = document.getElementById('permTitle');
+  const permDesc = document.getElementById('permDesc');
+  if (permTitle) permTitle.textContent = colorMode ? '카메라 접근 필요' : '분쇄도 측정 준비';
+  if (permDesc) permDesc.innerHTML = colorMode
+    ? '분쇄된 원두를 종이컵에 담고<br>플래시를 켜서 위에서 비추면<br>로스팅 컬러를 측정합니다'
+    : '종이컵 안 바닥에 원두 1~2알 분량을 분쇄해 넣고<br><strong>컵 안쪽 바닥 원</strong>을 가이드선에 맞춘 뒤<br>CAPTURE 하면 분쇄도를 분석합니다';
+
+  const measureBtn = document.getElementById('measureBtn');
+  if (measureBtn) measureBtn.textContent = colorMode ? 'MEASURE' : 'CAPTURE';
+
+  const colorEls = [
+    document.getElementById('resultsPanel'),
+    document.getElementById('historySection'),
+    document.querySelector('.guide-section'),
+    document.querySelector('.ref-section')
+  ];
+  colorEls.forEach(el => {
+    if (!el) return;
+    if (el.id === 'historySection') el.style.display = colorMode && history.length ? 'block' : 'none';
+    else if (el.id === 'resultsPanel') el.style.display = colorMode && stream ? 'block' : 'none';
+    else el.style.display = colorMode ? '' : 'none';
+  });
+
+  const grindEls = [document.getElementById('grindPanel'), document.getElementById('grindGuideSection')];
+  grindEls.forEach(el => { if (el) el.style.display = colorMode ? 'none' : 'block'; });
+
+  const controlsBar = document.getElementById('controlsBar');
+  if (controlsBar) controlsBar.style.display = stream ? 'flex' : 'none';
+  const permission = document.getElementById('permissionScreen');
+  if (permission) permission.style.display = stream ? 'none' : 'flex';
+  const overlay = document.getElementById('camOverlay');
+  if (overlay) overlay.style.display = stream ? 'block' : 'none';
+  const error = document.getElementById('errorMsg');
+  if (error) error.style.display = 'none';
+
+  const hudL = document.getElementById('hudL');
+  if (hudL && !stream) hudL.textContent = colorMode ? 'L* —' : '컵 바닥 원을 가이드선에 맞추세요';
+}
+
+function switchAnalyzer(mode) {
+  currentAnalyzer = mode === 'grind' ? 'grind' : 'color';
+  const colorMode = currentAnalyzer === 'color';
+  document.getElementById('tabColor').classList.toggle('active', colorMode);
+  document.getElementById('tabGrind').classList.toggle('active', !colorMode);
+  updateModeUI();
+  if (stream) {
+    setStatus('active', colorMode ? 'ACTIVE' : 'GRIND');
+  } else {
+    setStatus('', 'STANDBY');
+  }
+}
+
+function ensureGrindTinyCanvas() {
+  if (!grindLiveTinyCanvas) {
+    grindLiveTinyCanvas = document.createElement('canvas');
+    grindLiveTinyCtx = grindLiveTinyCanvas.getContext('2d', { willReadFrequently: true });
+  }
+}
+
+function getGrindGuideGeom(w, h) {
+  const d = Math.min(w, h) * 0.68;
+  const r = d / 2;
+  return {
+    cx: w / 2,
+    cy: h / 2,
+    guideR: r,
+    bottomR: r * 0.58,
+    baseDiameterPx: d * 0.58
+  };
+}
+
+function assessCupLight(canvas, guide) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const w = canvas.width, h = canvas.height;
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let sum = 0, sum2 = 0, n = 0, hi = 0, lo = 0;
+  for (let y = 0; y < h; y += 2) {
+    for (let x = 0; x < w; x += 2) {
+      const dx = x - guide.cx, dy = y - guide.cy;
+      const rr = Math.sqrt(dx*dx + dy*dy);
+      if (rr < guide.bottomR * 1.05 || rr > guide.guideR * 0.95) continue;
+      const i = (y * w + x) * 4;
+      const Y = luma(data[i], data[i+1], data[i+2]);
+      sum += Y; sum2 += Y * Y; n++;
+      if (Y > 245) hi++;
+      if (Y < 110) lo++;
+    }
+  }
+  const meanY = n ? sum / n : 0;
+  const stdY = n ? Math.sqrt(Math.max(0, sum2 / n - meanY * meanY)) : 0;
+  const hiPct = n ? hi / n : 0;
+  const loPct = n ? lo / n : 0;
+  let score = 100;
+  let label = 'LIGHT OK';
+  let advice = torchOn ? '현재 FLASH ON 상태' : '현재 FLASH OFF 상태';
+  let flashHint = torchOn ? 'FLASH ON' : 'FLASH OFF';
+  if (meanY < 150 || loPct > 0.14) {
+    score -= 26; label = 'LIGHT LOW';
+    flashHint = torchOn ? '조명 조금 더 가까이' : 'FLASH ON 권장';
+    advice = '컵 안쪽이 어둡습니다. 밝은 조명 또는 FLASH ON을 권장합니다.';
+  } else if (hiPct > 0.09) {
+    score -= 22; label = 'REFLECTION HIGH';
+    flashHint = torchOn ? 'FLASH OFF 권장' : '조명 각도 조정';
+    advice = '반사가 강해 입자 경계가 날아갈 수 있습니다. 플래시를 끄거나 각도를 조금 조정하세요.';
+  } else if (stdY > 32) {
+    score -= 16; label = 'LIGHT UNEVEN';
+    flashHint = torchOn ? '컵을 더 수평으로' : '조명 균일화';
+    advice = '그림자 편차가 있습니다. 컵을 수평으로 두고 조명을 정면에 가깝게 맞춰주세요.';
+  } else {
+    advice = torchOn ? '조명 상태가 안정적입니다.' : '기본은 FLASH OFF, 너무 어두워질 때만 FLASH ON을 쓰세요.';
+  }
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  return { score, label, advice, flashHint, meanY, stdY, hiPct, loPct };
+}
+
+function sampleGrindLiveFrame() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || !video.videoWidth) return;
+  ensureGrindTinyCanvas();
+  const maxDim = 320;
+  const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.max(1, Math.round(video.videoWidth * scale));
+  const h = Math.max(1, Math.round(video.videoHeight * scale));
+  grindLiveTinyCanvas.width = w;
+  grindLiveTinyCanvas.height = h;
+  grindLiveTinyCtx.drawImage(video, 0, 0, w, h);
+  const guide = getGrindGuideGeom(w, h);
+  const light = assessCupLight(grindLiveTinyCanvas, guide);
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  const alignText = `CUP MODE · 바닥 원을 가이드에 맞춤 · ${light.label} · ${light.flashHint}`;
+  if (hudL) hudL.textContent = alignText;
+  if (status) status.innerHTML = `<strong>${light.label}</strong> · ${light.flashHint}<br>${light.advice} · 컵 안쪽 바닥 원이 가이드선과 비슷한 크기로 보이게 높이를 맞춘 뒤 CAPTURE 하세요.`;
+}
+
+function startLiveSampling() {
+  function loop(ts) {
+    if (!lastLiveTs || ts - lastLiveTs >= AUTO_CAL.liveInterval) {
+      if (currentAnalyzer === 'grind') {
+        sampleGrindLiveFrame();
+      } else {
+        const f = sampleFrame();
+        if (f) {
+          const c = f.corrected;
+          const lab = rgbToLab(c.r, c.g, c.b);
+          const refText = f.white ? 'REF OK' : 'NO REF';
+          document.getElementById('hudColor').style.background = `rgb(${c.r},${c.g},${c.b})`;
+          document.getElementById('hudL').textContent = `L* ${lab.L.toFixed(1)} · ${refText}`;
+        }
+      }
+      lastLiveTs = ts;
+    }
+    animFrameId = requestAnimationFrame(loop);
+  }
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = requestAnimationFrame(loop);
+}
+
+function percentileSorted(vals, p) {
+  if (!vals.length) return 0;
+  const i = (vals.length - 1) * p;
+  const lo = Math.floor(i), hi = Math.ceil(i);
+  if (lo === hi) return vals[lo];
+  return vals[lo] + (vals[hi] - vals[lo]) * (i - lo);
+}
+
+function analyzeCupGrindCanvas(sourceCanvas) {
+  const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  const w = sourceCanvas.width, h = sourceCanvas.height;
+  const guide = getGrindGuideGeom(w, h);
+  const light = assessCupLight(sourceCanvas, guide);
+  const mmPerPx = grindCupBaseMM / Math.max(1, guide.baseDiameterPx);
+
+  const roi = {
+    x: Math.max(0, Math.round(guide.cx - guide.bottomR)),
+    y: Math.max(0, Math.round(guide.cy - guide.bottomR)),
+    w: Math.min(w, Math.round(guide.bottomR * 2)),
+    h: Math.min(h, Math.round(guide.bottomR * 2)),
+    cx: guide.cx,
+    cy: guide.cy,
+    r: guide.bottomR
+  };
+  const img = ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
+  const d = img.data;
+  const lumas = [];
+  for (let y = 0; y < roi.h; y++) {
+    for (let x = 0; x < roi.w; x++) {
+      const dx = x + roi.x - guide.cx;
+      const dy = y + roi.y - guide.cy;
+      if (dx*dx + dy*dy > guide.bottomR * guide.bottomR) continue;
+      const i = (y * roi.w + x) * 4;
+      lumas.push(Math.round(luma(d[i], d[i+1], d[i+2])));
+    }
+  }
+  const bgCandidates = lumas.filter(v => v > 150).sort((a,b)=>a-b);
+  const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length * 0.45)] : median(lumas);
+  const otsu = otsuThreshold(lumas);
+  const threshold = Math.max(22, Math.min(150, Math.min(bgL - 42, otsu - 4)));
+
+  const mask = new Uint8Array(roi.w * roi.h);
+  let darkArea = 0;
+  for (let y = 0; y < roi.h; y++) {
+    for (let x = 0; x < roi.w; x++) {
+      const dx = x + roi.x - guide.cx;
+      const dy = y + roi.y - guide.cy;
+      if (dx*dx + dy*dy > guide.bottomR * guide.bottomR) continue;
+      const i = (y * roi.w + x) * 4;
+      const Y = luma(d[i], d[i+1], d[i+2]);
+      const C = chroma(d[i], d[i+1], d[i+2]);
+      if (Y < threshold && (bgL - Y) > 34 && !(C < 8 && Y > 90)) {
+        mask[y * roi.w + x] = 1;
+        darkArea++;
+      }
+    }
+  }
+
+  const visited = new Uint8Array(mask.length);
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+  const comps = [];
+  const stack = [];
+  for (let idx = 0; idx < mask.length; idx++) {
+    if (!mask[idx] || visited[idx]) continue;
+    let area = 0, minx = roi.w, miny = roi.h, maxx = 0, maxy = 0;
+    stack.length = 0;
+    stack.push(idx);
+    visited[idx] = 1;
+    while (stack.length) {
+      const cur = stack.pop();
+      const y = Math.floor(cur / roi.w), x = cur - y * roi.w;
+      area++;
+      if (x < minx) minx = x;
+      if (x > maxx) maxx = x;
+      if (y < miny) miny = y;
+      if (y > maxy) maxy = y;
+      for (const [ox, oy] of neighbors) {
+        const nx = x + ox, ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= roi.w || ny >= roi.h) continue;
+        const ni = ny * roi.w + nx;
+        if (mask[ni] && !visited[ni]) { visited[ni] = 1; stack.push(ni); }
+      }
+    }
+    if (area < 2) continue;
+    const bw = maxx - minx + 1, bh = maxy - miny + 1;
+    const fill = area / Math.max(1, bw * bh);
+    const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
+    const effectiveArea = Math.max(area * 0.58, area - (bw + bh) * 0.34);
+    const eqDiaUm = Math.sqrt((4 * effectiveArea) / Math.PI) * mmPerPx * 1000 * 0.94;
+    if (eqDiaUm >= 60 && eqDiaUm <= 2400) comps.push({ d: eqDiaUm, area, minx, miny, maxx, maxy, fill, aspect });
+  }
+
+  if (comps.length < 12) throw new Error('입자를 충분히 인식하지 못했습니다. 원두를 1~2알 정도만 분쇄해 넣고, 컵 바닥 원을 가이드에 다시 맞춘 뒤 촬영해 주세요.');
+
+  const ds0 = comps.map(c => c.d);
+  const med0 = median(ds0);
+  const sd0 = stdev(ds0);
+  const clumpLimit = Math.max(1400, med0 + 2.2 * sd0);
+  const valid = [];
+  let clumpCount = 0, clumpArea = 0;
+  for (const c of comps) {
+    const clump = (c.d > clumpLimit && c.fill < 0.58) || (c.aspect > 3.0 && c.d > 520) || c.d > 2000;
+    if (clump) { clumpCount++; clumpArea += c.area; }
+    else valid.push(c);
+  }
+  if (valid.length < 10) throw new Error('겹친 입자가 너무 많습니다. 분쇄 원두를 더 적게 넣고 컵 바닥에 얇게 퍼지게 다시 촬영해 주세요.');
+
+  const ds = valid.map(c => c.d).sort((a,b)=>a-b);
+  const d10 = percentileSorted(ds, 0.10);
+  const d50 = percentileSorted(ds, 0.50);
+  const d90 = percentileSorted(ds, 0.90);
+  const areaD50 = weightedPercentile(valid, 0.50);
+  const span = d50 ? (d90 - d10) / d50 : 0;
+  const totalCount = valid.length || 1;
+  const finesPct = valid.filter(c => c.d < 300).length / totalCount * 100;
+  const bouldersPct = valid.filter(c => c.d > 1200).length / totalCount * 100;
+  const bins = [
+    [0,200], [200,300], [300,500], [500,700], [700,850], [850,1000], [1000,1200], [1200,1600], [1600,99999]
+  ].map(([lo, hi]) => {
+    const count = valid.filter(c => c.d >= lo && c.d < hi).length;
+    return { lo, hi, pct: count / totalCount * 100 };
+  });
+
+  let qScore = 100;
+  const darkCoverage = darkArea / Math.max(1, roi.w * roi.h);
+  const clumpRatio = clumpArea / Math.max(1, darkArea);
+  if (light.score < 75) qScore -= Math.round((75 - light.score) * 0.6);
+  if (valid.length < 80) qScore -= 18;
+  if (darkCoverage < 0.001 || darkCoverage > 0.11) qScore -= 14;
+  if (clumpRatio > 0.12) qScore -= 16;
+  if (span > 2.4) qScore -= 8;
+  qScore = Math.max(0, Math.min(100, Math.round(qScore)));
+  const qLabel = qScore >= 78 ? 'HIGH' : qScore >= 55 ? 'MID' : 'LOW';
+
+  return {
+    guide,
+    light,
+    valid,
+    roi,
+    d10, d50, d90, areaD50, span,
+    finesPct, bouldersPct, bins,
+    qScore, qLabel, clumpCount,
+    threshold, bgL,
+    scaleUmPerPx: mmPerPx * 1000,
+    cup: { baseMM: grindCupBaseMM, label: document.getElementById('cupPreset').options[document.getElementById('cupPreset').selectedIndex].text }
+  };
+}
+
+async function captureGrindCupMode() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || !video.videoWidth) {
+    alert('카메라가 준비되지 않았습니다. 카메라 시작 후 다시 시도해 주세요.');
+    return;
+  }
+  const btn = document.getElementById('measureBtn');
+  btn.disabled = true;
+  btn.textContent = 'CAPTURING';
+  setStatus('active', 'CAPTURING');
+  await sleep(120);
+
+  const scale = Math.min(1, 2200 / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.max(1, Math.round(video.videoWidth * scale));
+  const h = Math.max(1, Math.round(video.videoHeight * scale));
+  grindSrcCanvas = document.createElement('canvas');
+  grindSrcCanvas.width = w;
+  grindSrcCanvas.height = h;
+  const ctx = grindSrcCanvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, w, h);
+
+  try {
+    const result = analyzeCupGrindCanvas(grindSrcCanvas);
+    grindLastAnalysis = result;
+    const view = document.getElementById('grindCanvas');
+    view.width = w;
+    view.height = h;
+    const vctx = view.getContext('2d', { willReadFrequently: true });
+    vctx.drawImage(grindSrcCanvas, 0, 0);
+    drawGrindOverlay(vctx, result.guide, result.roi, result.valid, result);
+    document.getElementById('grindCanvasWrap').style.display = 'block';
+    renderGrindResults(result);
+    document.getElementById('grindResults').style.display = 'block';
+    setStatus('active', result.qLabel);
+  } catch (err) {
+    alert(err.message || String(err));
+    setStatus('error', 'RETRY');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'CAPTURE';
+  }
+}
+
+function renderGrindResults(r) {
+  const fmt = v => Math.round(v).toLocaleString('ko-KR');
+  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
+  document.getElementById('grindClass').textContent = classifyGrind(r.d50);
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  const areaEl = document.getElementById('grindAreaD50');
+  if (areaEl) areaEl.textContent = fmt(r.areaD50);
+  document.getElementById('grindSpan').textContent = r.span.toFixed(2);
+  document.getElementById('grindFines').textContent = r.finesPct.toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = r.bouldersPct.toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = r.valid.length.toLocaleString('ko-KR');
+  const maxPct = Math.max(1, ...r.bins.map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = r.bins.map(b => {
+    const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
+    const width = Math.max(2, b.pct / maxPct * 100);
+    return `<div class="hist-row">
+      <div class="hist-label">${label}µm</div>
+      <div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div>
+      <div class="hist-pct">${b.pct.toFixed(1)}%</div>
+    </div>`;
+  }).join('');
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${r.cup.label} 기준 · 스케일 ${r.scaleUmPerPx.toFixed(1)}µm/px · ${r.light.label} · ${r.light.flashHint}<br>` +
+    `${r.light.advice}<br>` +
+    `가이드선은 <strong>컵 안쪽 바닥 원</strong> 기준입니다. 1~2알 분량만 사용하고, 입자가 겹치지 않게 퍼질수록 편차가 줄어듭니다. 덩어리/채프 의심 ${r.clumpCount}개 제외 · 공식 체 분석/레이저 분석을 대체하지 않습니다.`;
+}
+
+function drawGrindOverlay(ctx, guide, roi, valid, result) {
+  ctx.save();
+  ctx.lineWidth = Math.max(2, ctx.canvas.width / 900);
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.arc(guide.cx, guide.cy, guide.guideR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([10, 8]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.arc(guide.cx, guide.cy, guide.bottomR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineWidth = Math.max(1, ctx.canvas.width / 1600);
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  const maxBoxes = 220;
+  const step = Math.max(1, Math.floor(valid.length / maxBoxes));
+  for (let i = 0; i < valid.length; i += step) {
+    const c = valid[i];
+    ctx.strokeRect(roi.x + c.minx, roi.y + c.miny, c.maxx - c.minx + 1, c.maxy - c.miny + 1);
+  }
+  ctx.font = `${Math.max(18, ctx.canvas.width / 48)}px Pretendard, sans-serif`;
+  const msg = `${result.light.label} · D50 ${Math.round(result.d50)}µm · ${result.cup.baseMM}mm cup base`;
+  const pad = Math.max(10, ctx.canvas.width / 90);
+  const tw = ctx.measureText(msg).width + pad * 2;
+  const th = Math.max(34, ctx.canvas.width / 30);
+  ctx.fillStyle = 'rgba(0,0,0,0.68)';
+  ctx.fillRect(pad, pad, tw, th);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(msg, pad * 2, pad + th * 0.68);
+  ctx.restore();
+}
+
+const __origStartCamera = startCamera;
+startCamera = async function() {
+  await __origStartCamera();
+  updateModeUI();
+  if (stream) setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
+};
+
+const __origStopCamera = stopCamera;
+stopCamera = function() {
+  __origStopCamera();
+  updateModeUI();
+};
+
+updateCupPreset();
+switchAnalyzer('color');
 function setStatus(type, label) {
   document.getElementById('statusDot').className = 'status-dot ' + type;
   document.getElementById('statusLabel').textContent = label;
