@@ -1111,6 +1111,54 @@
   #finalActionBar button:active { transform: scale(.98); }
   #finalActionBar button:disabled { opacity: .6; }
 
+
+  /* v12 stable static toolbar */
+  #finalActionBar, #v10GrindControls, #v9GrindControls, #floatingGrindCtrl { display:none !important; }
+  #stableToolbar {
+    position: fixed;
+    left: 50%;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(430px, calc(100vw - 20px));
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.25fr;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(0,0,0,0.86);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 16px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 2147483647;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+  }
+  #stableToolbar button {
+    min-height: 52px;
+    border: none;
+    border-radius: 13px;
+    font-family: var(--font-main, Pretendard, sans-serif);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: .2px;
+    cursor: pointer;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+  }
+  #stableFlashBtn, #stableResetBtn {
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.16);
+  }
+  #stableCaptureBtn {
+    background: #fff;
+    color: #111;
+  }
+  #stableToolbar button:active { transform: scale(.98); }
+  body { padding-bottom: 92px; }
+
 </style>
 </head>
 <body>
@@ -1173,6 +1221,11 @@
     </div>
   </div>
 
+  <div id="stableToolbar">
+    <button type="button" id="stableFlashBtn" onclick="toggleTorch(); return false;">FLASH OFF</button>
+    <button type="button" id="stableResetBtn" onclick="if(typeof currentAnalyzer!=='undefined' && currentAnalyzer==='grind'){ resetGrindCapture(); } else { try { document.getElementById('resultsPanel').style.display='none'; } catch(e){} try { document.getElementById('hudL').textContent='L* —'; } catch(e){} } return false;">RESET</button>
+    <button type="button" id="stableCaptureBtn" onclick="handleMeasure(); return false;">CAPTURE</button>
+  </div>
 
   <div class="grind-panel" id="grindPanel">
     <div class="grind-card">
@@ -5406,6 +5459,47 @@ switchAnalyzer(currentAnalyzer || 'color');
 
   syncBar();
   setInterval(syncBar, 300);
+})();
+
+
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function refreshStableToolbar(){
+    var flash = $('stableFlashBtn');
+    var cap = $('stableCaptureBtn');
+    if (flash) {
+      try {
+        flash.textContent = (typeof torchSupported !== 'undefined' && torchSupported)
+          ? ((typeof torchOn !== 'undefined' && torchOn) ? 'FLASH ON' : 'FLASH OFF')
+          : 'NO FLASH';
+      } catch(e) {
+        flash.textContent = 'FLASH';
+      }
+    }
+    if (cap) {
+      try { cap.textContent = (typeof currentAnalyzer !== 'undefined' && currentAnalyzer === 'grind') ? 'CAPTURE' : 'MEASURE'; }
+      catch(e) { cap.textContent = 'CAPTURE'; }
+    }
+  }
+  ['stableFlashBtn','stableResetBtn','stableCaptureBtn'].forEach(function(id){
+    var el = $(id);
+    if (!el) return;
+    ['click','touchstart','pointerdown'].forEach(function(ev){
+      el.addEventListener(ev, function(e){ e.stopPropagation(); }, {passive:false});
+    });
+  });
+  var prevSwitch = window.switchAnalyzer;
+  if (typeof prevSwitch === 'function') {
+    window.switchAnalyzer = function(mode){ var r = prevSwitch(mode); setTimeout(refreshStableToolbar, 0); return r; };
+    switchAnalyzer = window.switchAnalyzer;
+  }
+  var prevToggleTorch = window.toggleTorch;
+  if (typeof prevToggleTorch === 'function') {
+    window.toggleTorch = async function(){ var r = await prevToggleTorch(); setTimeout(refreshStableToolbar, 0); return r; };
+    toggleTorch = window.toggleTorch;
+  }
+  refreshStableToolbar();
+  setInterval(refreshStableToolbar, 500);
 })();
 
 </script>
