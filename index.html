@@ -1045,7 +1045,7 @@
   <div class="grind-panel" id="grindPanel">
     <div class="grind-card compact-grind-card">
       <div class="grind-quality" id="grindLoadStatus">READY</div>
-      <div class="grind-brief">1. 흰 배경 위에 분쇄 원두를 최대한 얇게 펼칩니다.<br>2. 원두가 중앙 사각 영역 안에 들어오도록 맞춥니다.<br>3. CAPTURE를 누르면 분쇄도를 자동으로 분석합니다.</div>
+      <div class="grind-brief">1. 흰 배경 위에 원두를 한 겹으로 펼칩니다.<br>2. 중앙 사각 영역 안에 입자가 겹치지 않게 맞춥니다.<br>3. CAPTURE 후 신뢰도 HIGH / MID 값만 참고합니다.</div>
     </div>
 
     <div class="grind-canvas-wrap" id="grindCanvasWrap">
@@ -1621,18 +1621,21 @@ const GRIND = {
   frac: 0.70,
   innerFrac: 0.50,
   physicalMM: 34,
-  // Grind calibration: previous clean build was reading slightly fine.
-  // Increase particle diameter estimate without touching the color analyzer.
-  diameterBoost: 1.22,
-  boxBoost: 0.90,
-  maxParticleUm: 2600,
-  clumpBaseUm: 1900,
+  // GRIND v3: no-reference mobile estimation.
+  // The color analyzer is intentionally untouched.
+  diameterBoost: 1.30,
+  boxBoost: 0.96,
+  minParticleUm: 80,
+  maxParticleUm: 2800,
+  clumpBaseUm: 2200,
   maxDim: 1800,
   previewDim: 420,
   frames: 5,
   frameDelay: 70,
   liveInterval: 520,
-  minValid: 14,
+  minValid: 18,
+  pixelReliableMin: 5.2,
+  pixelIdealMin: 7.0,
   bins: [0,105,149,210,297,420,595,707,841,1000,1190,9999],
   sieves: [
     {um:105, mesh:'No. 140'}, {um:125, mesh:'No. 120'}, {um:149, mesh:'No. 100'},
@@ -1844,6 +1847,47 @@ function assessLightSimple(canvas, roi){
   if (dev > 36){ label='UNEVEN'; advice='SHADOW'; score -= 20; }
   return { label, advice, score: Math.max(0, Math.min(100, Math.round(score))), bg, dev };
 }
+
+function cleanGrindMask(mask, w, h){
+  // Fill tiny holes and remove isolated noise. This reduces under-reading caused by
+  // highlight gaps inside a particle, while avoiding heavy dilation that merges grains.
+  const pass1 = new Uint8Array(mask.length);
+  for (let y=0;y<h;y++){
+    for (let x=0;x<w;x++){
+      const idx = y*w+x;
+      let n = 0;
+      for (let oy=-1; oy<=1; oy++){
+        for (let ox=-1; ox<=1; ox++){
+          if (!ox && !oy) continue;
+          const nx=x+ox, ny=y+oy;
+          if (nx<0 || ny<0 || nx>=w || ny>=h) continue;
+          if (mask[ny*w+nx]) n++;
+        }
+      }
+      if (mask[idx]) pass1[idx] = n >= 1 ? 1 : 0;
+      else pass1[idx] = n >= 6 ? 1 : 0;
+    }
+  }
+  return pass1;
+}
+function robustParticlePx(area, bw, bh, fill){
+  const eqPx = Math.sqrt((4*area)/Math.PI);
+  const geomPx = Math.sqrt(bw*bh) * GRIND.boxBoost;
+  const maxSide = Math.max(bw,bh);
+  const minSide = Math.min(bw,bh);
+  // Projected coffee particles often have highlights and jagged edges.
+  // Blend equivalent diameter with Feret-style box measures instead of relying on contour area alone.
+  const shapeMix = fill > .42
+    ? (eqPx*.48 + geomPx*.34 + maxSide*.10 + minSide*.08)
+    : (eqPx*.34 + geomPx*.40 + maxSide*.16 + minSide*.10);
+  return shapeMix;
+}
+function particleWeightForD(dia, area){
+  // Sieve-style results are closer to mass/area distribution than pure count distribution.
+  // Use a softened area/diameter weight so a few boulders do not dominate excessively.
+  return Math.max(1, area) * Math.pow(Math.max(1, dia), 0.35);
+}
+
 function analyzeGrindCanvas(canvas, preview=false){
   const ctx = canvas.getContext('2d', { willReadFrequently:true });
   const roi = roiFor(canvas);
@@ -1857,22 +1901,29 @@ function analyzeGrindCanvas(canvas, preview=false){
       vals.push(Math.round(luma(d[i],d[i+1],d[i+2])));
     }
   }
+  const sortedVals = vals.slice().sort((a,b)=>a-b);
   const bgVals = vals.filter(v=>v>130).sort((a,b)=>a-b);
-  const bg = bgVals.length ? bgVals[Math.floor(bgVals.length*0.72)] : median(vals);
-  const th = Math.max(18, Math.min(165, Math.min(otsu(vals)-3, bg-34)));
-  const mask = new Uint8Array(roi.w*roi.h);
+  const bg = bgVals.length ? bgVals[Math.floor(bgVals.length*0.74)] : median(vals);
+  const shadow = sortedVals[Math.floor(sortedVals.length*0.12)] || 0;
+  const dynamicGap = Math.max(26, Math.min(58, (bg - shadow) * 0.34));
+  const th = Math.max(18, Math.min(170, Math.min(otsu(vals)-2, bg-dynamicGap)));
+
+  let mask = new Uint8Array(roi.w*roi.h);
   let dark = 0;
   for (let y=0;y<roi.h;y++){
     for (let x=0;x<roi.w;x++){
       const idx = y*roi.w+x, i=idx*4;
       const Y = luma(d[i],d[i+1],d[i+2]);
       const C = chroma(d[i],d[i+1],d[i+2]);
-      if (Y < th && (bg-Y)>22 && !(C<7 && Y>90)) { mask[idx]=1; dark++; }
+      const isCoffee = Y < th && (bg-Y)>20 && !(C<6 && Y>92);
+      if (isCoffee) { mask[idx]=1; dark++; }
     }
   }
+  mask = cleanGrindMask(mask, roi.w, roi.h);
+
   const visited = new Uint8Array(mask.length);
   const stack = [], comps = [];
-  const nb = [[1,0],[-1,0],[0,1],[0,-1]];
+  const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
   for (let idx=0; idx<mask.length; idx++){
     if (!mask[idx] || visited[idx]) continue;
     let area=0, minx=roi.w, miny=roi.h, maxx=0, maxy=0;
@@ -1880,27 +1931,38 @@ function analyzeGrindCanvas(canvas, preview=false){
     while(stack.length){
       const cur=stack.pop(); const y=Math.floor(cur/roi.w), x=cur-y*roi.w;
       area++; if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
-      for (const [ox,oy] of nb){ const nx=x+ox, ny=y+oy; if(nx<0||ny<0||nx>=roi.w||ny>=roi.h) continue; const ni=ny*roi.w+nx; if(mask[ni]&&!visited[ni]){visited[ni]=1; stack.push(ni);} }
+      for (const [ox,oy] of nb){
+        const nx=x+ox, ny=y+oy;
+        if(nx<0||ny<0||nx>=roi.w||ny>=roi.h) continue;
+        const ni=ny*roi.w+nx;
+        if(mask[ni]&&!visited[ni]){visited[ni]=1; stack.push(ni);}
+      }
     }
-    if (area < 2) continue;
-    const bw=maxx-minx+1, bh=maxy-miny+1, aspect=Math.max(bw,bh)/Math.max(1,Math.min(bw,bh)), fill=area/Math.max(1,bw*bh);
-    const eqPx = Math.sqrt((4*area)/Math.PI);
-    const boxPx = Math.sqrt(bw*bh) * GRIND.boxBoost;
-    const px = fill > .38 ? (eqPx*.58 + boxPx*.42) : (eqPx*.40 + boxPx*.60);
+    if (area < 3) continue;
+    const bw=maxx-minx+1, bh=maxy-miny+1;
+    const aspect=Math.max(bw,bh)/Math.max(1,Math.min(bw,bh));
+    const fill=area/Math.max(1,bw*bh);
+    const px = robustParticlePx(area, bw, bh, fill);
     const dia = px * roi.umPerPx * GRIND.diameterBoost;
-    if (dia >= 70 && dia <= GRIND.maxParticleUm) comps.push({d:dia, area, weight:area, minx,miny,maxx,maxy, aspect, fill});
+    if (dia >= GRIND.minParticleUm && dia <= GRIND.maxParticleUm) {
+      comps.push({d:dia, area, weight:particleWeightForD(dia, area), minx,miny,maxx,maxy, bw,bh, aspect, fill});
+    }
   }
   if (comps.length < (preview ? 5 : GRIND.minValid)) throw new Error('입자 부족');
+
   const raw = comps.map(c=>c.d);
   const med = median(raw), sd = stdev(raw);
   const valid=[]; let clumps=0;
   for (const c of comps){
-    const clearCluster = c.d > Math.max(GRIND.clumpBaseUm, med + 3.0*sd) && c.fill < .45;
-    const chaffLike = c.aspect > 4.8 && c.d > 900 && c.fill < .45;
-    if (clearCluster || chaffLike) clumps++;
+    const veryLarge = c.d > Math.max(GRIND.clumpBaseUm, med + 3.2*sd);
+    const clearCluster = veryLarge && (c.fill < .34 || c.aspect > 3.8);
+    const chaffLike = c.aspect > 5.8 && c.d > 850 && c.fill < .42;
+    const edgeTouch = c.minx <= 1 || c.miny <= 1 || c.maxx >= roi.w-2 || c.maxy >= roi.h-2;
+    if (clearCluster || chaffLike || edgeTouch) clumps++;
     else valid.push(c);
   }
-  if (valid.length < (preview ? 4 : 10)) throw new Error('입자 겹침');
+  if (valid.length < (preview ? 4 : 12)) throw new Error('입자 겹침');
+
   const countDs = valid.map(c=>c.d).sort((a,b)=>a-b);
   const d10 = weightedP(valid,.10), d50 = weightedP(valid,.50), d90 = weightedP(valid,.90);
   const countD50 = qValue(countDs,.50);
@@ -1914,13 +1976,18 @@ function analyzeGrindCanvas(canvas, preview=false){
   }
   let qScore = 100;
   const darkCoverage = dark / Math.max(1, roi.w*roi.h);
+  const medianPx = med / roi.umPerPx;
   if (light.score < 80) qScore -= Math.round((80-light.score)*.45);
   if (valid.length < 45) qScore -= 16;
   if (darkCoverage < .001 || darkCoverage > .14) qScore -= 14;
   if (span > 2.7) qScore -= 7;
+  if (medianPx < GRIND.pixelReliableMin) qScore -= 18;
+  else if (medianPx < GRIND.pixelIdealMin) qScore -= 8;
+  const clumpRatio = clumps / Math.max(1, comps.length);
+  if (clumpRatio > .22) qScore -= 10;
   qScore = Math.max(0, Math.min(100, Math.round(qScore)));
   const qLabel = qScore >= 78 ? 'HIGH' : qScore >= 55 ? 'MID' : 'LOW';
-  return { sourceCanvas:canvas, roi, valid, d10,d50,d90,countD50,span,bins, finesPct:pct(c=>c.d<300), bouldersPct:pct(c=>c.d>1200), qScore,qLabel, light, clumps, threshold:th, bg, darkCoverage, medianPx: med/roi.umPerPx };
+  return { sourceCanvas:canvas, roi, valid, d10,d50,d90,countD50,span,bins, finesPct:pct(c=>c.d<300), bouldersPct:pct(c=>c.d>1200), qScore,qLabel, light, clumps, threshold:th, bg, darkCoverage, medianPx, clumpRatio };
 }
 function drawGrindResult(r){
   const view = document.getElementById('grindCanvas');
@@ -1963,7 +2030,7 @@ function renderGrindClean(r){
     const width = Math.max(2, b.pct/maxPct*100);
     return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
   }).join('');
-  document.getElementById('grindQualityNote').innerHTML = `<strong>${r.qLabel} · ${r.qScore}/100</strong><br>D50 ${fmt(r.d50)}µm · ${r.light.label} · COUNT D50 ${fmt(r.countD50)}µm<br>체눈 근사: ${sieve.mesh} / ${sieve.um}µm · 보정 v2 · 제외 ${r.clumps}개`;
+  document.getElementById('grindQualityNote').innerHTML = `<strong>${r.qLabel} · ${r.qScore}/100</strong><br>D50 ${fmt(r.d50)}µm · ${r.light.label} · COUNT D50 ${fmt(r.countD50)}µm<br>체눈 근사: ${sieve.mesh} / ${sieve.um}µm · 보정 v3 · 제외 ${r.clumps}개`;
 }
 function bestResult(list){
   const ok = list.filter(Boolean).sort((a,b)=>a.d50-b.d50);
@@ -2017,7 +2084,7 @@ function sampleGrindPreview(){
     const r = analyzeGrindCanvas(grindPreviewCanvas, true);
     let msg = 'READY';
     if (r.valid.length < 8) msg = 'ADD SAMPLE';
-    else if (r.medianPx < 5) msg = 'CLOSER';
+    else if (r.medianPx < GRIND.pixelReliableMin) msg = 'CLOSER';
     else if (r.darkCoverage > .12) msg = 'SPREAD';
     if (hud) hud.textContent = `${msg} · ${r.light.label}`;
     if (status) status.textContent = `${msg} · ${r.light.label}`;
