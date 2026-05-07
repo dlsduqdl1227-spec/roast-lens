@@ -6695,6 +6695,582 @@ handleMeasure = function() {
   return capture();
 };
 
+
+/* =========================================================
+   GRIND SIZE · Virtual 100-Won Guide Mode
+   - 기준 물체를 따로 놓지 않고, 화면 가이드 원을 100원 동전 지름(24mm) 기준으로 환산한다.
+   - 절대 입도계는 아니지만, 100~1200µm 범위의 현장 비교용 값을 빠르게 얻기 위한 모드.
+   - 기존 COLOR 측정 로직은 변경하지 않는다.
+========================================================= */
+const VIRTUAL_GUIDE_GRIND = {
+  captureDim: 2200,
+  liveDim: 640,
+  guideDiameterMM: 24.0,       // 한국 100원 동전 지름 기준
+  guideDiameterRatio: 0.70,    // 화면 가이드 원 지름 / 정사각 캡처 한 변
+  guideCX: 0.50,
+  guideCY: 0.47,
+  sizeCorrection: 0.52,        // 모바일 경계 검출이 실제 입자보다 크게 잡히는 경향 보정
+  minUm: 100,
+  maxUm: 1200,
+  finesUm: 300,
+  boulderUm: 1200,
+  minValidParticles: 12,
+  multiFrames: 5,
+  frameGap: 85
+};
+
+function ensureVirtualGuideGrindUIAssets() {
+  if (!document.getElementById('virtualGuideGrindStyle')) {
+    const style = document.createElement('style');
+    style.id = 'virtualGuideGrindStyle';
+    style.textContent = `
+      html body .camera-viewport.grind-mode .sample-guide-box { display:none !important; }
+      html body .camera-viewport.grind-mode .virtual-coin-guide {
+        display:block !important;
+        position:absolute !important;
+        left:${VIRTUAL_GUIDE_GRIND.guideCX*100}% !important;
+        top:${VIRTUAL_GUIDE_GRIND.guideCY*100}% !important;
+        width:${VIRTUAL_GUIDE_GRIND.guideDiameterRatio*100}% !important;
+        aspect-ratio:1 / 1 !important;
+        transform:translate(-50%, -50%) !important;
+        border:2px solid rgba(255,255,255,.92) !important;
+        border-radius:50% !important;
+        background:rgba(255,255,255,.018) !important;
+        box-shadow:0 0 0 9999px rgba(0,0,0,.10), 0 0 0 8px rgba(255,255,255,.06) inset !important;
+        pointer-events:none !important;
+      }
+      html body .camera-viewport.grind-mode .virtual-coin-guide::before {
+        content:'100원 SIZE GUIDE · 100–1200µm' !important;
+        position:absolute !important;
+        left:50% !important;
+        top:-30px !important;
+        transform:translateX(-50%) !important;
+        padding:5px 9px !important;
+        border-radius:999px !important;
+        background:rgba(0,0,0,.68) !important;
+        border:.5px solid rgba(255,255,255,.18) !important;
+        color:rgba(255,255,255,.88) !important;
+        font:800 9px var(--font-main) !important;
+        letter-spacing:.9px !important;
+        white-space:nowrap !important;
+      }
+      html body .camera-viewport.grind-mode .virtual-coin-guide::after {
+        content:'' !important;
+        position:absolute !important;
+        left:14% !important; right:14% !important; top:14% !important; bottom:14% !important;
+        border:1px dashed rgba(255,255,255,.42) !important;
+        border-radius:50% !important;
+      }
+      .virtual-guide-note {
+        margin-top:10px;
+        padding:12px 13px;
+        border:.5px solid var(--border);
+        border-radius:12px;
+        background:rgba(255,255,255,.035);
+        color:var(--w3);
+        font-size:11px;
+        line-height:1.65;
+      }
+      .virtual-guide-note strong { color:var(--w2); }
+      .histogram .section-title.virtual-guide-title::after { content:' · count based'; color:var(--w4); font-weight:400; }
+    `;
+    document.head.appendChild(style);
+  }
+  const overlay = document.getElementById('camOverlay');
+  if (overlay && !document.getElementById('virtualCoinGuide')) {
+    const guide = document.createElement('div');
+    guide.id = 'virtualCoinGuide';
+    guide.className = 'virtual-coin-guide';
+    overlay.appendChild(guide);
+  }
+}
+
+function virtualGuideGeom(w, h) {
+  const base = Math.min(w, h);
+  const dia = Math.round(base * VIRTUAL_GUIDE_GRIND.guideDiameterRatio);
+  const cx = Math.round(w * VIRTUAL_GUIDE_GRIND.guideCX);
+  const cy = Math.round(h * VIRTUAL_GUIDE_GRIND.guideCY);
+  const r = Math.round(dia / 2);
+  const x = Math.max(0, cx - r);
+  const y = Math.max(0, cy - r);
+  const size = Math.min(dia, w - x, h - y);
+  const scaleUmPerPx = (VIRTUAL_GUIDE_GRIND.guideDiameterMM * 1000) / Math.max(1, dia);
+  return { circle:{ cx, cy, r, dia, x, y, w:size, h:size }, scaleUmPerPx };
+}
+
+function assessVirtualGuideLight(sourceCanvas, geom) {
+  try {
+    const ctx = sourceCanvas.getContext('2d', { willReadFrequently:true });
+    const c = geom.circle;
+    const img = ctx.getImageData(c.x, c.y, c.w, c.h).data;
+    const vals = [];
+    let glare = 0, total = 0, dark = 0;
+    const step = Math.max(2, Math.round(c.w / 90));
+    const rr = (c.w/2) * 0.92;
+    const cc = c.w/2;
+    for (let y = 0; y < c.h; y += step) {
+      for (let x = 0; x < c.w; x += step) {
+        const dx = x - cc, dy = y - cc;
+        if (dx*dx + dy*dy > rr*rr) continue;
+        const i = (y * c.w + x) * 4;
+        const Y = luma(img[i], img[i+1], img[i+2]);
+        const C = chroma(img[i], img[i+1], img[i+2]);
+        vals.push(Y); total++;
+        if (Y > 244 && C < 10) glare++;
+        if (Y < 70) dark++;
+      }
+    }
+    vals.sort((a,b)=>a-b);
+    const p50 = vals.length ? percentileSorted(vals, .50) : 0;
+    const p90 = vals.length ? percentileSorted(vals, .90) : 0;
+    let score = 100, label = 'LIGHT OK', advice = '조명 상태가 안정적입니다.';
+    if (p50 < 85) { score -= 28; label = 'LIGHT LOW'; advice = '조금 어둡습니다. 컵 안이 아니라 흰 종이 위에서 주변 조명을 밝게 해주세요.'; }
+    if (p90 > 246 || glare / Math.max(1,total) > .04) { score -= 20; label = 'REFLECTION HIGH'; advice = '반사가 강합니다. 플래시는 끄거나 휴대폰을 아주 살짝 기울여 주세요.'; }
+    if (dark / Math.max(1,total) > .35) { score -= 14; label = 'TOO MUCH SAMPLE'; advice = '원두가 너무 많이 들어왔습니다. 한 겹으로 더 얇게 펼치면 정확도가 올라갑니다.'; }
+    return { score:Math.max(0, Math.min(100, Math.round(score))), label, advice, p50, p90 };
+  } catch(e) {
+    return { score:58, label:'LIGHT CHECK', advice:'조명과 배경을 확인해 주세요.', p50:0, p90:0 };
+  }
+}
+
+function analyzeVirtualGuideGrindCanvas(sourceCanvas, opts={}) {
+  const ctx = sourceCanvas.getContext('2d', { willReadFrequently:true });
+  const w = sourceCanvas.width, h = sourceCanvas.height;
+  const geom = virtualGuideGeom(w, h);
+  const c = geom.circle;
+  const light = assessVirtualGuideLight(sourceCanvas, geom);
+  const img = ctx.getImageData(c.x, c.y, c.w, c.h);
+  const d = img.data;
+  const lumas = [];
+  const rr = (c.w / 2) * 0.92;
+  const cc = c.w / 2;
+  for (let y = 0; y < c.h; y++) {
+    for (let x = 0; x < c.w; x++) {
+      const dx = x - cc, dy = y - cc;
+      if (dx*dx + dy*dy > rr*rr) continue;
+      const i = (y*c.w + x)*4;
+      lumas.push(Math.round(luma(d[i], d[i+1], d[i+2])));
+    }
+  }
+  if (lumas.length < 5000 && !opts.preview) throw new Error('분석 영역이 너무 작습니다. 카메라를 다시 시작한 뒤 촬영해 주세요.');
+  const sortedLum = lumas.slice().sort((a,b)=>a-b);
+  const bgL = percentileSorted(sortedLum, 0.78);
+  const otsu = otsuThreshold(lumas);
+  const globalThreshold = Math.max(18, Math.min(168, Math.min(bgL - 22, otsu - 1)));
+  const tile = Math.max(28, Math.min(78, Math.round(c.w / 9)));
+  const tileCols = Math.ceil(c.w / tile), tileRows = Math.ceil(c.h / tile);
+  const tileBg = new Array(tileCols * tileRows).fill(bgL);
+  for (let ty = 0; ty < tileRows; ty++) {
+    for (let tx = 0; tx < tileCols; tx++) {
+      const vals = [];
+      const x0 = tx*tile, y0 = ty*tile;
+      const x1 = Math.min(c.w, x0+tile), y1 = Math.min(c.h, y0+tile);
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1; x += 2) {
+          const dx = x - cc, dy = y - cc;
+          if (dx*dx + dy*dy > rr*rr) continue;
+          const i = (y*c.w + x)*4;
+          const Y = luma(d[i], d[i+1], d[i+2]);
+          const C = chroma(d[i], d[i+1], d[i+2]);
+          if (Y > 88 && C < 78) vals.push(Y);
+        }
+      }
+      vals.sort((a,b)=>a-b);
+      tileBg[ty*tileCols+tx] = vals.length ? percentileSorted(vals, .80) : bgL;
+    }
+  }
+  function localBgAt(x,y){
+    const tx = Math.max(0, Math.min(tileCols-1, Math.floor(x/tile)));
+    const ty = Math.max(0, Math.min(tileRows-1, Math.floor(y/tile)));
+    return Math.max(tileBg[ty*tileCols+tx] || bgL, bgL * .68);
+  }
+  const mask = new Uint8Array(c.w * c.h);
+  const soft = new Uint8Array(c.w * c.h);
+  let darkArea = 0;
+  for (let y = 0; y < c.h; y++) {
+    for (let x = 0; x < c.w; x++) {
+      const dx = x - cc, dy = y - cc;
+      if (dx*dx + dy*dy > rr*rr) continue;
+      const idx = y*c.w + x;
+      const i = idx*4;
+      const R = d[i], G = d[i+1], B = d[i+2];
+      const Y = luma(R,G,B), C = chroma(R,G,B);
+      const bg = localBgAt(x,y);
+      const contrast = bg - Y;
+      const hardHit = ((Y < globalThreshold && contrast > 15) || (contrast > 26 && Y < 214) || (C > 10 && Y < 205 && contrast > 15)) && !(C < 5 && Y > 96 && contrast < 42);
+      const softHit = ((contrast > 11 && Y < 232 && (C > 5 || contrast > 20)) || (C > 12 && Y < 218 && contrast > 8)) && !(C < 5 && Y > 112 && contrast < 28);
+      if (hardHit) { mask[idx] = 1; darkArea++; }
+      if (softHit) soft[idx] = 1;
+    }
+  }
+  const grown = (typeof _constrainedGrow === 'function') ? _constrainedGrow(mask, soft, c.w, c.h, 1) : mask;
+  const visited = new Uint8Array(grown.length);
+  const comps = [];
+  const stack = [];
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+  for (let idx = 0; idx < grown.length; idx++) {
+    if (!grown[idx] || visited[idx]) continue;
+    let area = 0, minx = c.w, miny = c.h, maxx = 0, maxy = 0;
+    stack.length = 0; stack.push(idx); visited[idx] = 1;
+    while (stack.length) {
+      const cur = stack.pop();
+      const y = Math.floor(cur / c.w), x = cur - y*c.w;
+      area++;
+      if (x < minx) minx = x; if (x > maxx) maxx = x; if (y < miny) miny = y; if (y > maxy) maxy = y;
+      for (const [ox,oy] of neighbors) {
+        const nx = x + ox, ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= c.w || ny >= c.h) continue;
+        const ni = ny*c.w + nx;
+        if (grown[ni] && !visited[ni]) { visited[ni]=1; stack.push(ni); }
+      }
+    }
+    if (area < 2) continue;
+    const bw = maxx - minx + 1, bh = maxy - miny + 1;
+    const centerX = (minx + maxx) / 2, centerY = (miny + maxy) / 2;
+    const ddx = centerX - cc, ddy = centerY - cc;
+    if (ddx*ddx + ddy*ddy > rr*rr) continue;
+    const fill = area / Math.max(1, bw*bh);
+    const aspect = Math.max(bw,bh) / Math.max(1, Math.min(bw,bh));
+    const eqPx = Math.sqrt(4 * area / Math.PI);
+    const diaPx = eqPx * VIRTUAL_GUIDE_GRIND.sizeCorrection;
+    const dUm = diaPx * geom.scaleUmPerPx;
+    const merged = (aspect > 4.2 && dUm > 260) || (fill < 0.10 && dUm > 260) || (dUm > 1450 && fill < .42);
+    comps.push({ rawPx:diaPx, d:dUm, area, weight:area, minx, miny, maxx, maxy, fill, aspect, merged });
+  }
+  const valid = comps.filter(p => !p.merged && p.d >= VIRTUAL_GUIDE_GRIND.minUm && p.d <= VIRTUAL_GUIDE_GRIND.maxUm);
+  const underCount = comps.filter(p => !p.merged && p.d < VIRTUAL_GUIDE_GRIND.minUm).length;
+  const overCount = comps.filter(p => !p.merged && p.d > VIRTUAL_GUIDE_GRIND.maxUm).length;
+  const clumpCount = comps.filter(p => p.merged).length;
+  if (!opts.preview && valid.length < VIRTUAL_GUIDE_GRIND.minValidParticles) {
+    throw new Error('100~1200µm 범위의 유효 입자가 부족합니다. 원두를 조금 더 넓게, 한 겹으로 펼치고 가이드 원 안에 맞춰 다시 촬영해 주세요.');
+  }
+  const countDs = valid.map(c=>c.d).sort((a,b)=>a-b);
+  const d10 = percentileSorted(countDs, .10) || 0;
+  const countD50 = percentileSorted(countDs, .50) || 0;
+  const d90 = percentileSorted(countDs, .90) || 0;
+  const trimLo = percentileSorted(countDs, .12) || 0, trimHi = percentileSorted(countDs, .86) || 0;
+  const trimmed = countDs.filter(v => v >= trimLo && v <= trimHi);
+  const meanD = trimmed.length ? trimmed.reduce((a,b)=>a+b,0)/trimmed.length : countD50;
+  const representative = Math.max(VIRTUAL_GUIDE_GRIND.minUm, Math.min(VIRTUAL_GUIDE_GRIND.maxUm, Math.round(0.82*countD50 + 0.18*meanD)));
+  const span = countD50 ? (d90-d10)/countD50 : 0;
+  const finesPct = valid.length ? valid.filter(c=>c.d < VIRTUAL_GUIDE_GRIND.finesUm).length / valid.length * 100 : 0;
+  const bouldersPct = comps.length ? overCount / comps.length * 100 : 0;
+  const bins = [[100,200],[200,300],[300,500],[500,700],[700,850],[850,1000],[1000,1200]].map(([lo,hi]) => {
+    const count = valid.filter(c=>c.d >= lo && c.d < hi).length;
+    return { lo, hi, pct: valid.length ? count / valid.length * 100 : 0 };
+  });
+  let qScore = 82;
+  const darkCoverage = darkArea / Math.max(1, c.w*c.h);
+  if (light.score < 78) qScore -= Math.round((78-light.score)*0.42);
+  if (valid.length < 25) qScore -= 12;
+  if (valid.length < VIRTUAL_GUIDE_GRIND.minValidParticles) qScore -= 18;
+  if (darkCoverage < 0.0007 || darkCoverage > 0.20) qScore -= 10;
+  if (span > 2.8) qScore -= 8;
+  if (overCount > valid.length * .30) qScore -= 10;
+  qScore = Math.max(0, Math.min(100, Math.round(qScore)));
+  const qLabel = qScore >= 78 ? 'HIGH' : qScore >= 55 ? 'MID' : 'LOW';
+  return {
+    guide:geom,
+    roi:{ x:c.x, y:c.y, w:c.w, h:c.h, cx:c.cx, cy:c.cy, r:c.r },
+    valid, all:comps, light,
+    d10, d50:representative, d90, countD50, areaD50:countD50, mean:meanD,
+    span, finesPct, bouldersPct, bins,
+    qScore, qLabel, clumpCount, underCount, overCount,
+    scaleUmPerPx:geom.scaleUmPerPx,
+    rawD50Px: countD50 ? countD50 / geom.scaleUmPerPx : 0,
+    calibrated:true,
+    virtualGuide:true,
+    method:'VIRTUAL_100WON_GUIDE',
+    ref:{ label:'100원 가이드 자동 기준', isBean:false }
+  };
+}
+
+function drawVirtualGuideGrindOverlay(ctx, result) {
+  const g = result.guide.circle;
+  ctx.save();
+  ctx.lineWidth = Math.max(2, ctx.canvas.width/650);
+  ctx.strokeStyle = 'rgba(255,255,255,.92)';
+  ctx.beginPath();
+  ctx.arc(g.cx, g.cy, g.r, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.38)';
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath();
+  ctx.arc(g.cx, g.cy, g.r*.72, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const maxBoxes = 220;
+  ctx.lineWidth = Math.max(1, ctx.canvas.width/1200);
+  for (let i=0; i<Math.min(maxBoxes, result.valid.length); i++) {
+    const p = result.valid[i];
+    ctx.strokeStyle = p.d < 300 ? 'rgba(255,255,255,.55)' : (p.d > 1000 ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.70)');
+    ctx.strokeRect(g.x + p.minx, g.y + p.miny, Math.max(2, p.maxx-p.minx+1), Math.max(2, p.maxy-p.miny+1));
+  }
+  ctx.fillStyle = 'rgba(0,0,0,.72)';
+  const label = `100원 가이드 · ${VIRTUAL_GUIDE_GRIND.guideDiameterMM.toFixed(1)}mm · ${result.scaleUmPerPx.toFixed(1)}µm/px`;
+  ctx.font = `${Math.max(18, ctx.canvas.width/62)}px Pretendard, sans-serif`;
+  const pad = 12;
+  const tw = ctx.measureText(label).width;
+  ctx.fillRect(g.cx - tw/2 - pad, Math.max(8, g.y - 42), tw + pad*2, 30);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(label, g.cx - tw/2, Math.max(30, g.y - 20));
+  ctx.restore();
+}
+
+function combineVirtualGuideResults(results) {
+  if (!results.length) return null;
+  const sorted = results.slice().sort((a,b)=>a.d50-b.d50);
+  const mid = sorted[Math.floor(sorted.length/2)];
+  const med = arr => {
+    const s = arr.filter(v => Number.isFinite(v)).sort((a,b)=>a-b);
+    return s.length ? percentileSorted(s, .50) : 0;
+  };
+  mid.d10 = med(results.map(r=>r.d10));
+  mid.d50 = med(results.map(r=>r.d50));
+  mid.d90 = med(results.map(r=>r.d90));
+  mid.countD50 = med(results.map(r=>r.countD50));
+  mid.mean = med(results.map(r=>r.mean));
+  mid.span = mid.countD50 ? (mid.d90-mid.d10)/mid.countD50 : 0;
+  mid.finesPct = med(results.map(r=>r.finesPct));
+  mid.bouldersPct = med(results.map(r=>r.bouldersPct));
+  mid.qScore = Math.round(med(results.map(r=>r.qScore)));
+  mid.qLabel = mid.qScore >= 78 ? 'HIGH' : mid.qScore >= 55 ? 'MID' : 'LOW';
+  mid.multiFrameCount = results.length;
+  return mid;
+}
+
+function sampleNoRefLiveFrame() {
+  const c = captureDisplayedVideoSquare(VIRTUAL_GUIDE_GRIND.liveDim);
+  if (!c) return;
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  try {
+    const result = analyzeVirtualGuideGrindCanvas(c, { preview:true });
+    if (hudL) hudL.textContent = `100원 GUIDE · ${result.light.label}`;
+    if (status) {
+      const d50 = result.valid.length >= 8 ? ` · D50 약 ${Math.round(result.d50)}µm` : '';
+      status.innerHTML = `<strong>가이드 자동 기준</strong> · ${result.light.label}${d50}<br>` +
+        `분쇄 원두를 원형 가이드 안에 한 겹으로 펼쳐 촬영하세요. 감지 ${result.valid.length}개 · ${result.light.advice}`;
+    }
+    setStatus('active', result.valid.length >= 8 ? 'GUIDE' : 'ALIGN');
+  } catch(e) {
+    if (hudL) hudL.textContent = '100원 GUIDE · ALIGN';
+    if (status) status.innerHTML = '<strong>가이드 맞춤 중</strong><br>흰 종이 위 분쇄 원두가 원형 가이드 안에 크게 보이도록 가까이 맞춰주세요.';
+    setStatus('active', 'ALIGN');
+  }
+}
+
+captureGrindCupMode = async function() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || !video.videoWidth) {
+    showGrindCupRetry('카메라 준비 전입니다.', '카메라 시작 후 다시 시도해 주세요.');
+    return;
+  }
+  const btns = [document.getElementById('measureBtn'), document.getElementById('floatCaptureBtn'), document.getElementById('floatResetBtn'), document.getElementById('grindResetBtn')].filter(Boolean);
+  btns.forEach(b => { b.disabled = true; if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'CALIBRATING'; });
+  setStatus('active', 'CALIBRATING');
+  const status = document.getElementById('grindLoadStatus');
+  const frames = [];
+  const captures = [];
+  try {
+    await sleep(160);
+    for (let i=0; i<VIRTUAL_GUIDE_GRIND.multiFrames; i++) {
+      if (status) status.innerHTML = `<strong>자동 캘리브레이션 중</strong><br>${i+1}/${VIRTUAL_GUIDE_GRIND.multiFrames} 프레임을 분석하고 있습니다.`;
+      const src = captureDisplayedVideoSquare(VIRTUAL_GUIDE_GRIND.captureDim);
+      if (src) {
+        captures.push(src);
+        try { frames.push({ result: analyzeVirtualGuideGrindCanvas(src), src }); } catch(e) {}
+      }
+      await sleep(VIRTUAL_GUIDE_GRIND.frameGap);
+    }
+    if (!frames.length) throw new Error('분석 가능한 프레임이 없습니다. 원두를 가이드 원 안에 맞추고 다시 촬영해 주세요.');
+    const result = combineVirtualGuideResults(frames.map(f=>f.result));
+    const chosen = frames.slice().sort((a,b)=>Math.abs(a.result.d50-result.d50)-Math.abs(b.result.d50-result.d50))[0] || frames[0];
+    grindSrcCanvas = chosen.src;
+    grindLastAnalysis = result;
+    noRefLastResult = result;
+    const view = document.getElementById('grindCanvas');
+    view.width = chosen.src.width; view.height = chosen.src.height;
+    const vctx = view.getContext('2d', { willReadFrequently:true });
+    vctx.drawImage(chosen.src, 0, 0);
+    drawVirtualGuideGrindOverlay(vctx, result);
+    document.getElementById('grindCanvasWrap').style.display = 'block';
+    renderGrindResults(result);
+    document.getElementById('grindResults').style.display = 'block';
+    setStatus('active', result.qLabel);
+    setTimeout(() => { const res = document.getElementById('grindResults'); if (res) res.scrollIntoView({ behavior:'smooth', block:'start' }); }, 120);
+  } catch(err) {
+    showGrindCupRetry('분석을 완료하지 못했습니다.', err.message || String(err));
+  } finally {
+    btns.forEach(b => { b.disabled = false; if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'CAPTURE'; if (b.id === 'floatResetBtn') b.textContent = 'RESET'; if (b.id === 'grindResetBtn') b.textContent = 'RESET / 다시 촬영'; });
+  }
+};
+
+renderGrindResults = function(r) {
+  const fmt = v => Math.round(v || 0).toLocaleString('ko-KR');
+  document.getElementById('grindResults').style.display = 'block';
+  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
+  document.getElementById('grindClass').textContent = (_grindInterpretation ? _grindInterpretation(r.d50) : classifyGrind(r.d50));
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  const areaEl = document.getElementById('grindAreaD50');
+  if (areaEl) areaEl.textContent = fmt(r.countD50 || r.areaD50 || r.d50);
+  document.getElementById('grindSpan').textContent = (r.span || 0).toFixed(2);
+  document.getElementById('grindFines').textContent = (r.finesPct || 0).toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = (r.bouldersPct || 0).toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = (r.valid ? r.valid.length : 0).toLocaleString('ko-KR');
+  const maxPct = Math.max(1, ...(r.bins || []).map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = (r.bins || []).map(b => {
+    const label = `${b.lo}-${b.hi}`;
+    const width = Math.max(2, b.pct / maxPct * 100);
+    return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
+  }).join('');
+  const multi = r.multiFrameCount ? `${r.multiFrameCount}프레임 중앙값 · ` : '';
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${multi}100원 동전 지름 24.0mm를 화면 가이드 원의 기준 크기로 환산했습니다. 실제 동전을 같이 촬영할 필요는 없습니다.<br>` +
+    `대표값 D50 ${fmt(r.d50)}µm · COUNT D50 ${fmt(r.countD50)}µm · 측정 범위 100–1200µm<br>` +
+    `${r.light.label} · ${r.light.advice}<br>` +
+    `100µm 미만 후보 ${r.underCount || 0}개, 1200µm 초과 후보 ${r.overCount || 0}개, 겹침/채프 의심 ${r.clumpCount || 0}개는 대표값 계산에서 제외했습니다.<br>` +
+    `기준 물체 없는 가이드 환산 방식이므로 절대 입도계/체분석을 대체하지 않고, 같은 휴대폰·같은 촬영거리에서 분쇄도 확인용으로 사용하세요.`;
+};
+
+function applyVirtualGuideGrindUI() {
+  ensureVirtualGuideGrindUIAssets();
+  const title = document.querySelector('#grindPanel .grind-title');
+  if (title) { title.textContent = ''; title.setAttribute('aria-hidden','true'); }
+  const desc = document.querySelector('#grindPanel .grind-desc');
+  if (desc) { desc.textContent = ''; desc.setAttribute('aria-hidden','true'); }
+  const settings = document.querySelector('#grindPanel .grind-settings');
+  if (settings) {
+    settings.innerHTML = `
+      <div class="grind-field">
+        <label>측정 방식</label>
+        <div class="grind-pill">100원 가이드 자동 기준</div>
+      </div>
+      <div class="grind-field">
+        <label>측정 범위</label>
+        <div class="grind-pill">100–1200µm</div>
+      </div>`;
+  }
+  const status = document.getElementById('grindLoadStatus');
+  if (status) {
+    status.innerHTML = '<strong>기준 물체 없이 촬영합니다.</strong><br>화면의 원형 가이드를 100원 동전 지름(24mm) 기준으로 환산해 분쇄도를 계산합니다. 분쇄 원두를 흰 종이 위에 한 겹으로 펼치고, 원 안에 크게 맞춘 뒤 CAPTURE 하세요.';
+    const oldBox = document.getElementById('noRefCalBox');
+    if (oldBox) oldBox.remove();
+    let note = document.getElementById('virtualGuideNote');
+    if (!note) {
+      note = document.createElement('div');
+      note.id = 'virtualGuideNote';
+      note.className = 'virtual-guide-note';
+      status.insertAdjacentElement('afterend', note);
+    }
+    note.innerHTML = '<strong>촬영 팁</strong><br>원두가 모래처럼 너무 작게 보이면 더 가까이, 입자가 서로 붙어 큰 덩어리처럼 잡히면 양을 줄여 한 겹으로 펼쳐주세요. 값이 과하게 굵게 나오지 않도록 1200µm 초과 후보는 대표값 계산에서 제외합니다.';
+  }
+  const histTitle = document.querySelector('.histogram .section-title');
+  if (histTitle) { histTitle.classList.remove('no-ref-title'); histTitle.classList.add('virtual-guide-title'); histTitle.textContent = '100–1200µm DISTRIBUTION'; }
+  const guide = document.getElementById('grindGuideSection');
+  if (guide) {
+    guide.innerHTML = `
+      <div class="section-title">분쇄도 측정 가이드 · 100원 가이드 자동 기준</div>
+      <div class="guide-steps">
+        <div class="guide-step"><div class="step-num">1</div><div class="step-text">흰 종이 위에 분쇄 원두를 아주 얇게, 서로 겹치지 않게 펼칩니다.</div></div>
+        <div class="guide-step"><div class="step-num">2</div><div class="step-text">화면의 원형 가이드 안에 분쇄 입자가 크게 보이도록 가까이 맞춥니다. 동전이나 통원두를 함께 놓을 필요는 없습니다.</div></div>
+        <div class="guide-step"><div class="step-num">3</div><div class="step-text">CAPTURE를 누르면 여러 프레임을 자동 분석한 뒤 100–1200µm 범위의 대표 분쇄도를 계산합니다.</div></div>
+      </div>`;
+  }
+}
+
+applyNoReferenceGrindUI = applyVirtualGuideGrindUI;
+
+resetGrindA4State = function(showMsg=true) {
+  grindLastAnalysis = null;
+  noRefLastResult = null;
+  noRefLastRawD50Px = null;
+  const wrap = document.getElementById('grindCanvasWrap');
+  const results = document.getElementById('grindResults');
+  const view = document.getElementById('grindCanvas');
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  if (wrap) wrap.style.display = 'none';
+  if (results) results.style.display = 'none';
+  if (view) { const ctx = view.getContext('2d'); if (ctx) ctx.clearRect(0,0,view.width||1,view.height||1); }
+  ['measureBtn','floatCaptureBtn','floatResetBtn','grindResetBtn'].forEach(id => {
+    const b = document.getElementById(id); if (!b) return;
+    b.disabled = false;
+    if (id === 'floatCaptureBtn' || id === 'measureBtn') b.textContent = 'CAPTURE';
+    if (id === 'floatResetBtn') b.textContent = 'RESET';
+    if (id === 'grindResetBtn') b.textContent = 'RESET / 다시 촬영';
+  });
+  if (status) status.innerHTML = showMsg ? '<strong>RESET 완료</strong><br>분쇄 원두를 원형 가이드 안에 맞춘 뒤 다시 CAPTURE 하세요.' : '분쇄 원두를 원형 가이드 안에 맞춘 뒤 CAPTURE 하세요.';
+  const note = document.getElementById('virtualGuideNote');
+  if (note) note.innerHTML = '<strong>촬영 팁</strong><br>원두가 모래처럼 너무 작게 보이면 더 가까이, 입자가 서로 붙어 큰 덩어리처럼 잡히면 양을 줄여 한 겹으로 펼쳐주세요.';
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = '100원 GUIDE · READY';
+  setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
+};
+
+updateModeUI = function() {
+  ensureVirtualGuideGrindUIAssets();
+  const colorMode = currentAnalyzer === 'color';
+  const viewport = document.querySelector('.camera-viewport');
+  if (viewport) viewport.classList.toggle('grind-mode', !colorMode);
+  const permTitle = document.getElementById('permTitle');
+  const permDesc = document.getElementById('permDesc');
+  if (permTitle) permTitle.textContent = colorMode ? '카메라 접근 필요' : '분쇄도 측정 준비';
+  if (permDesc) permDesc.innerHTML = colorMode
+    ? '분쇄된 원두를 종이컵에 담고<br>플래시를 켜서 위에서 비추면<br>로스팅 컬러를 측정합니다'
+    : '흰 종이 위 분쇄 원두를<br>원형 가이드 안에 가깝게 맞춘 뒤<br>CAPTURE 하면 분쇄도를 분석합니다';
+  const measureBtn = document.getElementById('measureBtn');
+  if (measureBtn) measureBtn.textContent = colorMode ? 'MEASURE' : 'CAPTURE';
+  const floatCapture = document.getElementById('floatCaptureBtn');
+  if (floatCapture) floatCapture.textContent = 'CAPTURE';
+  [document.getElementById('resultsPanel'), document.getElementById('historySection'), document.querySelector('.guide-section'), document.querySelector('.ref-section')].forEach(el => {
+    if (!el) return;
+    if (el.id === 'historySection') el.style.display = colorMode && history.length ? 'block' : 'none';
+    else if (el.id === 'resultsPanel') el.style.display = colorMode && stream ? 'block' : 'none';
+    else el.style.display = colorMode ? '' : 'none';
+  });
+  [document.getElementById('grindPanel'), document.getElementById('grindGuideSection')].forEach(el => { if (el) el.style.display = colorMode ? 'none' : 'block'; });
+  const controlsBar = document.getElementById('controlsBar');
+  if (controlsBar) controlsBar.style.display = stream && colorMode ? 'flex' : 'none';
+  const permission = document.getElementById('permissionScreen');
+  if (permission) permission.style.display = stream ? 'none' : 'flex';
+  const overlay = document.getElementById('camOverlay');
+  if (overlay) overlay.style.display = stream ? 'block' : 'none';
+  const error = document.getElementById('errorMsg');
+  if (error) error.style.display = 'none';
+  const hudL = document.getElementById('hudL');
+  if (hudL && !stream) hudL.textContent = colorMode ? 'L* —' : '100원 GUIDE · READY';
+  if (typeof syncTorchButtons === 'function') syncTorchButtons();
+};
+
+switchAnalyzer = function(mode) {
+  currentAnalyzer = mode === 'grind' ? 'grind' : 'color';
+  const colorMode = currentAnalyzer === 'color';
+  document.getElementById('tabColor').classList.toggle('active', colorMode);
+  document.getElementById('tabGrind').classList.toggle('active', !colorMode);
+  if (!colorMode) applyVirtualGuideGrindUI();
+  updateModeUI();
+  if (stream && torchSupported) applyTorch(colorMode);
+  setStatus(stream ? 'active' : '', stream ? (colorMode ? 'ACTIVE' : 'GRIND') : 'STANDBY');
+};
+
+handleMeasure = function() {
+  if (currentAnalyzer === 'grind') return captureGrindCupMode();
+  return capture();
+};
+
+
+showGrindCupRetry = function(message, detail='') {
+  const status = document.getElementById('grindLoadStatus');
+  if (status) {
+    status.innerHTML = `<strong>${message}</strong><br>${detail || '분쇄 원두를 원형 가이드 안에 맞춘 뒤 CAPTURE 하세요.'}<br><button class="grind-retry" type="button" onclick="resetGrindA4State(true)">RESET / 다시 촬영</button>`;
+  }
+  const hudL = document.getElementById('hudL');
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = 'RETRY · 원형 가이드 맞춤';
+  setStatus('error', 'RETRY');
+};
+
 applyNoReferenceGrindUI();
 switchAnalyzer(currentAnalyzer || 'color');
 
