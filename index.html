@@ -980,6 +980,35 @@
     height: var(--grind-bottom-size, 50%) !important;
   }
 
+
+  /* FINAL v8 UI FIX */
+  .brand-copy {
+    margin-top: 5px;
+    font-size: 9px;
+    line-height: 1.2;
+    letter-spacing: 0.35px;
+    color: var(--w5);
+    font-weight: 500;
+  }
+  .copyright { display: none !important; }
+  .camera-viewport.grind-mode .cam-overlay { pointer-events: none !important; }
+  .camera-viewport.grind-mode .floating-grind-ctrl {
+    display: flex !important;
+    z-index: 80 !important;
+    pointer-events: auto !important;
+  }
+  .camera-viewport.grind-mode .floating-grind-ctrl button {
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .camera-viewport.grind-mode .sample-ring::after {
+    border: 1.8px dashed rgba(255,255,255,0.92) !important;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.22);
+  }
+  .grind-range-wrap input[type=range] { touch-action: pan-x !important; }
+
 </style>
 </head>
 <body>
@@ -990,7 +1019,8 @@
     <div>
       <div class="brand-company">월간커피</div>
       <div class="brand-name">Roast-Lens</div>
-      <div class="brand-sub">COLOR · GRIND ANALYZER</div>
+      <div class="brand-sub">COLOR . GRIND ANALYZED</div>
+      <div class="brand-copy">© inyub Kim. All rights reserved.</div>
     </div>
     <div class="status-pill">
       <div class="status-dot" id="statusDot"></div>
@@ -1281,11 +1311,6 @@
     </table>
   </div>
 
-  <div class="copyright">
-    <strong>월간커피</strong><br>
-    <span class="copyright-app">Roast-Lens</span>
-    © <strong>inyub Kim</strong>. All rights reserved.
-  </div>
 
 </div>
 
@@ -2170,7 +2195,7 @@ function analyzeGrindCore(sourceCanvas, opts={}) {
   const ry = Math.max(0, paper.minY + insetY);
   const rw = Math.min(w - rx, paper.bw - insetX*2);
   const rh = Math.min(h - ry, paper.bh - insetY*2);
-  if (rw < 80 || rh < 80) throw new Error('A4 기준 영역이 너무 작습니다. A4 종이가 더 크게 보이도록 다시 촬영해 주세요.');
+  if (rw < 80 || rh < 80) throw new Error('A4 기준 영역이 너무 작습니다. A4 기준 영역이 충분히 보이도록 다시 촬영해 주세요.');
 
   const roi = ctx.getImageData(rx, ry, rw, rh);
   const rd = roi.data;
@@ -4298,7 +4323,7 @@ function analyzeCupGrindCanvas(sourceCanvas) {
       lumas.push(Math.round(luma(d[i],d[i+1],d[i+2])));
     }
   }
-  if (lumas.length < 1800) throw new Error('컵 바닥 영역이 너무 작게 잡혔습니다. 점선 원을 조금 키우거나 컵을 화면 중앙에 다시 맞춰 주세요.');
+  if (lumas.length < 1800) throw new Error('컵 바닥 기준 영역이 부족합니다. 점선 원을 컵 안쪽 바닥 원에 다시 맞추고 촬영해 주세요.');
 
   const bgCandidates = lumas.filter(v=>v>128).sort((a,b)=>a-b);
   const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length*0.76)] : median(lumas);
@@ -4461,6 +4486,167 @@ function resetGrindCapture(options = {}) {
 // initialize final UI
 updateGrindScaleRatio((document.getElementById('grindBottomRatio') || {}).value || 50);
 switchAnalyzer(currentAnalyzer || 'color');
+
+
+/* =========================================================
+   FINAL v8 INTERACTION FIX
+   - Moves floating controls out of pointer-events:none overlay.
+   - Rebuilds dotted circle slider update.
+   - Rebuilds capture handler so CAPTURE always re-enables.
+   - Keeps footer hidden and copyright in top header.
+========================================================= */
+(function finalV8InteractionFix(){
+  function $(id){ return document.getElementById(id); }
+
+  // Move capture controls directly under camera viewport so they are not blocked by overlay.
+  const vp = document.querySelector('.camera-viewport');
+  const floating = $('floatingGrindCtrl');
+  if (vp && floating && floating.parentElement !== vp) {
+    vp.appendChild(floating);
+  }
+
+  // Ensure slider has wider and visible control range.
+  const ratioInput = $('grindBottomRatio');
+  if (ratioInput) {
+    ratioInput.min = '30';
+    ratioInput.max = '85';
+    ratioInput.step = '1';
+    if (!ratioInput.value) ratioInput.value = '50';
+  }
+
+  // Update the dotted circle both via CSS root and direct element style.
+  updateGrindScaleRatio = function(v) {
+    const input = $('grindBottomRatio');
+    const raw = v == null && input ? input.value : v;
+    const n = Math.max(30, Math.min(85, Number(raw || 50)));
+    grindBottomRatio = n / 100;
+    document.documentElement.style.setProperty('--grind-bottom-size', n + '%');
+    const ring = $('sampleRing');
+    if (ring) {
+      ring.style.setProperty('--grind-bottom-size', n + '%');
+      // force repaint for iOS Safari
+      ring.style.transform = 'translate(-50%, -50%) scale(1.0001)';
+      requestAnimationFrame(function(){ ring.style.transform = 'translate(-50%, -50%)'; });
+    }
+    const lab = $('grindBottomRatioLabel');
+    if (lab) lab.textContent = n + '%';
+    const status = $('grindLoadStatus');
+    if (status && currentAnalyzer === 'grind' && !grindLastAnalysis) {
+      status.innerHTML = '<strong>점선 원 ' + n + '%</strong><br>컵 안쪽 바닥 원과 점선 원이 겹치도록 맞춘 뒤 CAPTURE 하세요.';
+    }
+    if (currentAnalyzer === 'grind' && stream) {
+      try { sampleGrindLiveFrame(); } catch(e) {}
+    }
+  };
+
+  if (ratioInput) {
+    ratioInput.oninput = function(){ updateGrindScaleRatio(this.value); };
+    ratioInput.onchange = function(){ updateGrindScaleRatio(this.value); };
+    ratioInput.addEventListener('pointerdown', function(ev){ ev.stopPropagation(); }, { passive:true });
+    ratioInput.addEventListener('touchstart', function(ev){ ev.stopPropagation(); }, { passive:true });
+  }
+
+  // A stable capture implementation, not relying on stacked previous wrappers.
+  captureGrindCupMode = async function() {
+    const video = $('video');
+    if (!video || video.readyState < 2 || !video.videoWidth) {
+      alert('카메라가 준비되지 않았습니다. 카메라 시작 후 다시 시도해 주세요.');
+      return;
+    }
+
+    const measureBtn = $('measureBtn');
+    const floatBtn = $('floatCaptureBtn');
+    const resetBtn = $('floatResetBtn');
+    const allBtns = [measureBtn, floatBtn, resetBtn].filter(Boolean);
+    allBtns.forEach(function(b){ b.disabled = true; });
+    if (measureBtn) measureBtn.textContent = 'CAPTURING';
+    if (floatBtn) floatBtn.textContent = 'CAPTURING';
+    setStatus('active', 'CAPTURING');
+
+    try {
+      if (typeof resetGrindCapture === 'function') {
+        resetGrindCapture({ keepStatus:true, noScroll:true });
+      }
+      await sleep(80);
+
+      const scale = Math.min(1, 2200 / Math.max(video.videoWidth, video.videoHeight));
+      const w = Math.max(1, Math.round(video.videoWidth * scale));
+      const h = Math.max(1, Math.round(video.videoHeight * scale));
+      grindSrcCanvas = document.createElement('canvas');
+      grindSrcCanvas.width = w;
+      grindSrcCanvas.height = h;
+      const srcCtx = grindSrcCanvas.getContext('2d', { willReadFrequently:true });
+      srcCtx.drawImage(video, 0, 0, w, h);
+
+      const result = analyzeCupGrindCanvas(grindSrcCanvas);
+      grindLastAnalysis = result;
+
+      const view = $('grindCanvas');
+      if (view) {
+        view.width = w;
+        view.height = h;
+        const vctx = view.getContext('2d', { willReadFrequently:true });
+        vctx.drawImage(grindSrcCanvas, 0, 0);
+        drawGrindOverlay(vctx, result.guide, result.roi, result.valid, result);
+      }
+      const wrap = $('grindCanvasWrap');
+      if (wrap) wrap.style.display = 'block';
+      renderGrindResults(result);
+      const results = $('grindResults');
+      if (results) results.style.display = 'block';
+      setStatus('active', result.qLabel || 'DONE');
+    } catch(err) {
+      console.error(err);
+      setStatus('error', 'RETRY');
+      const msg = (err && err.message) ? err.message : String(err);
+      alert(msg || '분석 중 오류가 발생했습니다. RESET 후 다시 촬영해 주세요.');
+    } finally {
+      allBtns.forEach(function(b){ b.disabled = false; });
+      if (measureBtn) measureBtn.textContent = currentAnalyzer === 'grind' ? 'CAPTURE' : 'MEASURE';
+      if (floatBtn) floatBtn.textContent = 'CAPTURE';
+    }
+  };
+
+  handleMeasure = function() {
+    if (currentAnalyzer === 'grind') return captureGrindCupMode();
+    return capture();
+  };
+
+  // Bind handlers directly in case inline onclick is blocked or overwritten.
+  ['floatCaptureBtn','measureBtn'].forEach(function(id){
+    const el = $(id);
+    if (!el) return;
+    el.onclick = function(ev){
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      handleMeasure();
+      return false;
+    };
+  });
+  const reset = $('floatResetBtn');
+  if (reset) {
+    reset.onclick = function(ev){
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      resetGrindCapture({ noScroll:true });
+      return false;
+    };
+  }
+
+  // Patch mode UI once more after older wrappers.
+  const prevSwitch = switchAnalyzer;
+  switchAnalyzer = function(mode) {
+    prevSwitch(mode);
+    const colorMode = currentAnalyzer === 'color';
+    const floating = $('floatingGrindCtrl');
+    const controls = $('controlsBar');
+    if (floating) floating.style.display = colorMode ? 'none' : (stream ? 'flex' : 'none');
+    if (controls) controls.style.display = colorMode && stream ? 'flex' : 'none';
+    updateGrindScaleRatio((ratioInput && ratioInput.value) || Math.round(grindBottomRatio * 100));
+  };
+
+  // Re-run current mode and slider state safely.
+  updateGrindScaleRatio((ratioInput && ratioInput.value) || 50);
+  switchAnalyzer(currentAnalyzer || 'color');
+})();
 
 </script>
 </body>
