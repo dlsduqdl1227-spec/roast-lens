@@ -7,8 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Roast-Lens</title>
-<meta name="author" content="Monthly Coffee Education Leader _ Inyub Kim">
-<meta name="copyright" content="© Monthly Coffee Education Leader _ Inyub Kim">
+<meta name="author" content="월간커피 / Inyub Kim">
+<meta name="copyright" content="© inyub Kim. All rights reserved.">
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -62,6 +62,15 @@
     flex-shrink: 0;
   }
 
+  .brand-company {
+    font-size: 10px;
+    color: var(--w4);
+    letter-spacing: 1.2px;
+    margin-bottom: 5px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
   .brand-name {
     font-family: var(--font-brand);
     font-size: 22px;
@@ -75,7 +84,7 @@
     font-size: 9px;
     color: var(--w4);
     letter-spacing: 2px;
-    margin-top: 3px;
+    margin-top: 5px;
   }
 
   .status-pill {
@@ -524,17 +533,29 @@
 
   /* COPYRIGHT */
   .copyright {
-    padding: 0 20px 26px;
+    margin: 6px 20px 26px;
+    padding: 14px 12px 0;
     text-align: center;
-    font-size: 9px;
-    letter-spacing: 0.8px;
+    font-size: 10px;
+    letter-spacing: 0.4px;
     color: var(--w5);
-    line-height: 1.6;
+    line-height: 1.7;
+    border-top: 0.5px solid var(--border);
+  }
+
+  .copyright-app {
+    display:block;
+    font-family: var(--font-brand);
+    font-size: 14px;
+    color: var(--w3);
+    font-weight: 800;
+    letter-spacing: -0.2px;
+    margin-bottom: 2px;
   }
 
   .copyright strong {
     color: var(--w4);
-    font-weight: 400;
+    font-weight: 600;
   }
 
   /* ERROR */
@@ -920,6 +941,45 @@
     text-align: center;
   }
 
+  .float-reset {
+    border: none;
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+    font: 700 13px/1 var(--font-main);
+    backdrop-filter: blur(10px);
+  }
+  .grind-reset-row {
+    margin-top: 10px;
+    grid-template-columns: 1fr;
+  }
+
+  .grind-scale-field { grid-column: 1 / -1; }
+  .grind-range-wrap {
+    display:flex; align-items:center; gap:10px;
+    min-height:44px; padding:0 12px;
+    border:1px solid var(--border); border-radius:10px; background:#fff;
+  }
+  .grind-range-wrap input[type=range] {
+    flex:1; margin:0; padding:0; height:4px;
+    -webkit-appearance:none; appearance:none; background:#ddd; border-radius:999px;
+  }
+  .grind-range-wrap input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none;
+    width:22px; height:22px; border-radius:50%; background:#111;
+  }
+  .grind-range-wrap input[type=range]::-moz-range-thumb {
+    width:22px; height:22px; border-radius:50%; background:#111; border:none;
+  }
+  .grind-range-wrap span {
+    width:42px; text-align:right; font-size:12px; color:#111; font-weight:700;
+  }
+  .camera-viewport.grind-mode .sample-ring::after {
+    width: var(--grind-bottom-size, 50%) !important;
+    height: var(--grind-bottom-size, 50%) !important;
+  }
+
 </style>
 </head>
 <body>
@@ -928,6 +988,7 @@
 
   <div class="header">
     <div>
+      <div class="brand-company">월간커피</div>
       <div class="brand-name">Roast-Lens</div>
       <div class="brand-sub">COLOR · GRIND ANALYZER</div>
     </div>
@@ -974,6 +1035,7 @@
       <div class="hud-L" id="hudL">L* —</div>
       <div class="floating-grind-ctrl" id="floatingGrindCtrl">
         <button class="float-torch" id="floatTorchBtn" onclick="toggleTorch()">FLASH OFF</button>
+        <button class="float-reset" id="floatResetBtn" onclick="resetGrindCapture()">RESET</button>
         <button class="float-capture" id="floatCaptureBtn" onclick="handleMeasure()">CAPTURE</button>
       </div>
     </div>
@@ -1000,8 +1062,18 @@
           <label for="grindDoseHint">권장 샘플량</label>
           <div class="grind-pill" id="grindDoseHint">원두 1~2알 분량</div>
         </div>
+        <div class="grind-field grind-scale-field">
+          <label for="grindBottomRatio">점선 원 크기</label>
+          <div class="grind-range-wrap">
+            <input type="range" id="grindBottomRatio" min="36" max="72" value="50" oninput="updateGrindScaleRatio(this.value)">
+            <span id="grindBottomRatioLabel">50%</span>
+          </div>
+        </div>
       </div>
-      <div class="grind-quality" id="grindLoadStatus">카메라를 시작한 뒤 종이컵 안쪽 바닥 원을 가이드 원에 맞추세요. 너무 어두우면 FLASH ON, 반사가 강하면 FLASH OFF를 권장합니다.</div>
+      <div class="grind-quality" id="grindLoadStatus">카메라를 시작한 뒤 종이컵 안쪽 바닥 원을 점선 원에 맞추세요. 필요하면 점선 원 크기를 조절하고, 너무 어두우면 FLASH ON을 사용하세요.</div>
+      <div class="grind-actions grind-reset-row">
+        <button class="btn-grind secondary" id="grindResetBtn" onclick="resetGrindCapture()">다시 촬영 준비</button>
+      </div>
     </div>
 
     <div class="grind-canvas-wrap" id="grindCanvasWrap">
@@ -1154,11 +1226,11 @@
       </div>
       <div class="guide-step">
         <div class="step-num">2</div>
-        <div class="step-text">GRIND SIZE 탭에서 컵 규격을 고른 뒤, 컵 <strong>안쪽 바닥 원</strong>이 가이드 원과 비슷한 크기로 보이도록 높이를 맞추기</div>
+        <div class="step-text">GRIND SIZE 탭에서 컵 규격을 고른 뒤, 컵 <strong>안쪽 바닥 원</strong>이 화면의 점선 원과 겹치도록 높이 또는 점선 원 크기를 맞추기</div>
       </div>
       <div class="guide-step">
         <div class="step-num">3</div>
-        <div class="step-text">기본은 FLASH OFF. 화면이 어두우면 FLASH ON, 반사가 강하면 FLASH OFF로 바꾸고, live 안내 문구가 LIGHT OK에 가까워질 때 CAPTURE</div>
+        <div class="step-text">기본은 FLASH OFF. 화면이 어두우면 FLASH ON, 반사가 강하면 FLASH OFF로 바꾸고, live 안내 문구가 LIGHT OK로 표시될 때 CAPTURE</div>
       </div>
       <div class="guide-step">
         <div class="step-num">4</div>
@@ -1210,7 +1282,9 @@
   </div>
 
   <div class="copyright">
-    © <strong>Monthly Coffee Education Leader _ Inyub Kim</strong>
+    <strong>월간커피</strong><br>
+    <span class="copyright-app">Roast-Lens</span>
+    © <strong>inyub Kim</strong>. All rights reserved.
   </div>
 
 </div>
@@ -2043,7 +2117,7 @@ function assessGrindLight(imageData, w, h, paper) {
     score -= 36;
   } else if (bg < 165) {
     label = 'LIGHT MID';
-    advice = '조금 어두움 · 창가/스탠드 조명 보강 권장';
+    advice = '조금 어두움 · 밝은 환경 또는 FLASH ON 권장';
     score -= 16;
   }
   if (bg > 244) {
@@ -2444,8 +2518,8 @@ function assessCupLight(canvas, guide) {
   let flashHint = torchOn ? 'FLASH ON' : 'FLASH OFF';
   if (meanY < 150 || loPct > 0.14) {
     score -= 26; label = 'LIGHT LOW';
-    flashHint = torchOn ? '조명 조금 더 가까이' : 'FLASH ON 권장';
-    advice = '컵 안쪽이 어둡습니다. 밝은 조명 또는 FLASH ON을 권장합니다.';
+    flashHint = torchOn ? '밝기 보정 필요' : 'FLASH ON 권장';
+    advice = '컵 안쪽이 어둡습니다. 밝은 밝은 환경 또는 FLASH ON을 권장합니다.';
   } else if (hiPct > 0.09) {
     score -= 22; label = 'REFLECTION HIGH';
     flashHint = torchOn ? 'FLASH OFF 권장' : '조명 각도 조정';
@@ -2453,7 +2527,7 @@ function assessCupLight(canvas, guide) {
   } else if (stdY > 32) {
     score -= 16; label = 'LIGHT UNEVEN';
     flashHint = torchOn ? '컵을 더 수평으로' : '조명 균일화';
-    advice = '그림자 편차가 있습니다. 컵을 수평으로 두고 조명을 정면에 가깝게 맞춰주세요.';
+    advice = '그림자 편차가 있습니다. 컵을 수평으로 두고 조명이 한쪽으로 치우치지 않게 맞춰주세요.';
   } else {
     advice = torchOn ? '조명 상태가 안정적입니다.' : '기본은 FLASH OFF, 너무 어두워질 때만 FLASH ON을 쓰세요.';
   }
@@ -2478,7 +2552,7 @@ function sampleGrindLiveFrame() {
   const hudL = document.getElementById('hudL');
   const alignText = `CUP MODE · 바닥 원을 가이드에 맞춤 · ${light.label} · ${light.flashHint}`;
   if (hudL) hudL.textContent = alignText;
-  if (status) status.innerHTML = `<strong>${light.label}</strong> · ${light.flashHint}<br>${light.advice} · 컵 안쪽 바닥 원이 가이드선과 비슷한 크기로 보이게 높이를 맞춘 뒤 CAPTURE 하세요.`;
+  if (status) status.innerHTML = `<strong>${light.label}</strong> · ${light.flashHint}<br>${light.advice} · 컵 안쪽 바닥 원이 가이드선과 겹치도록 맞춘 뒤 CAPTURE 하세요.`;
 }
 
 function startLiveSampling() {
@@ -2989,8 +3063,8 @@ function assessCupLight(canvas, guide) {
   let flashHint = torchOn ? 'FLASH ON' : 'FLASH OFF';
   if (meanY < 142 || loPct > 0.14) {
     score -= 28; label = 'LIGHT LOW';
-    flashHint = torchOn ? '조명 조금 더 가까이' : 'FLASH ON 권장';
-    advice = '컵 안쪽이 어둡습니다. 밝은 조명 또는 FLASH ON을 권장합니다.';
+    flashHint = torchOn ? '밝기 보정 필요' : 'FLASH ON 권장';
+    advice = '컵 안쪽이 어둡습니다. 밝은 밝은 환경 또는 FLASH ON을 권장합니다.';
   } else if (hiPct > 0.075) {
     score -= 24; label = 'REFLECTION HIGH';
     flashHint = torchOn ? 'FLASH OFF 권장' : '조명 각도 조정';
@@ -3026,10 +3100,10 @@ function sampleGrindLiveFrame() {
       alignAdvice = '정렬 좋음 · 흔들리지 않게 CAPTURE';
     } else if (edge.r < guide.bottomR) {
       align = 'MOVE CLOSER';
-      alignAdvice = '컵 바닥 원이 작습니다 · 휴대폰을 조금 더 가까이';
+      alignAdvice = '컵 바닥 원이 점선 원보다 작습니다 · 점선 원 크기 또는 촬영 위치를 다시 맞춰주세요';
     } else {
       align = 'MOVE UP';
-      alignAdvice = '컵 바닥 원이 큽니다 · 휴대폰을 조금 더 멀리';
+      alignAdvice = '컵 바닥 원이 점선 원보다 큽니다 · 점선 원 크기 또는 촬영 위치를 다시 맞춰주세요';
     }
   }
   const status = document.getElementById('grindLoadStatus');
@@ -4033,6 +4107,359 @@ renderGrindResults = function(r) {
     `v4: 거리 강제 안내 제거, 컬러+밝기 배경분리, 입자 조각 병합 적용${dbg}. 공식 체 분석/레이저 분석을 대체하지 않습니다. 덩어리/채프 의심 ${r.clumpCount}개 제외.`;
 };
 
+switchAnalyzer(currentAnalyzer || 'color');
+
+
+function resetGrindCapture(options = {}) {
+  const keepStatus = !!options.keepStatus;
+  grindSrcCanvas = null;
+  grindLastAnalysis = null;
+  const wrap = document.getElementById('grindCanvasWrap');
+  const results = document.getElementById('grindResults');
+  const canvas = document.getElementById('grindCanvas');
+  if (wrap) wrap.style.display = 'none';
+  if (results) results.style.display = 'none';
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx && ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+  }
+  const hudL = document.getElementById('hudL');
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = '컵 바닥 원을 가이드선에 맞추세요';
+  const status = document.getElementById('grindLoadStatus');
+  const sel = document.getElementById('cupPreset');
+  const label = sel && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : `${grindCupBaseMM}mm`;
+  if (status) status.innerHTML = `<strong>라이브로 복귀했습니다.</strong><br>${label} 기준 · 컵 안쪽 바닥 원을 가이드 원에 다시 맞춘 뒤 CAPTURE 하세요.`;
+  if (stream && currentAnalyzer === 'grind' && !keepStatus) setStatus('active', 'GRIND');
+  const viewport = document.querySelector('.camera-viewport');
+  if (viewport && !options.noScroll) viewport.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+const __prevSwitchAnalyzer_v5 = switchAnalyzer;
+switchAnalyzer = function(mode) {
+  __prevSwitchAnalyzer_v5(mode);
+  if (mode === 'grind') {
+    const floatReset = document.getElementById('floatResetBtn');
+    const panelReset = document.getElementById('grindResetBtn');
+    if (floatReset) floatReset.style.display = 'inline-flex';
+    if (panelReset) panelReset.style.display = 'inline-flex';
+  }
+};
+
+const __prevCaptureGrindCupMode_v5 = captureGrindCupMode;
+captureGrindCupMode = async function() {
+  resetGrindCapture({ keepStatus: true, noScroll: true });
+  const btns = [document.getElementById('measureBtn'), document.getElementById('floatCaptureBtn')].filter(Boolean);
+  const resetBtns = [document.getElementById('floatResetBtn'), document.getElementById('grindResetBtn')].filter(Boolean);
+  btns.forEach(b => { b.disabled = true; });
+  resetBtns.forEach(b => { b.disabled = true; });
+  try {
+    await __prevCaptureGrindCupMode_v5();
+  } finally {
+    btns.forEach(b => { b.disabled = false; });
+    resetBtns.forEach(b => { b.disabled = false; });
+  }
+};
+
+// Ensure initial grind state is clean
+resetGrindCapture({ keepStatus: true, noScroll: true });
+
+
+/* =========================================================
+   FINAL v6 STABLE GRIND PATCH
+   - Manual dotted-circle scale control: user aligns cup-bottom plane.
+   - Uses guide scale as primary; cup-edge detection is only a warning.
+   - More tolerant particle boundary growth + weighted representative D50.
+   - Reset / retake flow remains active.
+========================================================= */
+let grindBottomRatio = 0.50;
+
+function updateGrindScaleRatio(v) {
+  const n = Math.max(36, Math.min(72, Number(v || 50)));
+  grindBottomRatio = n / 100;
+  document.documentElement.style.setProperty('--grind-bottom-size', n + '%');
+  const lab = document.getElementById('grindBottomRatioLabel');
+  if (lab) lab.textContent = n + '%';
+  const status = document.getElementById('grindLoadStatus');
+  if (status && currentAnalyzer === 'grind' && !grindLastAnalysis) {
+    status.innerHTML = `<strong>점선 원 ${n}%</strong><br>컵 안쪽 바닥 원이 점선 원과 겹치도록 맞춘 뒤 CAPTURE 하세요.`;
+  }
+}
+
+function getGrindGuideGeom(w, h) {
+  const d = Math.min(w, h) * 0.72;
+  const r = d / 2;
+  return {
+    cx: w / 2,
+    cy: h / 2,
+    guideR: r,
+    bottomR: r * grindBottomRatio,
+    baseDiameterPx: r * grindBottomRatio * 2
+  };
+}
+
+const __updateModeUI_before_v6 = updateModeUI;
+updateModeUI = function() {
+  __updateModeUI_before_v6();
+  const colorMode = currentAnalyzer === 'color';
+  const ratio = Math.round(grindBottomRatio * 100);
+  document.documentElement.style.setProperty('--grind-bottom-size', ratio + '%');
+  const lab = document.getElementById('grindBottomRatioLabel');
+  if (lab) lab.textContent = ratio + '%';
+  const desc = document.getElementById('permDesc');
+  if (desc && !colorMode) {
+    desc.innerHTML = '종이컵 안 바닥에 원두 1~2알 분량을 분쇄해 넣고<br><strong>컵 안쪽 바닥 원</strong>을 점선 원에 맞춘 뒤<br>화면 안 CAPTURE 버튼을 누르세요';
+  }
+};
+
+function sampleGrindLiveFrame() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || !video.videoWidth) return;
+  ensureGrindTinyCanvas();
+  const maxDim = 360;
+  const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.max(1, Math.round(video.videoWidth * scale));
+  const h = Math.max(1, Math.round(video.videoHeight * scale));
+  grindLiveTinyCanvas.width = w;
+  grindLiveTinyCanvas.height = h;
+  grindLiveTinyCtx.drawImage(video, 0, 0, w, h);
+  const guide = getGrindGuideGeom(w, h);
+  const light = assessCupLight(grindLiveTinyCanvas, guide);
+  const ratio = Math.round(grindBottomRatio * 100);
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  const msg = `SCALE GUIDE ${ratio}% · ${light.label} · ${light.flashHint}`;
+  if (hudL) hudL.textContent = msg;
+  if (status && !grindLastAnalysis) {
+    status.innerHTML = `<strong>SCALE GUIDE ${ratio}%</strong> · ${light.label} · ${light.flashHint}<br>` +
+      `컵 안쪽 바닥 원이 점선 원과 정확히 겹치게 맞추세요. 수치가 계속 낮으면 점선 원을 조금 줄여 재측정하세요.<br>` +
+      `${light.advice}`;
+  }
+}
+
+function _componentizeMask(mask, w, h) {
+  const visited = new Uint8Array(mask.length);
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+  const comps = [];
+  const stack = [];
+  for (let idx=0; idx<mask.length; idx++) {
+    if (!mask[idx] || visited[idx]) continue;
+    let area=0, minx=w, miny=h, maxx=0, maxy=0;
+    stack.length=0; stack.push(idx); visited[idx]=1;
+    while (stack.length) {
+      const cur=stack.pop();
+      const y=Math.floor(cur/w), x=cur-y*w;
+      area++;
+      if (x<minx) minx=x; if (x>maxx) maxx=x; if (y<miny) miny=y; if (y>maxy) maxy=y;
+      for (const [ox,oy] of neighbors) {
+        const nx=x+ox, ny=y+oy;
+        if (nx<0||ny<0||nx>=w||ny>=h) continue;
+        const ni=ny*w+nx;
+        if (mask[ni] && !visited[ni]) { visited[ni]=1; stack.push(ni); }
+      }
+    }
+    if (area >= 2) {
+      const bw=maxx-minx+1, bh=maxy-miny+1;
+      comps.push({ area, minx, miny, maxx, maxy, bw, bh, fill: area / Math.max(1, bw*bh), aspect: Math.max(bw,bh) / Math.max(1, Math.min(bw,bh)) });
+    }
+  }
+  return comps;
+}
+
+function analyzeCupGrindCanvas(sourceCanvas) {
+  const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  const w = sourceCanvas.width, h = sourceCanvas.height;
+  const guide = getGrindGuideGeom(w, h);
+  const edge = estimateCupBottom(sourceCanvas, guide);
+  const baseR = guide.bottomR; // final: manual guide is the measurement scale
+  const analysisR = baseR * 0.92;
+  const light = assessCupLight(sourceCanvas, guide);
+  const mmPerPx = grindCupBaseMM / Math.max(1, baseR * 2);
+
+  const roi = {
+    x: Math.max(0, Math.round(guide.cx - analysisR)),
+    y: Math.max(0, Math.round(guide.cy - analysisR)),
+    w: Math.min(w, Math.round(analysisR * 2)),
+    h: Math.min(h, Math.round(analysisR * 2)),
+    cx: guide.cx,
+    cy: guide.cy,
+    r: analysisR
+  };
+  roi.cxLocal = guide.cx - roi.x;
+  roi.cyLocal = guide.cy - roi.y;
+
+  const img = ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
+  const d = img.data;
+  const lumas = [];
+  for (let y=0; y<roi.h; y++) {
+    for (let x=0; x<roi.w; x++) {
+      const dx=x-roi.cxLocal, dy=y-roi.cyLocal;
+      if (dx*dx+dy*dy > analysisR*analysisR) continue;
+      const i=(y*roi.w+x)*4;
+      lumas.push(Math.round(luma(d[i],d[i+1],d[i+2])));
+    }
+  }
+  if (lumas.length < 1800) throw new Error('컵 바닥 영역이 너무 작게 잡혔습니다. 점선 원을 조금 키우거나 컵을 화면 중앙에 다시 맞춰 주세요.');
+
+  const bgCandidates = lumas.filter(v=>v>128).sort((a,b)=>a-b);
+  const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length*0.76)] : median(lumas);
+  const otsu = otsuThreshold(lumas);
+  const tile = Math.max(20, Math.min(70, Math.round(analysisR / 8)));
+  const bgObj = _buildTileBgRGB(d, roi.w, roi.h, roi.cxLocal, roi.cyLocal, analysisR, tile);
+
+  const hard = new Uint8Array(roi.w * roi.h);
+  const soft = new Uint8Array(roi.w * roi.h);
+  let coreArea = 0;
+  for (let y=0; y<roi.h; y++) {
+    for (let x=0; x<roi.w; x++) {
+      const dx=x-roi.cxLocal, dy=y-roi.cyLocal;
+      if (dx*dx+dy*dy > analysisR*analysisR) continue;
+      const idx=y*roi.w+x, i=idx*4;
+      const R=d[i], G=d[i+1], B=d[i+2];
+      const Y=luma(R,G,B), C=chroma(R,G,B);
+      const bg=_tileBgRGBAt(bgObj,x,y);
+      const yContrast = bg.y - Y;
+      const colorDist = Math.sqrt((R-bg.r)*(R-bg.r)*0.25 + (G-bg.g)*(G-bg.g)*0.50 + (B-bg.b)*(B-bg.b)*0.25);
+      const brownShift = (R < bg.r - 6 && G < bg.g - 5 && B < bg.b - 3) || (C > 7 && Y < bg.y - 4);
+      const hardHit = ((yContrast > 16 && Y < 218) || (colorDist > 20 && brownShift) || (Y < Math.min(otsu-1, bgL-30))) && !(C < 5 && yContrast < 30 && Y > 95);
+      const softHit = ((yContrast > 5.5 && Y < 238) || colorDist > 9.5 || (brownShift && yContrast > 2.5)) && !(C < 4 && yContrast < 16 && Y > 108);
+      if (hardHit) { hard[idx]=1; coreArea++; }
+      if (softHit) soft[idx]=1;
+    }
+  }
+
+  let mask = _constrainedGrow(hard, soft, roi.w, roi.h, 7);
+  // For mobile photos, fragmented highlights are the main cause of under-sizing.
+  const pxPer700 = 700 / Math.max(1, mmPerPx * 1000);
+  const closeRad = Math.max(2, Math.min(6, Math.round(pxPer700 * 0.28)));
+  mask = _morphCloseRadius(mask, roi.w, roi.h, closeRad);
+
+  const fragments = _componentizeMask(mask, roi.w, roi.h);
+  const gapPx = Math.max(3, Math.min(9, Math.round(230 / Math.max(1, mmPerPx*1000))));
+  const merged = _mergeNearbyFragments(fragments, gapPx);
+  const comps = [];
+
+  for (const c of merged) {
+    const bw=c.maxx-c.minx+1, bh=c.maxy-c.miny+1;
+    const eqPx=Math.sqrt((4*c.area)/Math.PI);
+    const boxPx=Math.sqrt(bw*bh);
+    const feretPx=Math.max(bw,bh);
+    let diaPx;
+    if (c.fill > 0.55) diaPx = 0.62*eqPx + 0.38*Math.max(boxPx*0.92, feretPx*0.70);
+    else if (c.fill > 0.28) diaPx = 0.42*eqPx + 0.58*Math.max(boxPx*0.96, feretPx*0.74);
+    else diaPx = 0.26*eqPx + 0.74*Math.max(boxPx, feretPx*0.78);
+    const diaUm = diaPx * mmPerPx * 1000 * 1.14;
+    if (diaUm >= 45 && diaUm <= 3800) comps.push({...c, d:diaUm, weight:Math.max(c.area, Math.PI*Math.pow(diaPx/2,2)*0.92), eqPx, boxPx, feretPx});
+  }
+
+  if (comps.length < 8) throw new Error('입자를 충분히 인식하지 못했습니다. 원두를 조금 더 넓게 퍼뜨리고 다시 촬영해 주세요.');
+
+  const rawDs=comps.map(c=>c.d).sort((a,b)=>a-b);
+  const rawMed=median(rawDs), rawSd=stdev(rawDs);
+  const valid=[]; let clumpCount=0, clumpArea=0;
+  for (const c of comps) {
+    const huge = c.d > Math.max(3200, rawMed + 3.4*rawSd);
+    const sliver = c.aspect > 5.8 && c.fill < 0.22 && c.d > 900;
+    const hollow = c.fill < 0.08 && c.d > 1350;
+    if (huge || sliver || hollow) { clumpCount++; clumpArea += c.area; }
+    else valid.push(c);
+  }
+  if (valid.length < 8) throw new Error('유효 입자가 너무 적습니다. 원두 양을 아주 조금 늘리거나 입자가 겹치지 않게 다시 촬영해 주세요.');
+
+  const countDs=valid.map(c=>c.d).sort((a,b)=>a-b);
+  const countD10=percentileSorted(countDs,0.10);
+  const countD50=percentileSorted(countDs,0.50);
+  const countD90=percentileSorted(countDs,0.90);
+  const d10=_percentileWeightedBy(valid,0.10,'weight');
+  const d50=_percentileWeightedBy(valid,0.50,'weight');
+  const d90=_percentileWeightedBy(valid,0.90,'weight');
+  const areaD50=countD50;
+  const span=d50 ? (d90-d10)/d50 : 0;
+  const finesPct=_pctWeighted(valid,c=>c.d<300,'weight');
+  const bouldersPct=_pctWeighted(valid,c=>c.d>1200,'weight');
+  const totalWeight=valid.reduce((s,c)=>s+Math.max(0.0001,c.weight||c.area||1),0)||1;
+  const bins=[[0,200],[200,300],[300,500],[500,700],[700,850],[850,1000],[1000,1200],[1200,1600],[1600,99999]].map(([lo,hi])=>{
+    const wt=valid.reduce((s,c)=>s+(c.d>=lo&&c.d<hi?Math.max(0.0001,c.weight||c.area||1):0),0);
+    return {lo,hi,pct:wt/totalWeight*100};
+  });
+
+  let qScore=100;
+  const darkCoverage=coreArea/Math.max(1,roi.w*roi.h);
+  const clumpRatio=clumpArea/Math.max(1,coreArea);
+  if (edge.detected && edge.err > 0.35) qScore-=5;
+  if (light.score<75) qScore-=Math.round((75-light.score)*0.45);
+  if (valid.length<35) qScore-=12;
+  if (darkCoverage<0.00045 || darkCoverage>0.17) qScore-=10;
+  if (clumpRatio>0.18) qScore-=12;
+  if (span>3.3) qScore-=6;
+  const fineSkew=d50&&countD50?d50/countD50:1;
+  if (fineSkew>5.8) qScore-=8;
+  qScore=Math.max(0,Math.min(100,Math.round(qScore)));
+  const qLabel=qScore>=78?'HIGH':qScore>=55?'MID':'LOW';
+
+  return {
+    guide:{...guide,bottomR:baseR,edgeDetected:edge.detected,edgeStrength:edge.strength,edgeErr:edge.err},
+    light,edge,valid,roi,d10,d50,d90,areaD50,countD10,countD50,countD90,span,
+    finesPct,bouldersPct,bins,qScore,qLabel,clumpCount,
+    threshold:Math.min(otsu,bgL),bgL,scaleUmPerPx:mmPerPx*1000,
+    cup:{baseMM:grindCupBaseMM,label:document.getElementById('cupPreset').options[document.getElementById('cupPreset').selectedIndex].text},
+    method:'FINAL_V6_MANUAL_SCALE_WEIGHTED_D50', debug:{fragments:fragments.length, merged:merged.length, closeRad, gapPx, bottomRatio:Math.round(grindBottomRatio*100)}
+  };
+}
+
+renderGrindResults = function(r) {
+  const fmt = v => Math.round(v).toLocaleString('ko-KR');
+  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
+  document.getElementById('grindClass').textContent = _grindInterpretation(r.d50);
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  const areaEl = document.getElementById('grindAreaD50');
+  if (areaEl) areaEl.textContent = fmt(r.countD50 || r.areaD50);
+  document.getElementById('grindSpan').textContent = r.span.toFixed(2);
+  document.getElementById('grindFines').textContent = r.finesPct.toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = r.bouldersPct.toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = r.valid.length.toLocaleString('ko-KR');
+  const maxPct = Math.max(1, ...r.bins.map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = r.bins.map(b => {
+    const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
+    const width = Math.max(2, b.pct / maxPct * 100);
+    return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
+  }).join('');
+  const dbg = r.debug ? ` · guide ${r.debug.bottomRatio}% · fragments ${r.debug.fragments}→${r.debug.merged}` : '';
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${r.cup.label} 기준 · 점선 원 스케일 적용 · ${r.scaleUmPerPx.toFixed(1)}µm/px<br>` +
+    `대표값은 면적가중 D50입니다 · COUNT D50 ${Math.round(r.countD50).toLocaleString('ko-KR')}µm<br>` +
+    `${r.light.label} · ${r.light.flashHint} · ${r.light.advice}<br>` +
+    `FINAL v6: 컵 바닥 원 수동 스케일, 입자 경계 확장, 조각 병합, 면적가중 분포 적용${dbg}. 공식 체 분석/레이저 분석을 대체하지 않습니다.`;
+};
+
+function resetGrindCapture(options = {}) {
+  const keepStatus = !!options.keepStatus;
+  grindSrcCanvas = null;
+  grindLastAnalysis = null;
+  const wrap = document.getElementById('grindCanvasWrap');
+  const results = document.getElementById('grindResults');
+  const canvas = document.getElementById('grindCanvas');
+  if (wrap) wrap.style.display = 'none';
+  if (results) results.style.display = 'none';
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx && ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+  }
+  const ratio = Math.round(grindBottomRatio * 100);
+  const hudL = document.getElementById('hudL');
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = `SCALE GUIDE ${ratio}%`;
+  const status = document.getElementById('grindLoadStatus');
+  const sel = document.getElementById('cupPreset');
+  const label = sel && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : `${grindCupBaseMM}mm`;
+  if (status) status.innerHTML = `<strong>다시 촬영 준비 완료</strong><br>${label} 기준 · 컵 안쪽 바닥 원을 점선 원과 겹치게 맞춘 뒤 CAPTURE 하세요.`;
+  if (stream && currentAnalyzer === 'grind' && !keepStatus) setStatus('active', 'GRIND');
+  const viewport = document.querySelector('.camera-viewport');
+  if (viewport && !options.noScroll) viewport.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// initialize final UI
+updateGrindScaleRatio((document.getElementById('grindBottomRatio') || {}).value || 50);
 switchAnalyzer(currentAnalyzer || 'color');
 
 </script>
