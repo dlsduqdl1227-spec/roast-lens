@@ -4453,6 +4453,406 @@ applyA4GrindCopy();
 window.addEventListener('resize', updateModeUI);
 switchAnalyzer(currentAnalyzer || 'color');
 
+
+/* =========================================================
+   FINAL GRIND PATCH · CLOSE CUP MODE
+   - A4 full-sheet mode is disabled for grind-size analysis.
+   - Reason: when the full A4 must fit in the frame, each particle occupies too few pixels,
+     which can inflate micron values after segmentation.
+   - New standard: close-up cup-bottom reference. The cup-bottom circle supplies scale while
+     keeping particles large enough for mobile camera analysis.
+========================================================= */
+const CLOSE_CUP_FINAL = {
+  defaultBaseMM: 48,
+  captureMaxDim: 2400,
+  liveDim: 420,
+  guideOuterRatio: 0.88,
+  bottomRatio: 0.68,
+  minValidParticles: 40,
+  minPxPerParticle: 5.5
+};
+
+function applyCloseCupGrindStyle() {
+  if (document.getElementById('closeCupGrindStyle')) return;
+  const style = document.createElement('style');
+  style.id = 'closeCupGrindStyle';
+  style.textContent = `
+    html body .camera-viewport.grind-mode .sample-ring {
+      width: var(--grind-ring-size, 300px) !important;
+      height: var(--grind-ring-size, 300px) !important;
+      border-radius: 50% !important;
+      border: 2px solid rgba(255,255,255,0.90) !important;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,.12) !important;
+    }
+    html body .camera-viewport.grind-mode .sample-ring::before {
+      content: '' !important;
+      position: absolute !important;
+      top: 50% !important; left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      width: 5px !important; height: 5px !important;
+      border-radius: 50% !important;
+      background: #fff !important;
+    }
+    html body .camera-viewport.grind-mode .sample-ring::after {
+      content: '' !important;
+      position: absolute !important;
+      top: 50% !important; left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      width: 68% !important; height: 68% !important;
+      border-radius: 50% !important;
+      border: 1.5px dashed rgba(255,255,255,.62) !important;
+      right: auto !important; bottom: auto !important;
+    }
+    html body .camera-viewport.grind-mode .ch-h { width: 64% !important; }
+    html body .camera-viewport.grind-mode .ch-v { height: 64% !important; }
+    .close-cup-tip {
+      margin-top: 10px;
+      padding: 11px 12px;
+      border: .5px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255,255,255,.035);
+      color: var(--w3);
+      font-size: 11px;
+      line-height: 1.6;
+      font-family: var(--font-main);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function applyCloseCupGrindUI() {
+  applyCloseCupGrindStyle();
+  const title = document.querySelector('#grindPanel .grind-title');
+  if (title) { title.textContent = ''; title.setAttribute('aria-hidden', 'true'); }
+  const desc = document.querySelector('#grindPanel .grind-desc');
+  if (desc) { desc.textContent = ''; desc.setAttribute('aria-hidden', 'true'); }
+
+  const settings = document.querySelector('#grindPanel .grind-settings');
+  if (settings) {
+    settings.innerHTML = `
+      <div class="grind-field">
+        <label for="cupPreset">기준 컵 바닥 지름</label>
+        <select id="cupPreset" onchange="updateCupPreset()">
+          <option value="43">6.5oz · 43mm</option>
+          <option value="48" selected>10oz · 48mm</option>
+          <option value="50">13oz · 50mm</option>
+          <option value="55">대형컵 · 55mm</option>
+        </select>
+      </div>
+      <div class="grind-field">
+        <label>촬영 방식</label>
+        <div class="grind-pill">Close Cup Mode</div>
+      </div>`;
+  }
+
+  const status = document.getElementById('grindLoadStatus');
+  if (status) {
+    status.innerHTML = '<strong>컵 안쪽 바닥 원을 점선 원에 맞추세요.</strong><br>멀리서 A4 전체를 찍지 않고, 컵 안에서 가까이 촬영해 입자 픽셀 수를 확보합니다.';
+    if (!document.getElementById('closeCupTip')) {
+      const tip = document.createElement('div');
+      tip.id = 'closeCupTip';
+      tip.className = 'close-cup-tip';
+      tip.innerHTML = '권장: 흰 종이컵 또는 밝은 컵 · 원두 1~2알 분량 · 컵 바닥에 한 겹으로 얇게 펼치기 · 기본 FLASH OFF';
+      status.insertAdjacentElement('afterend', tip);
+    }
+  }
+
+  const guide = document.getElementById('grindGuideSection');
+  if (guide) {
+    guide.innerHTML = `
+      <div class="section-title">분쇄도 측정 가이드 · CLOSE CUP MODE</div>
+      <div class="guide-steps">
+        <div class="guide-step"><div class="step-num">1</div><div class="step-text">흰 종이컵 또는 안쪽이 밝은 컵을 사용합니다. 컵 바닥 지름은 위 선택값과 최대한 맞춰주세요.</div></div>
+        <div class="guide-step"><div class="step-num">2</div><div class="step-text">분쇄 원두는 1~2알 분량만 넣고 컵 바닥에 한 겹으로 얇게 펼칩니다. 겹침이 있으면 값이 크게 튈 수 있습니다.</div></div>
+        <div class="guide-step"><div class="step-num">3</div><div class="step-text">화면의 점선 원에 컵 안쪽 바닥 원을 맞춥니다. LIVE 안내가 MOVE CLOSER 또는 MOVE UP을 표시하면 거리를 조정하세요.</div></div>
+        <div class="guide-step"><div class="step-num">4</div><div class="step-text">기본은 FLASH OFF입니다. 컵 내부가 어두울 때만 FLASH ON을 사용하고, 반사가 강하면 다시 끄세요.</div></div>
+        <div class="guide-step"><div class="step-num">TIP</div><div class="step-text">A4 전체 촬영보다 입자를 더 크게 잡아 미크론값 튐을 줄이는 방식입니다. 같은 컵과 같은 거리로 반복 측정할수록 비교 정확도가 좋아집니다.</div></div>
+      </div>`;
+  }
+
+  updateCupPreset();
+}
+
+updateCupPreset = function() {
+  const sel = document.getElementById('cupPreset');
+  grindCupBaseMM = Number(sel ? sel.value : CLOSE_CUP_FINAL.defaultBaseMM) || CLOSE_CUP_FINAL.defaultBaseMM;
+  const label = sel && sel.options && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : `${grindCupBaseMM}mm`;
+  const status = document.getElementById('grindLoadStatus');
+  if (status && currentAnalyzer === 'grind') {
+    status.innerHTML = `<strong>${label} 기준</strong><br>컵 안쪽 바닥 원을 점선 원에 맞추고 가까이서 CAPTURE 하세요.`;
+  }
+};
+
+getGrindGuideGeom = function(w, h) {
+  const d = Math.min(w, h) * CLOSE_CUP_FINAL.guideOuterRatio;
+  const r = d / 2;
+  return {
+    cx: w / 2,
+    cy: h / 2,
+    guideR: r,
+    bottomR: r * CLOSE_CUP_FINAL.bottomRatio,
+    baseDiameterPx: d * CLOSE_CUP_FINAL.bottomRatio
+  };
+};
+
+updateModeUI = function() {
+  applyCloseCupGrindStyle();
+  const colorMode = currentAnalyzer === 'color';
+  const viewport = document.querySelector('.camera-viewport');
+  if (viewport) viewport.classList.toggle('grind-mode', !colorMode);
+
+  const ring = document.getElementById('sampleRing');
+  const vp = document.querySelector('.camera-viewport');
+  if (ring && vp) {
+    const rect = vp.getBoundingClientRect();
+    if (colorMode) {
+      ring.style.width = '110px';
+      ring.style.height = '110px';
+      ring.style.borderRadius = '50%';
+    } else {
+      const size = Math.max(220, Math.min(340, Math.round(Math.min(rect.width, rect.height) * CLOSE_CUP_FINAL.guideOuterRatio)));
+      ring.style.width = size + 'px';
+      ring.style.height = size + 'px';
+      ring.style.borderRadius = '50%';
+      document.documentElement.style.setProperty('--grind-ring-size', size + 'px');
+    }
+  }
+
+  const permTitle = document.getElementById('permTitle');
+  const permDesc = document.getElementById('permDesc');
+  if (permTitle) permTitle.textContent = colorMode ? '카메라 접근 필요' : '분쇄도 측정 준비';
+  if (permDesc) permDesc.innerHTML = colorMode
+    ? '분쇄된 원두를 종이컵에 담고<br>플래시를 켜서 위에서 비추면<br>로스팅 컬러를 측정합니다'
+    : '종이컵 안쪽 바닥에 분쇄 원두를 얇게 펼치고<br><strong>컵 안쪽 바닥 원</strong>을 점선 원에 맞춘 뒤<br>CAPTURE 하면 분쇄도를 분석합니다';
+
+  const measureBtn = document.getElementById('measureBtn');
+  if (measureBtn) measureBtn.textContent = colorMode ? 'MEASURE' : 'CAPTURE';
+  const floatCapture = document.getElementById('floatCaptureBtn');
+  if (floatCapture) floatCapture.textContent = 'CAPTURE';
+
+  const colorEls = [
+    document.getElementById('resultsPanel'),
+    document.getElementById('historySection'),
+    document.querySelector('.guide-section'),
+    document.querySelector('.ref-section')
+  ];
+  colorEls.forEach(el => {
+    if (!el) return;
+    if (el.id === 'historySection') el.style.display = colorMode && history.length ? 'block' : 'none';
+    else if (el.id === 'resultsPanel') el.style.display = colorMode && stream ? 'block' : 'none';
+    else el.style.display = colorMode ? '' : 'none';
+  });
+  [document.getElementById('grindPanel'), document.getElementById('grindGuideSection')].forEach(el => { if (el) el.style.display = colorMode ? 'none' : 'block'; });
+
+  const controlsBar = document.getElementById('controlsBar');
+  if (controlsBar) controlsBar.style.display = stream && colorMode ? 'flex' : 'none';
+  const permission = document.getElementById('permissionScreen');
+  if (permission) permission.style.display = stream ? 'none' : 'flex';
+  const overlay = document.getElementById('camOverlay');
+  if (overlay) overlay.style.display = stream ? 'block' : 'none';
+  const error = document.getElementById('errorMsg');
+  if (error) error.style.display = 'none';
+  const hudL = document.getElementById('hudL');
+  if (hudL && !stream) hudL.textContent = colorMode ? 'L* —' : '컵 바닥 원을 점선 원에 맞추세요';
+  syncTorchButtons();
+};
+
+switchAnalyzer = function(mode) {
+  currentAnalyzer = mode === 'grind' ? 'grind' : 'color';
+  const colorMode = currentAnalyzer === 'color';
+  document.getElementById('tabColor').classList.toggle('active', colorMode);
+  document.getElementById('tabGrind').classList.toggle('active', !colorMode);
+  if (!colorMode) applyCloseCupGrindUI();
+  updateModeUI();
+  if (stream && torchSupported) applyTorch(colorMode);
+  setStatus(stream ? 'active' : '', stream ? (colorMode ? 'ACTIVE' : 'GRIND') : 'STANDBY');
+};
+
+function showGrindCupRetry(message, detail='') {
+  const status = document.getElementById('grindLoadStatus');
+  if (status) {
+    status.innerHTML = `<strong>${message}</strong><br>${detail || '컵 바닥 원을 다시 점선 원에 맞춘 뒤 CAPTURE 하세요.'}<br><button class="grind-retry" type="button" onclick="resetGrindA4State(true)">RESET / 다시 촬영</button>`;
+  }
+  const hudL = document.getElementById('hudL');
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = 'RETRY · 컵 바닥 원 정렬 후 다시 촬영';
+  setStatus('error', 'RETRY');
+}
+
+resetGrindA4State = function(showMsg=true) {
+  grindLastAnalysis = null;
+  const wrap = document.getElementById('grindCanvasWrap');
+  const results = document.getElementById('grindResults');
+  const view = document.getElementById('grindCanvas');
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  if (wrap) wrap.style.display = 'none';
+  if (results) results.style.display = 'none';
+  if (view) {
+    const ctx = view.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, view.width || 1, view.height || 1);
+  }
+  ['measureBtn', 'floatCaptureBtn', 'floatResetBtn', 'grindResetBtn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.disabled = false;
+    if (id === 'floatCaptureBtn' || id === 'measureBtn') b.textContent = 'CAPTURE';
+    if (id === 'floatResetBtn') b.textContent = 'RESET';
+    if (id === 'grindResetBtn') b.textContent = 'RESET / 다시 촬영';
+  });
+  if (status) {
+    status.innerHTML = showMsg
+      ? '<strong>RESET 완료</strong><br>컵 안쪽 바닥 원을 점선 원에 맞춘 뒤 다시 CAPTURE 하세요.'
+      : '컵 바닥 원을 점선 원에 맞춘 뒤 CAPTURE 하세요.';
+  }
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = '컵 바닥 원을 점선 원에 맞추세요';
+  setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
+  if (currentAnalyzer === 'grind' && stream && !animFrameId) startLiveSampling();
+};
+
+function sampleCloseCupLiveFrame() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || !video.videoWidth) return;
+  ensureGrindTinyCanvas();
+  const scale = Math.min(1, CLOSE_CUP_FINAL.liveDim / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.max(1, Math.round(video.videoWidth * scale));
+  const h = Math.max(1, Math.round(video.videoHeight * scale));
+  grindLiveTinyCanvas.width = w;
+  grindLiveTinyCanvas.height = h;
+  grindLiveTinyCtx.drawImage(video, 0, 0, w, h);
+  const guide = getGrindGuideGeom(w, h);
+  const light = assessCupLight(grindLiveTinyCanvas, guide);
+  const edge = light.edge || { detected:false, err:1, r:guide.bottomR };
+  let align = 'ALIGN GUIDE';
+  let advice = '컵 안쪽 바닥 원을 점선 원에 맞추세요.';
+  if (edge.detected) {
+    if (edge.err <= 0.075) {
+      align = 'ALIGN OK';
+      advice = '정렬 좋음 · 흔들리지 않게 CAPTURE';
+    } else if (edge.r < guide.bottomR) {
+      align = 'MOVE CLOSER';
+      advice = '컵 바닥 원이 작습니다. 휴대폰을 조금 더 가까이 가져가세요.';
+    } else {
+      align = 'MOVE UP';
+      advice = '컵 바닥 원이 큽니다. 휴대폰을 조금만 멀리하세요.';
+    }
+  }
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  const alignText = `${align} · ${light.label} · ${light.flashHint}`;
+  if (hudL) hudL.textContent = alignText;
+  if (status) status.innerHTML = `<strong>${align}</strong> · ${light.label} · ${light.flashHint}<br>${advice}<br>${light.advice}`;
+}
+
+startLiveSampling = function() {
+  function loop(ts) {
+    if (!lastLiveTs || ts - lastLiveTs >= AUTO_CAL.liveInterval) {
+      if (currentAnalyzer === 'grind') sampleCloseCupLiveFrame();
+      else {
+        const f = sampleFrame();
+        if (f) {
+          const c = f.corrected;
+          const lab = rgbToLab(c.r, c.g, c.b);
+          const refText = f.white ? 'REF OK' : 'NO REF';
+          document.getElementById('hudColor').style.background = `rgb(${c.r},${c.g},${c.b})`;
+          document.getElementById('hudL').textContent = `L* ${lab.L.toFixed(1)} · ${refText}`;
+        }
+      }
+      lastLiveTs = ts;
+    }
+    animFrameId = requestAnimationFrame(loop);
+  }
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = requestAnimationFrame(loop);
+};
+
+captureGrindCupMode = async function() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || !video.videoWidth) {
+    showGrindCupRetry('카메라 준비 전입니다.', '카메라 시작 후 다시 시도해 주세요.');
+    return;
+  }
+  const btns = [document.getElementById('measureBtn'), document.getElementById('floatCaptureBtn'), document.getElementById('floatResetBtn'), document.getElementById('grindResetBtn')].filter(Boolean);
+  btns.forEach(b => {
+    b.disabled = true;
+    if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'ANALYZING';
+  });
+  setStatus('active', 'ANALYZING');
+  await sleep(90);
+  const scale = Math.min(1, CLOSE_CUP_FINAL.captureMaxDim / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.max(1, Math.round(video.videoWidth * scale));
+  const h = Math.max(1, Math.round(video.videoHeight * scale));
+  grindSrcCanvas = document.createElement('canvas');
+  grindSrcCanvas.width = w; grindSrcCanvas.height = h;
+  const ctx = grindSrcCanvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, w, h);
+  try {
+    const result = analyzeCupGrindCanvas(grindSrcCanvas);
+    grindLastAnalysis = result;
+    const view = document.getElementById('grindCanvas');
+    view.width = w; view.height = h;
+    const vctx = view.getContext('2d', { willReadFrequently: true });
+    vctx.drawImage(grindSrcCanvas, 0, 0);
+    drawGrindOverlay(vctx, result.guide, result.roi, result.valid, result);
+    document.getElementById('grindCanvasWrap').style.display = 'block';
+    renderGrindResults(result);
+    document.getElementById('grindResults').style.display = 'block';
+    setStatus('active', result.qLabel);
+    setTimeout(() => { const res = document.getElementById('grindResults'); if (res) res.scrollIntoView({ behavior:'smooth', block:'start' }); }, 120);
+  } catch (err) {
+    showGrindCupRetry('분석을 완료하지 못했습니다.', err.message || String(err));
+  } finally {
+    btns.forEach(b => {
+      b.disabled = false;
+      if (b.id === 'measureBtn' || b.id === 'floatCaptureBtn') b.textContent = 'CAPTURE';
+      if (b.id === 'floatResetBtn') b.textContent = 'RESET';
+      if (b.id === 'grindResetBtn') b.textContent = 'RESET / 다시 촬영';
+    });
+  }
+};
+
+handleMeasure = function() {
+  if (currentAnalyzer === 'grind') return captureGrindCupMode();
+  return capture();
+};
+
+renderGrindResults = function(r) {
+  const fmt = v => Math.round(v || 0).toLocaleString('ko-KR');
+  const d50 = r.d50 || 0;
+  document.getElementById('grindResults').style.display = 'block';
+  document.getElementById('grindD50').textContent = fmt(d50) + 'µm';
+  document.getElementById('grindClass').textContent = _grindInterpretation ? _grindInterpretation(d50) : classifyGrind(d50);
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  const areaEl = document.getElementById('grindAreaD50');
+  if (areaEl) areaEl.textContent = fmt(r.countD50 || r.areaD50);
+  document.getElementById('grindSpan').textContent = (r.span || 0).toFixed(2);
+  document.getElementById('grindFines').textContent = (r.finesPct || 0).toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = (r.bouldersPct || 0).toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = (r.valid ? r.valid.length : 0).toLocaleString('ko-KR');
+  const maxPct = Math.max(1, ...(r.bins || []).map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = (r.bins || []).map(b => {
+    const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
+    const width = Math.max(2, b.pct / maxPct * 100);
+    return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
+  }).join('');
+  const edgeText = r.edge && r.edge.detected
+    ? `컵 바닥 자동 보정 적용 · 오차 ${(r.edge.err*100).toFixed(1)}%`
+    : '컵 바닥 자동 보정 미확실 · 점선 가이드 기준 적용';
+  const pxCheck = r.d50 && r.scaleUmPerPx ? (r.d50 / r.scaleUmPerPx) : 0;
+  const pxWarn = pxCheck && pxCheck < CLOSE_CUP_FINAL.minPxPerParticle ? '<br><strong>주의:</strong> 입자가 아직 작게 잡힙니다. 컵 바닥 원이 점선보다 작다면 조금 더 가까이 촬영하세요.' : '';
+  const countText = r.countD50 ? ` · COUNT D50 ${fmt(r.countD50)}µm` : '';
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${r.cup ? r.cup.label : grindCupBaseMM + 'mm'} 기준 · ${edgeText}<br>` +
+    `대표값은 면적가중 D50입니다${countText}. 미분이 많으면 COUNT D50은 낮게 나올 수 있습니다.<br>` +
+    `스케일 ${(r.scaleUmPerPx || 0).toFixed(1)}µm/px · ${r.light.label} · ${r.light.flashHint}${pxWarn}<br>` +
+    `${r.light.advice}<br>` +
+    `Close Cup Mode: A4 전체 촬영보다 가까이 촬영해 입자 픽셀 수를 확보합니다. 컵 바닥 지름 설정이 실제와 다르면 같은 비율로 미크론값이 달라집니다. 덩어리/채프 의심 ${r.clumpCount || 0}개 제외.`;
+};
+
+applyCloseCupGrindUI();
+switchAnalyzer(currentAnalyzer || 'color');
+
 </script>
 </body>
 </html>
