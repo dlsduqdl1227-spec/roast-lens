@@ -1011,7 +1011,7 @@
     <div class="grind-results" id="grindResults">
       <div class="grind-headline">
         <div class="grind-main-value" id="grindD50">—</div>
-        <div class="grind-main-label" id="grindClass">MEDIAN PARTICLE SIZE</div>
+        <div class="grind-main-label" id="grindClass">REPRESENTATIVE GRIND SIZE</div>
       </div>
 
       <div class="grind-grid">
@@ -1026,9 +1026,9 @@
           <div class="grind-metric-sub">µm</div>
         </div>
         <div class="grind-metric">
-          <div class="grind-metric-label">AREA D50</div>
+          <div class="grind-metric-label">COUNT D50</div>
           <div class="grind-metric-value" id="grindAreaD50">—</div>
-          <div class="grind-metric-sub">µm · mass-like</div>
+          <div class="grind-metric-sub">µm · number</div>
         </div>
         <div class="grind-metric">
           <div class="grind-metric-label">SPAN</div>
@@ -1053,7 +1053,7 @@
       </div>
 
       <div class="histogram">
-        <div class="section-title" style="margin-bottom:8px;">COUNT-BASED DISTRIBUTION</div>
+        <div class="section-title" style="margin-bottom:8px;">AREA-WEIGHTED DISTRIBUTION</div>
         <div id="grindHistogram"></div>
       </div>
 
@@ -1162,7 +1162,7 @@
       </div>
       <div class="guide-step">
         <div class="step-num">4</div>
-        <div class="step-text">가이드 정렬이 끝나면 CAPTURE 1회로 분석합니다. D10/D50/D90은 입자 개수 기준이고, AREA D50은 큰 입자의 영향을 더 받는 비교용 값입니다.</div>
+        <div class="step-text">가이드 정렬이 끝나면 CAPTURE 1회로 분석합니다. 대표값은 면적가중 기준으로 표시합니다. COUNT D50은 미분까지 포함한 개수 기준 참고값입니다.</div>
       </div>
       <div class="guide-step">
         <div class="step-num">TIP</div>
@@ -3326,6 +3326,332 @@ drawGrindOverlay = function(ctx, guide, roi, valid, result) {
   ctx.fillStyle = '#fff';
   ctx.fillText(msg, pad * 2, pad + th * 0.68);
   ctx.restore();
+};
+
+
+
+// v3 precision patch: segmentation expansion + area-weighted representative grind size
+function _percentileWeightedBy(arr, p, weightKey='weight') {
+  if (!arr || !arr.length) return 0;
+  const a = arr.slice().sort((x, y) => x.d - y.d);
+  const total = a.reduce((s, c) => s + Math.max(0.0001, c[weightKey] || c.area || 1), 0);
+  const target = total * p;
+  let acc = 0;
+  for (const c of a) {
+    acc += Math.max(0.0001, c[weightKey] || c.area || 1);
+    if (acc >= target) return c.d;
+  }
+  return a[a.length - 1].d;
+}
+
+function _pctWeighted(arr, predicate, weightKey='weight') {
+  if (!arr || !arr.length) return 0;
+  let total = 0, hit = 0;
+  for (const c of arr) {
+    const wt = Math.max(0.0001, c[weightKey] || c.area || 1);
+    total += wt;
+    if (predicate(c)) hit += wt;
+  }
+  return total ? hit / total * 100 : 0;
+}
+
+function _buildTileBackground(d, w, h, cx, cy, r, tile) {
+  const gw = Math.ceil(w / tile), gh = Math.ceil(h / tile);
+  const bg = new Float32Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const vals = [];
+      const y0 = gy * tile, y1 = Math.min(h, y0 + tile);
+      const x0 = gx * tile, x1 = Math.min(w, x0 + tile);
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1; x += 2) {
+          const dx = x - cx, dy = y - cy;
+          if (dx*dx + dy*dy > r*r) continue;
+          const i = (y*w + x) * 4;
+          vals.push(Math.round(luma(d[i], d[i+1], d[i+2])));
+        }
+      }
+      if (vals.length) {
+        vals.sort((a,b)=>a-b);
+        bg[gy * gw + gx] = vals[Math.floor(vals.length * 0.82)];
+      } else {
+        bg[gy * gw + gx] = 235;
+      }
+    }
+  }
+  // light smoothing to avoid tile boundary artifacts
+  const smooth = new Float32Array(bg.length);
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      let s = 0, n = 0;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          const nx = gx + ox, ny = gy + oy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+          s += bg[ny * gw + nx]; n++;
+        }
+      }
+      smooth[gy * gw + gx] = n ? s / n : bg[gy * gw + gx];
+    }
+  }
+  return { bg: smooth, gw, gh, tile };
+}
+
+function _tileBgAt(bgObj, x, y) {
+  const gx = Math.max(0, Math.min(bgObj.gw - 1, Math.floor(x / bgObj.tile)));
+  const gy = Math.max(0, Math.min(bgObj.gh - 1, Math.floor(y / bgObj.tile)));
+  return bgObj.bg[gy * bgObj.gw + gx] || 235;
+}
+
+function _constrainedGrow(mask, soft, w, h, iterations) {
+  let cur = mask;
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  for (let it = 0; it < iterations; it++) {
+    const next = new Uint8Array(cur);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y*w + x;
+        if (cur[idx] || !soft[idx]) continue;
+        for (const [ox, oy] of neighbors) {
+          if (cur[(y+oy)*w + (x+ox)]) { next[idx] = 1; break; }
+        }
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+function _morphClose(mask, w, h) {
+  const neighbors = [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  const dil = new Uint8Array(mask.length);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y*w + x;
+      if (mask[idx]) {
+        for (const [ox, oy] of neighbors) dil[(y+oy)*w + (x+ox)] = 1;
+      }
+    }
+  }
+  const ero = new Uint8Array(mask.length);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      let ok = 1;
+      for (const [ox, oy] of neighbors) {
+        if (!dil[(y+oy)*w + (x+ox)]) { ok = 0; break; }
+      }
+      if (ok) ero[y*w + x] = 1;
+    }
+  }
+  return ero;
+}
+
+function _grindInterpretation(d50) {
+  if (d50 < 300) return 'VERY FINE / ESPRESSO-LIKE';
+  if (d50 < 500) return 'FINE';
+  if (d50 < 750) return 'MEDIUM-FINE';
+  if (d50 < 950) return 'MEDIUM / FILTER RANGE';
+  if (d50 < 1200) return 'MEDIUM-COARSE';
+  return 'COARSE';
+}
+
+analyzeCupGrindCanvas = function(sourceCanvas) {
+  const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  const w = sourceCanvas.width, h = sourceCanvas.height;
+  const guide = getGrindGuideGeom(w, h);
+  const edge = estimateCupBottom(sourceCanvas, guide);
+  const baseR = edge.detected ? edge.r : guide.bottomR;
+  const analysisR = baseR * 0.86;
+  const light = assessCupLight(sourceCanvas, guide);
+  const mmPerPx = grindCupBaseMM / Math.max(1, baseR * 2);
+
+  const roi = {
+    x: Math.max(0, Math.round(guide.cx - analysisR)),
+    y: Math.max(0, Math.round(guide.cy - analysisR)),
+    w: Math.min(w, Math.round(analysisR * 2)),
+    h: Math.min(h, Math.round(analysisR * 2)),
+    cx: guide.cx,
+    cy: guide.cy,
+    r: analysisR
+  };
+  roi.cxLocal = guide.cx - roi.x;
+  roi.cyLocal = guide.cy - roi.y;
+
+  const img = ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
+  const d = img.data;
+  const lumas = [];
+  for (let y = 0; y < roi.h; y++) {
+    for (let x = 0; x < roi.w; x++) {
+      const dx = x - roi.cxLocal, dy = y - roi.cyLocal;
+      if (dx*dx + dy*dy > analysisR * analysisR) continue;
+      const i = (y * roi.w + x) * 4;
+      lumas.push(Math.round(luma(d[i], d[i+1], d[i+2])));
+    }
+  }
+  if (lumas.length < 2000) throw new Error('컵 바닥 영역이 너무 작게 잡혔습니다. 컵 안쪽 바닥 원을 점선 원에 맞춰 다시 촬영해 주세요.');
+
+  const bgCandidates = lumas.filter(v => v > 130).sort((a,b)=>a-b);
+  const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length * 0.70)] : median(lumas);
+  const otsu = otsuThreshold(lumas);
+  const tile = Math.max(28, Math.min(70, Math.round(analysisR / 9)));
+  const bgObj = _buildTileBackground(d, roi.w, roi.h, roi.cxLocal, roi.cyLocal, analysisR, tile);
+
+  const hard = new Uint8Array(roi.w * roi.h);
+  const soft = new Uint8Array(roi.w * roi.h);
+  let darkArea = 0;
+  for (let y = 0; y < roi.h; y++) {
+    for (let x = 0; x < roi.w; x++) {
+      const dx = x - roi.cxLocal, dy = y - roi.cyLocal;
+      if (dx*dx + dy*dy > analysisR * analysisR) continue;
+      const idx = y * roi.w + x;
+      const i = idx * 4;
+      const R = d[i], G = d[i+1], B = d[i+2];
+      const Y = luma(R, G, B);
+      const C = chroma(R, G, B);
+      const localBg = Math.max(_tileBgAt(bgObj, x, y), bgL * 0.84);
+      const contrast = localBg - Y;
+      // Hard core: definite particle pixels. Soft shell: lighter particle boundary included by region growing.
+      const brownish = C > 9 && Y < 218 && (R < localBg - 10 || G < localBg - 8 || B < localBg - 8);
+      const hardHit = ((contrast > 22 && Y < 205) || (contrast > 16 && brownish) || (Y < Math.min(otsu - 2, bgL - 36))) && !(C < 7 && contrast < 48 && Y > 82);
+      const softHit = ((contrast > 10 && Y < 226 && (C > 6 || contrast > 20)) || (brownish && contrast > 7)) && !(C < 6 && contrast < 32 && Y > 95);
+      if (hardHit) { hard[idx] = 1; darkArea++; }
+      if (softHit) soft[idx] = 1;
+    }
+  }
+
+  let mask = _constrainedGrow(hard, soft, roi.w, roi.h, 3);
+  mask = _morphClose(mask, roi.w, roi.h);
+
+  const visited = new Uint8Array(mask.length);
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+  const comps = [];
+  const stack = [];
+  for (let idx = 0; idx < mask.length; idx++) {
+    if (!mask[idx] || visited[idx]) continue;
+    let area = 0, minx = roi.w, miny = roi.h, maxx = 0, maxy = 0;
+    stack.length = 0;
+    stack.push(idx);
+    visited[idx] = 1;
+    while (stack.length) {
+      const cur = stack.pop();
+      const y = Math.floor(cur / roi.w), x = cur - y * roi.w;
+      area++;
+      if (x < minx) minx = x;
+      if (x > maxx) maxx = x;
+      if (y < miny) miny = y;
+      if (y > maxy) maxy = y;
+      for (const [ox, oy] of neighbors) {
+        const nx = x + ox, ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= roi.w || ny >= roi.h) continue;
+        const ni = ny * roi.w + nx;
+        if (mask[ni] && !visited[ni]) { visited[ni] = 1; stack.push(ni); }
+      }
+    }
+    if (area < 2) continue;
+    const bw = maxx - minx + 1, bh = maxy - miny + 1;
+    const fill = area / Math.max(1, bw * bh);
+    const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
+    const eqPx = Math.sqrt((4 * area) / Math.PI);
+    const boxPx = Math.sqrt(bw * bh) * 0.88;
+    const feretPx = Math.max(bw, bh) * 0.62;
+    // Blend area and geometry so lightly colored particle edges are not reduced to dark cores only.
+    let diaPx = Math.max(eqPx, Math.min(Math.max(boxPx, feretPx), eqPx * 2.15));
+    if (fill > 0.42) diaPx = 0.62 * eqPx + 0.38 * diaPx;
+    else diaPx = 0.45 * eqPx + 0.55 * diaPx;
+    const diaUm = diaPx * mmPerPx * 1000 * 1.04;
+    if (diaUm >= 55 && diaUm <= 3200) comps.push({ d: diaUm, area, weight: area, minx, miny, maxx, maxy, fill, aspect, eqPx, boxPx });
+  }
+
+  if (comps.length < 12) throw new Error('입자를 충분히 인식하지 못했습니다. 원두를 1~2알 정도만 분쇄해 넣고, 컵 바닥 원을 가이드에 다시 맞춘 뒤 촬영해 주세요.');
+
+  const rawDs = comps.map(c => c.d).sort((a,b)=>a-b);
+  const rawMed = median(rawDs);
+  const rawSd = stdev(rawDs);
+  const valid = [];
+  let clumpCount = 0, clumpArea = 0;
+  for (const c of comps) {
+    // Do not remove normal coarse particles; remove only clear merged clusters or chaff-like slivers.
+    const hugeOutlier = c.d > Math.max(2600, rawMed + 3.1 * rawSd);
+    const sliver = c.aspect > 4.4 && c.fill < 0.34 && c.d > 700;
+    const hollowCluster = c.fill < 0.16 && c.d > 1000;
+    if (hugeOutlier || sliver || hollowCluster) { clumpCount++; clumpArea += c.area; }
+    else valid.push(c);
+  }
+  if (valid.length < 10) throw new Error('겹친 입자가 너무 많습니다. 분쇄 원두를 더 적게 넣고 컵 바닥에 얇게 퍼지게 다시 촬영해 주세요.');
+
+  const countDs = valid.map(c => c.d).sort((a,b)=>a-b);
+  const countD10 = percentileSorted(countDs, 0.10);
+  const countD50 = percentileSorted(countDs, 0.50);
+  const countD90 = percentileSorted(countDs, 0.90);
+  const d10 = _percentileWeightedBy(valid, 0.10, 'weight');
+  const d50 = _percentileWeightedBy(valid, 0.50, 'weight');
+  const d90 = _percentileWeightedBy(valid, 0.90, 'weight');
+  const areaD50 = countD50;
+  const span = d50 ? (d90 - d10) / d50 : 0;
+  const finesPct = _pctWeighted(valid, c => c.d < 300, 'weight');
+  const bouldersPct = _pctWeighted(valid, c => c.d > 1200, 'weight');
+  const totalWeight = valid.reduce((s,c)=>s + Math.max(0.0001, c.weight || c.area || 1), 0) || 1;
+  const bins = [[0,200],[200,300],[300,500],[500,700],[700,850],[850,1000],[1000,1200],[1200,1600],[1600,99999]].map(([lo, hi]) => {
+    const wt = valid.reduce((s,c)=> s + (c.d >= lo && c.d < hi ? Math.max(0.0001, c.weight || c.area || 1) : 0), 0);
+    return { lo, hi, pct: wt / totalWeight * 100 };
+  });
+
+  let qScore = 100;
+  const darkCoverage = darkArea / Math.max(1, roi.w * roi.h);
+  const clumpRatio = clumpArea / Math.max(1, darkArea);
+  if (!edge.detected) qScore -= 12;
+  else if (edge.err > 0.12) qScore -= 10;
+  if (light.score < 75) qScore -= Math.round((75 - light.score) * 0.50);
+  if (valid.length < 60) qScore -= 14;
+  if (darkCoverage < 0.0007 || darkCoverage > 0.13) qScore -= 12;
+  if (clumpRatio > 0.16) qScore -= 14;
+  if (span > 2.8) qScore -= 6;
+  // Very large separation between count and area medians means many fines; not an error, but lower confidence.
+  const fineSkew = d50 && countD50 ? d50 / countD50 : 1;
+  if (fineSkew > 4.5) qScore -= 8;
+  qScore = Math.max(0, Math.min(100, Math.round(qScore)));
+  const qLabel = qScore >= 78 ? 'HIGH' : qScore >= 55 ? 'MID' : 'LOW';
+
+  return {
+    guide: { ...guide, bottomR: baseR, edgeDetected: edge.detected, edgeStrength: edge.strength, edgeErr: edge.err },
+    light, edge, valid, roi,
+    d10, d50, d90, areaD50, countD10, countD50, countD90, span,
+    finesPct, bouldersPct, bins,
+    qScore, qLabel, clumpCount,
+    threshold: Math.min(otsu, bgL), bgL,
+    scaleUmPerPx: mmPerPx * 1000,
+    cup: { baseMM: grindCupBaseMM, label: document.getElementById('cupPreset').options[document.getElementById('cupPreset').selectedIndex].text },
+    method: 'AREA_WEIGHTED_V3'
+  };
+};
+
+renderGrindResults = function(r) {
+  const fmt = v => Math.round(v).toLocaleString('ko-KR');
+  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
+  document.getElementById('grindClass').textContent = _grindInterpretation(r.d50);
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  const areaEl = document.getElementById('grindAreaD50');
+  if (areaEl) areaEl.textContent = fmt(r.countD50 || r.areaD50);
+  document.getElementById('grindSpan').textContent = r.span.toFixed(2);
+  document.getElementById('grindFines').textContent = r.finesPct.toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = r.bouldersPct.toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = r.valid.length.toLocaleString('ko-KR');
+  const maxPct = Math.max(1, ...r.bins.map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = r.bins.map(b => {
+    const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
+    const width = Math.max(2, b.pct / maxPct * 100);
+    return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
+  }).join('');
+  const edgeText = r.edge.detected ? `컵 바닥 자동 보정 적용 · 오차 ${(r.edge.err*100).toFixed(1)}%` : '컵 바닥 자동 보정 미확실 · 가이드 기준 적용';
+  const countText = r.countD50 ? ` · COUNT D50 ${Math.round(r.countD50).toLocaleString('ko-KR')}µm` : '';
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${r.cup.label} 기준 · ${edgeText}<br>` +
+    `대표값은 면적가중 D50입니다${countText}. 미분이 많으면 COUNT D50은 훨씬 낮게 나올 수 있습니다.<br>` +
+    `스케일 ${r.scaleUmPerPx.toFixed(1)}µm/px · ${r.light.label} · ${r.light.flashHint}<br>` +
+    `${r.light.advice}<br>` +
+    `v3 정밀 보정: 국소 배경 추정, 입자 경계 확장, 덩어리 완화 필터 적용. 공식 체 분석/레이저 분석을 대체하지 않습니다. 덩어리/채프 의심 ${r.clumpCount}개 제외.`;
 };
 
 window.addEventListener('resize', updateModeUI);
