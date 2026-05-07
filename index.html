@@ -1159,6 +1159,13 @@
   #stableToolbar button:active { transform: scale(.98); }
   body { padding-bottom: 92px; }
 
+
+  #stableToolbar { display: grid !important; }
+  #stableToolbar button.is-working { opacity: .72; }
+  #stableToolbar button.ok-pulse { animation: stableOkPulse .38s ease; }
+  @keyframes stableOkPulse { 0% { transform: scale(.96); } 100% { transform: scale(1); } }
+  #stableToolbar.debug-hide { display: none !important; }
+
 </style>
 </head>
 <body>
@@ -1222,9 +1229,9 @@
   </div>
 
   <div id="stableToolbar">
-    <button type="button" id="stableFlashBtn" onclick="toggleTorch(); return false;">FLASH OFF</button>
-    <button type="button" id="stableResetBtn" onclick="if(typeof currentAnalyzer!=='undefined' && currentAnalyzer==='grind'){ resetGrindCapture(); } else { try { document.getElementById('resultsPanel').style.display='none'; } catch(e){} try { document.getElementById('hudL').textContent='L* —'; } catch(e){} } return false;">RESET</button>
-    <button type="button" id="stableCaptureBtn" onclick="handleMeasure(); return false;">CAPTURE</button>
+    <button type="button" id="stableFlashBtn">FLASH OFF</button>
+    <button type="button" id="stableResetBtn">RESET</button>
+    <button type="button" id="stableCaptureBtn">CAPTURE</button>
   </div>
 
   <div class="grind-panel" id="grindPanel">
@@ -5500,6 +5507,236 @@ switchAnalyzer(currentAnalyzer || 'color');
   }
   refreshStableToolbar();
   setInterval(refreshStableToolbar, 500);
+})();
+
+
+
+/* =========================================================
+   FINAL v13 BUTTON FIX
+   - Stable toolbar buttons are routed by document-capture events.
+   - RESET and CAPTURE no longer depend on inline onclick or old bars.
+   - Provides immediate visible feedback on every tap.
+========================================================= */
+(function finalV13ButtonFix(){
+  function $(id){ return document.getElementById(id); }
+  function isGrindMode(){
+    try {
+      if (typeof currentAnalyzer !== 'undefined' && currentAnalyzer === 'grind') return true;
+    } catch(e) {}
+    var tab = $('tabGrind');
+    return !!(tab && tab.classList && tab.classList.contains('active'));
+  }
+  function setGlobalMode(mode){
+    try { currentAnalyzer = mode; } catch(e) {}
+    try { window.currentAnalyzer = mode; } catch(e) {}
+  }
+  function pulse(btn, txt){
+    if (!btn) return;
+    if (txt) btn.textContent = txt;
+    btn.classList.remove('ok-pulse');
+    void btn.offsetWidth;
+    btn.classList.add('ok-pulse');
+  }
+  function setStatusSafe(kind, label){
+    try { if (typeof setStatus === 'function') setStatus(kind, label); } catch(e) {}
+  }
+  function hideOldControls(){
+    ['finalActionBar','v10GrindControls','v9GrindControls','floatingGrindCtrl','controlsBar'].forEach(function(id){
+      var el = $(id);
+      if (!el) return;
+      if (id === 'controlsBar') {
+        try { if (isGrindMode()) el.style.display = 'none'; } catch(e) {}
+      } else {
+        el.style.display = 'none';
+      }
+    });
+  }
+  function updateToolbarText(){
+    hideOldControls();
+    var flash = $('stableFlashBtn');
+    var cap = $('stableCaptureBtn');
+    if (flash && !flash.classList.contains('is-working')) {
+      try {
+        flash.textContent = (typeof torchSupported !== 'undefined' && torchSupported)
+          ? ((typeof torchOn !== 'undefined' && torchOn) ? 'FLASH ON' : 'FLASH OFF')
+          : 'FLASH';
+      } catch(e) { flash.textContent = 'FLASH'; }
+    }
+    if (cap && !cap.classList.contains('is-working')) {
+      cap.textContent = isGrindMode() ? 'CAPTURE' : 'MEASURE';
+    }
+  }
+  function resetColor(){
+    var results = $('resultsPanel');
+    var hud = $('hudL');
+    var ring = $('sampleRing');
+    if (results) results.style.display = 'none';
+    if (hud) hud.textContent = 'L* —';
+    if (ring) ring.classList.add('scanning');
+    setStatusSafe('active', 'ACTIVE');
+  }
+  function resetGrindVisible(opts){
+    opts = opts || {};
+    setGlobalMode('grind');
+    try { grindSrcCanvas = null; } catch(e) {}
+    try { grindLastAnalysis = null; } catch(e) {}
+    try { window.grindLastAnalysis = null; } catch(e) {}
+
+    var wrap = $('grindCanvasWrap');
+    var results = $('grindResults');
+    var canvas = $('grindCanvas');
+    if (wrap) wrap.style.display = 'none';
+    if (results) results.style.display = 'none';
+    if (canvas && canvas.getContext) {
+      try {
+        var ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+      } catch(e) {}
+    }
+    var video = $('video');
+    if (video) {
+      try { video.style.display = 'block'; if (video.paused) video.play(); } catch(e) {}
+    }
+    var vp = document.querySelector('.camera-viewport');
+    if (vp) vp.style.display = '';
+    var overlay = $('camOverlay');
+    if (overlay && (typeof stream !== 'undefined' && stream)) overlay.style.display = 'block';
+    var hud = $('hudL');
+    if (hud) hud.textContent = '다시 촬영 가능';
+
+    var sel = $('cupPreset');
+    var label = sel && sel.options && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '10oz · 48mm';
+    var status = $('grindLoadStatus');
+    if (status) status.innerHTML = '<strong>RESET 완료</strong><br>' + label + ' 기준 · 컵 안쪽 바닥 원을 가이드 원에 맞춘 뒤 CAPTURE 하세요.';
+    setStatusSafe('active', 'GRIND');
+    if (!opts.noScroll && vp && vp.scrollIntoView) {
+      try { vp.scrollIntoView({ behavior:'smooth', block:'start' }); } catch(e) {}
+    }
+  }
+  function doReset(){
+    var btn = $('stableResetBtn');
+    pulse(btn, 'RESET OK');
+    try {
+      if (isGrindMode()) {
+        if (typeof resetGrindCapture === 'function') {
+          try { resetGrindCapture({ noScroll:true }); } catch(e) { resetGrindVisible({ noScroll:true }); }
+        } else {
+          resetGrindVisible({ noScroll:true });
+        }
+        // Some previous reset functions are silent; force visible reset state after them.
+        setTimeout(function(){ resetGrindVisible({ noScroll:true }); updateToolbarText(); }, 30);
+      } else {
+        resetColor();
+        setTimeout(updateToolbarText, 250);
+      }
+    } catch(err) {
+      console.error('RESET failed', err);
+      resetGrindVisible({ noScroll:true });
+      updateToolbarText();
+    }
+    setTimeout(updateToolbarText, 520);
+  }
+  async function doCapture(){
+    var cap = $('stableCaptureBtn');
+    var reset = $('stableResetBtn');
+    var grind = isGrindMode();
+    if (grind) setGlobalMode('grind');
+    if (cap) { cap.disabled = true; cap.classList.add('is-working'); cap.textContent = grind ? 'CAPTURING' : 'MEASURING'; }
+    if (reset) reset.disabled = true;
+    try {
+      var video = $('video');
+      if (!video || video.readyState < 2 || !video.videoWidth) {
+        alert('카메라가 준비되지 않았습니다. 먼저 카메라 시작을 눌러주세요.');
+        return;
+      }
+      if (grind) {
+        if (typeof captureGrindCupMode === 'function') {
+          await captureGrindCupMode();
+        } else if (window.captureGrindCupMode) {
+          await window.captureGrindCupMode();
+        } else {
+          throw new Error('분쇄도 캡처 함수가 준비되지 않았습니다.');
+        }
+        var status = $('grindLoadStatus');
+        if (status) status.innerHTML = '<strong>CAPTURE 완료</strong><br>다시 찍으려면 RESET을 누른 뒤 재촬영하세요.';
+      } else {
+        if (typeof capture === 'function') await capture();
+        else throw new Error('컬러 측정 함수가 준비되지 않았습니다.');
+      }
+    } catch(err) {
+      console.error('CAPTURE failed', err);
+      alert((err && err.message) ? err.message : '촬영/분석 중 오류가 발생했습니다. RESET 후 다시 시도해 주세요.');
+    } finally {
+      if (cap) { cap.disabled = false; cap.classList.remove('is-working'); }
+      if (reset) reset.disabled = false;
+      updateToolbarText();
+    }
+  }
+  async function doFlash(){
+    var btn = $('stableFlashBtn');
+    if (btn) { btn.classList.add('is-working'); }
+    try {
+      if (typeof toggleTorch === 'function') await toggleTorch();
+    } catch(err) {
+      console.warn('FLASH failed', err);
+    } finally {
+      if (btn) btn.classList.remove('is-working');
+      updateToolbarText();
+    }
+  }
+
+  var lastTap = { id:'', time:0 };
+  function route(ev){
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest('#stableFlashBtn,#stableResetBtn,#stableCaptureBtn');
+    if (!btn) return;
+    // Run before older handlers/inline handlers.
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    var now = Date.now();
+    if (lastTap.id === btn.id && now - lastTap.time < 320) return false;
+    lastTap = { id:btn.id, time:now };
+    if (btn.id === 'stableFlashBtn') doFlash();
+    if (btn.id === 'stableResetBtn') doReset();
+    if (btn.id === 'stableCaptureBtn') doCapture();
+    return false;
+  }
+
+  // Capture-phase binding is the important fix.
+  ['pointerup','touchend','click'].forEach(function(type){
+    document.addEventListener(type, route, true);
+  });
+
+  // Assign direct element handlers as a second path.
+  var f = $('stableFlashBtn'), r = $('stableResetBtn'), c = $('stableCaptureBtn');
+  if (f) f.onclick = function(e){ return route(e || window.event); };
+  if (r) r.onclick = function(e){ return route(e || window.event); };
+  if (c) c.onclick = function(e){ return route(e || window.event); };
+
+  // Keep toolbar synced after camera/mode changes.
+  try {
+    var oldSwitch = switchAnalyzer;
+    switchAnalyzer = function(mode){
+      var ret = oldSwitch(mode);
+      setTimeout(updateToolbarText, 0);
+      return ret;
+    };
+    window.switchAnalyzer = switchAnalyzer;
+  } catch(e) {}
+  try {
+    var oldStart = startCamera;
+    startCamera = async function(){
+      var ret = await oldStart();
+      setTimeout(updateToolbarText, 0);
+      return ret;
+    };
+    window.startCamera = startCamera;
+  } catch(e) {}
+
+  updateToolbarText();
+  setInterval(updateToolbarText, 600);
 })();
 
 </script>
