@@ -7271,6 +7271,557 @@ showGrindCupRetry = function(message, detail='') {
   setStatus('error', 'RETRY');
 };
 
+
+/* =========================================================
+   GRIND SIZE · Sieve Guide Distance Mode
+   - 실제 레퍼런스를 함께 촬영하지 않고, 원형 가이드 안에서 가까운 고정 거리 촬영을 유도한다.
+   - 분석 결과는 커피에서 쓰는 µm 단위와 표준 체눈(sieve opening) 구간으로 재분류한다.
+   - 절대 입도계는 아니지만, 100~1200µm 범위의 현장 확인/비교 정확도를 높이기 위한 보정 모드.
+========================================================= */
+Object.assign(VIRTUAL_GUIDE_GRIND, {
+  captureDim: 2400,
+  liveDim: 720,
+  // 화면 가이드를 '가까운 고정 거리에서 보이는 분석 영역'으로 사용한다.
+  // 100원 동전 자체를 레퍼런스로 쓰지 않고, 원형 가이드 내부를 약 14mm 관찰 영역으로 환산한다.
+  guideDiameterMM: 14.0,
+  guideDiameterRatio: 0.76,
+  guideCX: 0.50,
+  guideCY: 0.47,
+  sizeCorrection: 0.62,
+  minUm: 100,
+  maxUm: 1200,
+  finesUm: 300,
+  boulderUm: 1200,
+  minValidParticles: 10,
+  multiFrames: 7,
+  frameGap: 70
+});
+
+const GRIND_SIEVE_OPENINGS = [
+  { mesh:'No. 140', um:105 },
+  { mesh:'No. 120', um:125 },
+  { mesh:'No. 100', um:149 },
+  { mesh:'No. 80',  um:177 },
+  { mesh:'No. 70',  um:210 },
+  { mesh:'No. 60',  um:250 },
+  { mesh:'No. 50',  um:297 },
+  { mesh:'No. 45',  um:354 },
+  { mesh:'No. 40',  um:420 },
+  { mesh:'No. 35',  um:500 },
+  { mesh:'No. 30',  um:595 },
+  { mesh:'No. 25',  um:707 },
+  { mesh:'No. 20',  um:841 },
+  { mesh:'No. 18',  um:1000 },
+  { mesh:'No. 16',  um:1190 }
+];
+
+const GRIND_SIEVE_BINS = [
+  [100,149,'100–149µm · No.140–100'],
+  [149,210,'149–210µm · No.100–70'],
+  [210,297,'210–297µm · No.70–50'],
+  [297,420,'297–420µm · No.50–40'],
+  [420,595,'420–595µm · No.40–30'],
+  [595,707,'595–707µm · No.30–25'],
+  [707,841,'707–841µm · No.25–20'],
+  [841,1000,'841–1000µm · No.20–18'],
+  [1000,1200,'1000–1200µm · No.18–16']
+];
+
+function _nearestSieveOpening(um) {
+  let best = GRIND_SIEVE_OPENINGS[0];
+  for (const row of GRIND_SIEVE_OPENINGS) {
+    if (Math.abs(row.um - um) < Math.abs(best.um - um)) best = row;
+  }
+  return best;
+}
+
+function _sieveRangeFor(um) {
+  for (const [lo, hi, label] of GRIND_SIEVE_BINS) {
+    if (um >= lo && um < hi) return { lo, hi, label };
+  }
+  if (um < 100) return { lo:0, hi:100, label:'100µm 미만' };
+  return { lo:1200, hi:Infinity, label:'1200µm 초과' };
+}
+
+function _sieveBinsFromValid(valid) {
+  return GRIND_SIEVE_BINS.map(([lo, hi, label]) => {
+    const count = valid.filter(c => c.d >= lo && c.d < hi).length;
+    return { lo, hi, label, pct: valid.length ? count / valid.length * 100 : 0, count };
+  });
+}
+
+function _dominantSieveBin(valid) {
+  const bins = _sieveBinsFromValid(valid);
+  return bins.slice().sort((a,b) => b.count - a.count || b.pct - a.pct)[0] || bins[0];
+}
+
+function _appendSieveGuideStyle() {
+  if (document.getElementById('sieveGuideDistanceStyle')) return;
+  const style = document.createElement('style');
+  style.id = 'sieveGuideDistanceStyle';
+  style.textContent = `
+    html body .camera-viewport.grind-mode .virtual-coin-guide {
+      width:${VIRTUAL_GUIDE_GRIND.guideDiameterRatio*100}% !important;
+      top:${VIRTUAL_GUIDE_GRIND.guideCY*100}% !important;
+      border-color:rgba(255,255,255,.95) !important;
+      box-shadow:0 0 0 9999px rgba(0,0,0,.12), 0 0 0 8px rgba(255,255,255,.055) inset !important;
+    }
+    html body .camera-viewport.grind-mode .virtual-coin-guide::before {
+      content:'MICRON GUIDE · 100–1200µm' !important;
+      top:-31px !important;
+    }
+    html body .camera-viewport.grind-mode .virtual-coin-guide::after {
+      left:18% !important; right:18% !important; top:18% !important; bottom:18% !important;
+      border-style:dashed !important;
+      opacity:.88 !important;
+    }
+    .sieve-guide-note {
+      margin-top:10px;
+      padding:12px 13px;
+      border:.5px solid var(--border);
+      border-radius:12px;
+      background:rgba(255,255,255,.035);
+      color:var(--w3);
+      font-size:11px;
+      line-height:1.65;
+    }
+    .sieve-guide-note strong { color:var(--w2); }
+  `;
+  document.head.appendChild(style);
+}
+
+// 기존 분석 함수를 보정형 체눈 구간 분석으로 교체
+analyzeVirtualGuideGrindCanvas = function(sourceCanvas, opts={}) {
+  const ctx = sourceCanvas.getContext('2d', { willReadFrequently:true });
+  const w = sourceCanvas.width, h = sourceCanvas.height;
+  const geom = virtualGuideGeom(w, h);
+  const c = geom.circle;
+  const light = assessVirtualGuideLight(sourceCanvas, geom);
+  const img = ctx.getImageData(c.x, c.y, c.w, c.h);
+  const d = img.data;
+  const lumas = [];
+  const rr = (c.w / 2) * 0.92;
+  const cc = c.w / 2;
+  for (let y = 0; y < c.h; y++) {
+    for (let x = 0; x < c.w; x++) {
+      const dx = x - cc, dy = y - cc;
+      if (dx*dx + dy*dy > rr*rr) continue;
+      const i = (y*c.w + x)*4;
+      lumas.push(Math.round(luma(d[i], d[i+1], d[i+2])));
+    }
+  }
+  if (lumas.length < 5000 && !opts.preview) throw new Error('분석 영역이 너무 작습니다. 카메라를 다시 시작한 뒤 촬영해 주세요.');
+  const sortedLum = lumas.slice().sort((a,b)=>a-b);
+  const bgL = percentileSorted(sortedLum, 0.80);
+  const otsu = otsuThreshold(lumas);
+  const globalThreshold = Math.max(22, Math.min(172, Math.min(bgL - 24, otsu - 2)));
+  const tile = Math.max(30, Math.min(82, Math.round(c.w / 10)));
+  const tileCols = Math.ceil(c.w / tile), tileRows = Math.ceil(c.h / tile);
+  const tileBg = new Array(tileCols * tileRows).fill(bgL);
+  for (let ty = 0; ty < tileRows; ty++) {
+    for (let tx = 0; tx < tileCols; tx++) {
+      const vals = [];
+      const x0 = tx*tile, y0 = ty*tile;
+      const x1 = Math.min(c.w, x0+tile), y1 = Math.min(c.h, y0+tile);
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1; x += 2) {
+          const dx = x - cc, dy = y - cc;
+          if (dx*dx + dy*dy > rr*rr) continue;
+          const i = (y*c.w + x)*4;
+          const Y = luma(d[i], d[i+1], d[i+2]);
+          const C = chroma(d[i], d[i+1], d[i+2]);
+          if (Y > 92 && C < 74) vals.push(Y);
+        }
+      }
+      vals.sort((a,b)=>a-b);
+      tileBg[ty*tileCols+tx] = vals.length ? percentileSorted(vals, .82) : bgL;
+    }
+  }
+  function localBgAt(x,y){
+    const tx = Math.max(0, Math.min(tileCols-1, Math.floor(x/tile)));
+    const ty = Math.max(0, Math.min(tileRows-1, Math.floor(y/tile)));
+    return Math.max(tileBg[ty*tileCols+tx] || bgL, bgL * .70);
+  }
+  const mask = new Uint8Array(c.w * c.h);
+  const soft = new Uint8Array(c.w * c.h);
+  let darkArea = 0;
+  for (let y = 0; y < c.h; y++) {
+    for (let x = 0; x < c.w; x++) {
+      const dx = x - cc, dy = y - cc;
+      if (dx*dx + dy*dy > rr*rr) continue;
+      const idx = y*c.w + x;
+      const i = idx*4;
+      const R = d[i], G = d[i+1], B = d[i+2];
+      const Y = luma(R,G,B), C = chroma(R,G,B);
+      const bg = localBgAt(x,y);
+      const contrast = bg - Y;
+      const hardHit = (
+        (Y < globalThreshold && contrast > 16) ||
+        (contrast > 30 && Y < 212) ||
+        (C > 11 && Y < 202 && contrast > 16)
+      ) && !(C < 5 && Y > 104 && contrast < 44);
+      const softHit = (
+        (contrast > 12 && Y < 230 && (C > 5 || contrast > 22)) ||
+        (C > 13 && Y < 214 && contrast > 9)
+      ) && !(C < 5 && Y > 118 && contrast < 30);
+      if (hardHit) { mask[idx] = 1; darkArea++; }
+      if (softHit) soft[idx] = 1;
+    }
+  }
+  const grown = (typeof _constrainedGrow === 'function') ? _constrainedGrow(mask, soft, c.w, c.h, 1) : mask;
+  const visited = new Uint8Array(grown.length);
+  const comps = [];
+  const stack = [];
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+  const scale = geom.scaleUmPerPx;
+  for (let idx = 0; idx < grown.length; idx++) {
+    if (!grown[idx] || visited[idx]) continue;
+    let area = 0, minx = c.w, miny = c.h, maxx = 0, maxy = 0;
+    stack.length = 0; stack.push(idx); visited[idx] = 1;
+    while (stack.length) {
+      const cur = stack.pop();
+      const y = Math.floor(cur / c.w), x = cur - y*c.w;
+      area++;
+      if (x < minx) minx = x; if (x > maxx) maxx = x; if (y < miny) miny = y; if (y > maxy) maxy = y;
+      for (const [ox,oy] of neighbors) {
+        const nx = x + ox, ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= c.w || ny >= c.h) continue;
+        const ni = ny*c.w + nx;
+        if (grown[ni] && !visited[ni]) { visited[ni]=1; stack.push(ni); }
+      }
+    }
+    if (area < 2) continue;
+    const bw = maxx - minx + 1, bh = maxy - miny + 1;
+    const centerX = (minx + maxx) / 2, centerY = (miny + maxy) / 2;
+    const ddx = centerX - cc, ddy = centerY - cc;
+    if (ddx*ddx + ddy*ddy > rr*rr) continue;
+    // 가이드 경계에 닿은 입자는 잘려 보이므로 제외
+    if (minx <= 2 || miny <= 2 || maxx >= c.w-3 || maxy >= c.h-3) continue;
+    const fill = area / Math.max(1, bw*bh);
+    const aspect = Math.max(bw,bh) / Math.max(1, Math.min(bw,bh));
+    const eqPx = Math.sqrt(4 * area / Math.PI);
+    const minorPx = Math.max(1, Math.min(bw,bh));
+    // 굵게 튀는 가장 큰 원인은 붙은 입자를 하나의 큰 입자로 읽는 것.
+    // 따라서 등가원 지름만 보지 않고, 짧은 축과 채움률을 함께 반영한다.
+    const compactPx = Math.min(eqPx, minorPx * (aspect > 1.55 ? 0.92 : 1.04));
+    let diaPx = compactPx * VIRTUAL_GUIDE_GRIND.sizeCorrection;
+    let dUm = diaPx * scale;
+    const likelyMerged = (aspect > 2.25 && dUm > 260) || (fill < 0.28 && dUm > 240) || (dUm > 1200 && (aspect > 1.55 || fill < .52));
+    if (likelyMerged) {
+      const minorUm = Math.max(1, minorPx * 0.68 * VIRTUAL_GUIDE_GRIND.sizeCorrection * scale);
+      if (minorUm >= VIRTUAL_GUIDE_GRIND.minUm && minorUm <= VIRTUAL_GUIDE_GRIND.maxUm) {
+        const splitCount = Math.max(1, Math.min(6, Math.round(Math.max(aspect, dUm / Math.max(1, minorUm)) * 0.75)));
+        for (let s=0; s<splitCount; s++) {
+          comps.push({ rawPx:minorUm/scale, d:minorUm, area:area/splitCount, weight:area/splitCount, minx, miny, maxx, maxy, fill, aspect, merged:false, split:true });
+        }
+      } else {
+        comps.push({ rawPx:diaPx, d:dUm, area, weight:area, minx, miny, maxx, maxy, fill, aspect, merged:true });
+      }
+      continue;
+    }
+    comps.push({ rawPx:diaPx, d:dUm, area, weight:area, minx, miny, maxx, maxy, fill, aspect, merged:false });
+  }
+  const valid = comps.filter(p => !p.merged && p.d >= VIRTUAL_GUIDE_GRIND.minUm && p.d <= VIRTUAL_GUIDE_GRIND.maxUm);
+  const underCount = comps.filter(p => !p.merged && p.d < VIRTUAL_GUIDE_GRIND.minUm).length;
+  const overCount = comps.filter(p => !p.merged && p.d > VIRTUAL_GUIDE_GRIND.maxUm).length;
+  const clumpCount = comps.filter(p => p.merged || p.split).length;
+  if (!opts.preview && valid.length < VIRTUAL_GUIDE_GRIND.minValidParticles) {
+    throw new Error('100~1200µm 범위의 유효 입자가 부족합니다. 원두를 한 겹으로 더 넓게 펼치고, 가이드 원 안에 크게 보이도록 다시 촬영해 주세요.');
+  }
+  const countDs = valid.map(c=>c.d).sort((a,b)=>a-b);
+  const d10 = percentileSorted(countDs, .10) || 0;
+  const countD50 = percentileSorted(countDs, .50) || 0;
+  const d90 = percentileSorted(countDs, .90) || 0;
+  const trimLo = percentileSorted(countDs, .14) || 0, trimHi = percentileSorted(countDs, .84) || 0;
+  const trimmed = countDs.filter(v => v >= trimLo && v <= trimHi);
+  const meanD = trimmed.length ? trimmed.reduce((a,b)=>a+b,0)/trimmed.length : countD50;
+  let representative = Math.max(VIRTUAL_GUIDE_GRIND.minUm, Math.min(VIRTUAL_GUIDE_GRIND.maxUm, Math.round(0.76*countD50 + 0.24*meanD)));
+  // 표준 체눈 환산표의 가까운 구간 안에서 값이 과하게 튀지 않도록 부드럽게 스냅
+  const nearest = _nearestSieveOpening(representative);
+  representative = Math.round(representative * 0.82 + nearest.um * 0.18);
+  const sieveRange = _sieveRangeFor(representative);
+  const dominantBin = _dominantSieveBin(valid);
+  const span = countD50 ? (d90-d10)/countD50 : 0;
+  const finesPct = valid.length ? valid.filter(c=>c.d < VIRTUAL_GUIDE_GRIND.finesUm).length / valid.length * 100 : 0;
+  const bouldersPct = comps.length ? overCount / comps.length * 100 : 0;
+  const bins = _sieveBinsFromValid(valid);
+  let qScore = 84;
+  const darkCoverage = darkArea / Math.max(1, c.w*c.h);
+  if (light.score < 78) qScore -= Math.round((78-light.score)*0.40);
+  if (valid.length < 25) qScore -= 10;
+  if (valid.length < VIRTUAL_GUIDE_GRIND.minValidParticles) qScore -= 18;
+  if (darkCoverage < 0.0006 || darkCoverage > 0.18) qScore -= 10;
+  if (span > 2.8) qScore -= 7;
+  if (overCount > valid.length * .25) qScore -= 8;
+  qScore = Math.max(0, Math.min(100, Math.round(qScore)));
+  const qLabel = qScore >= 78 ? 'HIGH' : qScore >= 55 ? 'MID' : 'LOW';
+  return {
+    guide:geom,
+    roi:{ x:c.x, y:c.y, w:c.w, h:c.h, cx:c.cx, cy:c.cy, r:c.r },
+    valid, all:comps, light,
+    d10, d50:representative, d90, countD50, areaD50:countD50, mean:meanD,
+    span, finesPct, bouldersPct, bins,
+    qScore, qLabel, clumpCount, underCount, overCount,
+    scaleUmPerPx:geom.scaleUmPerPx,
+    rawD50Px: countD50 ? countD50 / geom.scaleUmPerPx : 0,
+    calibrated:true,
+    virtualGuide:true,
+    method:'SIEVE_GUIDE_DISTANCE',
+    nearestSieve:nearest,
+    sieveRange,
+    dominantBin,
+    ref:{ label:'가이드 거리 기준 · 체눈 환산', isBean:false }
+  };
+};
+
+drawVirtualGuideGrindOverlay = function(ctx, result) {
+  const g = result.guide.circle;
+  ctx.save();
+  ctx.lineWidth = Math.max(2, ctx.canvas.width/650);
+  ctx.strokeStyle = 'rgba(255,255,255,.94)';
+  ctx.beginPath();
+  ctx.arc(g.cx, g.cy, g.r, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.36)';
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath();
+  ctx.arc(g.cx, g.cy, g.r*.64, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const maxBoxes = 240;
+  ctx.lineWidth = Math.max(1, ctx.canvas.width/1200);
+  for (let i=0; i<Math.min(maxBoxes, result.valid.length); i++) {
+    const p = result.valid[i];
+    ctx.strokeStyle = p.d < 300 ? 'rgba(255,255,255,.52)' : (p.d > 1000 ? 'rgba(255,255,255,.90)' : 'rgba(255,255,255,.70)');
+    ctx.strokeRect(g.x + p.minx, g.y + p.miny, Math.max(2, p.maxx-p.minx+1), Math.max(2, p.maxy-p.miny+1));
+  }
+  ctx.fillStyle = 'rgba(0,0,0,.74)';
+  const label = `SIEVE GUIDE · ${result.sieveRange ? result.sieveRange.label : '100–1200µm'}`;
+  ctx.font = `${Math.max(18, ctx.canvas.width/64)}px Pretendard, sans-serif`;
+  const pad = 12;
+  const tw = ctx.measureText(label).width;
+  ctx.fillRect(g.cx - tw/2 - pad, Math.max(8, g.y - 44), tw + pad*2, 32);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(label, g.cx - tw/2, Math.max(31, g.y - 21));
+  ctx.restore();
+};
+
+combineVirtualGuideResults = function(results) {
+  if (!results.length) return null;
+  const sorted = results.slice().sort((a,b)=>a.d50-b.d50);
+  const mid = sorted[Math.floor(sorted.length/2)];
+  const med = arr => {
+    const s = arr.filter(v => Number.isFinite(v)).sort((a,b)=>a-b);
+    return s.length ? percentileSorted(s, .50) : 0;
+  };
+  mid.d10 = med(results.map(r=>r.d10));
+  mid.d50 = med(results.map(r=>r.d50));
+  mid.d90 = med(results.map(r=>r.d90));
+  mid.countD50 = med(results.map(r=>r.countD50));
+  mid.mean = med(results.map(r=>r.mean));
+  mid.span = mid.countD50 ? (mid.d90-mid.d10)/mid.countD50 : 0;
+  mid.finesPct = med(results.map(r=>r.finesPct));
+  mid.bouldersPct = med(results.map(r=>r.bouldersPct));
+  mid.qScore = Math.round(med(results.map(r=>r.qScore)));
+  mid.qLabel = mid.qScore >= 78 ? 'HIGH' : mid.qScore >= 55 ? 'MID' : 'LOW';
+  mid.nearestSieve = _nearestSieveOpening(mid.d50);
+  mid.sieveRange = _sieveRangeFor(mid.d50);
+  mid.bins = _sieveBinsFromValid(mid.valid || []);
+  mid.dominantBin = _dominantSieveBin(mid.valid || []);
+  mid.method = 'SIEVE_GUIDE_DISTANCE';
+  mid.multiFrameCount = results.length;
+  return mid;
+};
+
+sampleNoRefLiveFrame = function() {
+  const c = captureDisplayedVideoSquare(VIRTUAL_GUIDE_GRIND.liveDim);
+  if (!c) return;
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  try {
+    const result = analyzeVirtualGuideGrindCanvas(c, { preview:true });
+    const range = result.valid.length >= 8 && result.sieveRange ? ` · ${result.sieveRange.label}` : '';
+    if (hudL) hudL.textContent = `MICRON GUIDE · ${result.light.label}`;
+    if (status) {
+      status.innerHTML = `<strong>가이드 거리 기준</strong> · ${result.light.label}${range}<br>` +
+        `원형 가이드 안에서 입자가 선명하고 크게 보이도록 촬영하세요. 감지 ${result.valid.length}개 · ${result.light.advice}`;
+    }
+    setStatus('active', result.valid.length >= 8 ? 'GUIDE' : 'ALIGN');
+  } catch(e) {
+    if (hudL) hudL.textContent = 'MICRON GUIDE · ALIGN';
+    if (status) status.innerHTML = '<strong>가이드 맞춤 중</strong><br>흰 종이 위 분쇄 원두가 원형 가이드 안에 크게 보이도록 가까이 맞춰주세요.';
+    setStatus('active', 'ALIGN');
+  }
+};
+
+renderGrindResults = function(r) {
+  const fmt = v => Math.round(v || 0).toLocaleString('ko-KR');
+  document.getElementById('grindResults').style.display = 'block';
+  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
+  const sieveLabel = r.sieveRange ? r.sieveRange.label : (_nearestSieveOpening(r.d50).mesh + ' 근접');
+  document.getElementById('grindClass').textContent = `${(_grindInterpretation ? _grindInterpretation(r.d50) : classifyGrind(r.d50))} · ${sieveLabel}`;
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  const areaEl = document.getElementById('grindAreaD50');
+  if (areaEl) areaEl.textContent = fmt(r.countD50 || r.areaD50 || r.d50);
+  document.getElementById('grindSpan').textContent = (r.span || 0).toFixed(2);
+  document.getElementById('grindFines').textContent = (r.finesPct || 0).toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = (r.bouldersPct || 0).toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = (r.valid ? r.valid.length : 0).toLocaleString('ko-KR');
+  const bins = r.bins || [];
+  const maxPct = Math.max(1, ...bins.map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = bins.map(b => {
+    const width = Math.max(2, b.pct / maxPct * 100);
+    const label = b.label || `${b.lo}-${b.hi}µm`;
+    return `<div class="hist-row"><div class="hist-label">${label}</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
+  }).join('');
+  const multi = r.multiFrameCount ? `${r.multiFrameCount}프레임 중앙값 · ` : '';
+  const near = r.nearestSieve ? `${r.nearestSieve.mesh}(${r.nearestSieve.um}µm)` : '—';
+  const dom = r.dominantBin ? r.dominantBin.label : sieveLabel;
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${multi}가이드 거리 기준으로 입자 픽셀을 µm 단위로 환산하고, 표준 체눈 환산표의 100–1200µm 구간과 비교했습니다.<br>` +
+    `대표값 D50 ${fmt(r.d50)}µm · 가장 가까운 체눈 ${near} · 주요 분포 ${dom}<br>` +
+    `D10 ${fmt(r.d10)}µm / D90 ${fmt(r.d90)}µm · COUNT D50 ${fmt(r.countD50)}µm<br>` +
+    `${r.light.label} · ${r.light.advice}<br>` +
+    `100µm 미만 후보 ${r.underCount || 0}개, 1200µm 초과 후보 ${r.overCount || 0}개, 겹침/채프 의심 ${r.clumpCount || 0}개는 대표값 계산에서 제외하거나 짧은 축 기준으로 보정했습니다.<br>` +
+    `레퍼런스 물체를 함께 촬영하지 않는 방식이므로 절대 입도계/체분석을 완전히 대체하지는 않습니다. 같은 휴대폰·같은 촬영거리·같은 조명에서 비교 측정용으로 사용하세요.`;
+};
+
+applyVirtualGuideGrindUI = function() {
+  ensureVirtualGuideGrindUIAssets();
+  _appendSieveGuideStyle();
+  const title = document.querySelector('#grindPanel .grind-title');
+  if (title) { title.textContent = ''; title.setAttribute('aria-hidden','true'); }
+  const desc = document.querySelector('#grindPanel .grind-desc');
+  if (desc) { desc.textContent = ''; desc.setAttribute('aria-hidden','true'); }
+  const settings = document.querySelector('#grindPanel .grind-settings');
+  if (settings) {
+    settings.innerHTML = `
+      <div class="grind-field">
+        <label>측정 방식</label>
+        <div class="grind-pill">가이드 거리 · µm 환산</div>
+      </div>
+      <div class="grind-field">
+        <label>측정 범위</label>
+        <div class="grind-pill">100–1200µm</div>
+      </div>`;
+  }
+  const status = document.getElementById('grindLoadStatus');
+  if (status) {
+    status.innerHTML = '<strong>레퍼런스 없이 촬영합니다.</strong><br>흰 종이 위에 분쇄 원두를 한 겹으로 펼치고, 원형 가이드 안에서 입자가 선명하고 크게 보이도록 가까이 맞춘 뒤 CAPTURE 하세요.';
+    const oldBox = document.getElementById('noRefCalBox');
+    if (oldBox) oldBox.remove();
+    const oldVirtual = document.getElementById('virtualGuideNote');
+    if (oldVirtual) oldVirtual.remove();
+    let note = document.getElementById('sieveGuideNote');
+    if (!note) {
+      note = document.createElement('div');
+      note.id = 'sieveGuideNote';
+      note.className = 'sieve-guide-note';
+      status.insertAdjacentElement('afterend', note);
+    }
+    note.innerHTML = '<strong>촬영 기준</strong><br>가이드는 거리를 일정하게 맞추기 위한 기준선입니다. A4 전체를 넣지 말고, 분쇄 입자가 원 안에서 충분히 크게 보이게 촬영하세요. 앱은 100, 149, 210, 297, 420, 595, 707, 841, 1000, 1190µm 체눈 구간과 비교해 가장 가까운 분쇄도 범위를 표시합니다.';
+  }
+  const histTitle = document.querySelector('.histogram .section-title');
+  if (histTitle) { histTitle.classList.remove('no-ref-title','virtual-guide-title'); histTitle.textContent = 'SIEVE-BASED MICRON DISTRIBUTION'; }
+  const guide = document.getElementById('grindGuideSection');
+  if (guide) {
+    guide.innerHTML = `
+      <div class="section-title">분쇄도 측정 가이드 · 가이드 거리 µm 환산</div>
+      <div class="guide-steps">
+        <div class="guide-step"><div class="step-num">1</div><div class="step-text">흰 종이 위에 분쇄 원두를 아주 얇게, 서로 겹치지 않게 펼칩니다.</div></div>
+        <div class="guide-step"><div class="step-num">2</div><div class="step-text">A4 전체를 맞추지 말고, 원형 가이드 안에서 입자가 선명하게 보일 만큼 가까이 촬영합니다.</div></div>
+        <div class="guide-step"><div class="step-num">3</div><div class="step-text">CAPTURE를 누르면 여러 프레임을 분석해 100–1200µm 범위의 대표값과 체눈 구간을 표시합니다.</div></div>
+      </div>`;
+  }
+};
+
+applyNoReferenceGrindUI = applyVirtualGuideGrindUI;
+
+resetGrindA4State = function(showMsg=true) {
+  grindLastAnalysis = null;
+  noRefLastResult = null;
+  noRefLastRawD50Px = null;
+  const wrap = document.getElementById('grindCanvasWrap');
+  const results = document.getElementById('grindResults');
+  const view = document.getElementById('grindCanvas');
+  const status = document.getElementById('grindLoadStatus');
+  const hudL = document.getElementById('hudL');
+  if (wrap) wrap.style.display = 'none';
+  if (results) results.style.display = 'none';
+  if (view) { const ctx = view.getContext('2d'); if (ctx) ctx.clearRect(0,0,view.width||1,view.height||1); }
+  ['measureBtn','floatCaptureBtn','floatResetBtn','grindResetBtn'].forEach(id => {
+    const b = document.getElementById(id); if (!b) return;
+    b.disabled = false;
+    if (id === 'floatCaptureBtn' || id === 'measureBtn') b.textContent = 'CAPTURE';
+    if (id === 'floatResetBtn') b.textContent = 'RESET';
+    if (id === 'grindResetBtn') b.textContent = 'RESET / 다시 촬영';
+  });
+  if (status) status.innerHTML = showMsg ? '<strong>RESET 완료</strong><br>분쇄 원두를 원형 가이드 안에 크게 맞춘 뒤 다시 CAPTURE 하세요.' : '분쇄 원두를 원형 가이드 안에 크게 맞춘 뒤 CAPTURE 하세요.';
+  const note = document.getElementById('sieveGuideNote');
+  if (note) note.innerHTML = '<strong>촬영 기준</strong><br>가이드는 거리를 일정하게 맞추기 위한 기준선입니다. A4 전체를 넣지 말고, 분쇄 입자가 원 안에서 충분히 크게 보이게 촬영하세요.';
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = 'MICRON GUIDE · READY';
+  setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
+};
+
+updateModeUI = function() {
+  ensureVirtualGuideGrindUIAssets();
+  _appendSieveGuideStyle();
+  const colorMode = currentAnalyzer === 'color';
+  const viewport = document.querySelector('.camera-viewport');
+  if (viewport) viewport.classList.toggle('grind-mode', !colorMode);
+  const permTitle = document.getElementById('permTitle');
+  const permDesc = document.getElementById('permDesc');
+  if (permTitle) permTitle.textContent = colorMode ? '카메라 접근 필요' : '분쇄도 측정 준비';
+  if (permDesc) permDesc.innerHTML = colorMode
+    ? '분쇄된 원두를 종이컵에 담고<br>플래시를 켜서 위에서 비추면<br>로스팅 컬러를 측정합니다'
+    : '흰 종이 위 분쇄 원두를<br>원형 가이드 안에 크게 맞춘 뒤<br>CAPTURE 하면 µm 단위로 분석합니다';
+  const measureBtn = document.getElementById('measureBtn');
+  if (measureBtn) measureBtn.textContent = colorMode ? 'MEASURE' : 'CAPTURE';
+  const floatCapture = document.getElementById('floatCaptureBtn');
+  if (floatCapture) floatCapture.textContent = 'CAPTURE';
+  [document.getElementById('resultsPanel'), document.getElementById('historySection'), document.querySelector('.guide-section'), document.querySelector('.ref-section')].forEach(el => {
+    if (!el) return;
+    if (el.id === 'historySection') el.style.display = colorMode && history.length ? 'block' : 'none';
+    else if (el.id === 'resultsPanel') el.style.display = colorMode && stream ? 'block' : 'none';
+    else el.style.display = colorMode ? '' : 'none';
+  });
+  [document.getElementById('grindPanel'), document.getElementById('grindGuideSection')].forEach(el => { if (el) el.style.display = colorMode ? 'none' : 'block'; });
+  const controlsBar = document.getElementById('controlsBar');
+  if (controlsBar) controlsBar.style.display = stream && colorMode ? 'flex' : 'none';
+  const permission = document.getElementById('permissionScreen');
+  if (permission) permission.style.display = stream ? 'none' : 'flex';
+  const overlay = document.getElementById('camOverlay');
+  if (overlay) overlay.style.display = stream ? 'block' : 'none';
+  const error = document.getElementById('errorMsg');
+  if (error) error.style.display = 'none';
+  const hudL = document.getElementById('hudL');
+  if (hudL && !stream) hudL.textContent = colorMode ? 'L* —' : 'MICRON GUIDE · READY';
+  if (typeof syncTorchButtons === 'function') syncTorchButtons();
+};
+
+switchAnalyzer = function(mode) {
+  currentAnalyzer = mode === 'grind' ? 'grind' : 'color';
+  const colorMode = currentAnalyzer === 'color';
+  document.getElementById('tabColor').classList.toggle('active', colorMode);
+  document.getElementById('tabGrind').classList.toggle('active', !colorMode);
+  if (!colorMode) applyVirtualGuideGrindUI();
+  updateModeUI();
+  if (stream && torchSupported) applyTorch(colorMode);
+  setStatus(stream ? 'active' : '', stream ? (colorMode ? 'ACTIVE' : 'GRIND') : 'STANDBY');
+};
+
+showGrindCupRetry = function(message, detail='') {
+  const status = document.getElementById('grindLoadStatus');
+  if (status) {
+    status.innerHTML = `<strong>${message}</strong><br>${detail || '분쇄 원두를 원형 가이드 안에 크게 맞춘 뒤 CAPTURE 하세요.'}<br><button class="grind-retry" type="button" onclick="resetGrindA4State(true)">RESET / 다시 촬영</button>`;
+  }
+  const hudL = document.getElementById('hudL');
+  if (hudL && currentAnalyzer === 'grind') hudL.textContent = 'RETRY · MICRON GUIDE';
+  setStatus('error', 'RETRY');
+};
+
 applyNoReferenceGrindUI();
 switchAnalyzer(currentAnalyzer || 'color');
 
