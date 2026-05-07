@@ -1009,6 +1009,59 @@
   }
   .grind-range-wrap input[type=range] { touch-action: pan-x !important; }
 
+  .brand-copy {
+    margin-top: 5px;
+    font-size: 8.5px;
+    letter-spacing: 0.6px;
+    color: var(--w5);
+    line-height: 1;
+  }
+
+  /* FINAL v10: fixed, non-adjustable grind controls */
+  .copyright { display:none !important; height:0 !important; margin:0 !important; padding:0 !important; overflow:hidden !important; }
+  .grind-scale-field, #v9GrindControls, #floatingGrindCtrl { display:none !important; }
+  .camera-viewport.grind-mode .hud-L { bottom: 84px !important; }
+  #v10GrindControls {
+    position: fixed;
+    left: 50%;
+    bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%) translateZ(0);
+    width: min(430px, calc(100vw - 20px));
+    z-index: 2147483647;
+    display: none;
+    grid-template-columns: .95fr .95fr 1.35fr;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 16px;
+    background: rgba(0,0,0,.78);
+    box-shadow: 0 12px 34px rgba(0,0,0,.45);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    pointer-events: auto !important;
+    touch-action: none !important;
+    isolation: isolate;
+  }
+  #v10GrindControls button {
+    min-height: 50px;
+    border: none;
+    border-radius: 13px;
+    font-family: var(--font-main, Pretendard, sans-serif);
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: .4px;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    cursor: pointer;
+  }
+  #v10FlashBtn { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.16) !important; }
+  #v10ResetBtn { background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.18) !important; }
+  #v10CaptureBtn { background: #fff; color: #0e0e0e; font-size: 14px !important; }
+  #v10GrindControls button:active { transform: scale(.97); opacity:.86; }
+  #v10GrindControls button:disabled { opacity:.55; }
+
 </style>
 </head>
 <body>
@@ -1093,14 +1146,14 @@
           <div class="grind-pill" id="grindDoseHint">원두 1~2알 분량</div>
         </div>
         <div class="grind-field grind-scale-field">
-          <label for="grindBottomRatio">점선 원 크기</label>
+          <label for="grindBottomRatio">가이드 원</label>
           <div class="grind-range-wrap">
             <input type="range" id="grindBottomRatio" min="36" max="72" value="50" oninput="updateGrindScaleRatio(this.value)">
             <span id="grindBottomRatioLabel">50%</span>
           </div>
         </div>
       </div>
-      <div class="grind-quality" id="grindLoadStatus">카메라를 시작한 뒤 종이컵 안쪽 바닥 원을 점선 원에 맞추세요. 필요하면 점선 원 크기를 조절하고, 너무 어두우면 FLASH ON을 사용하세요.</div>
+      <div class="grind-quality" id="grindLoadStatus">카메라를 시작한 뒤 종이컵 안쪽 바닥 원을 가이드 원에 맞추세요. 필요하면 가이드 원를 조절하고, 너무 어두우면 FLASH ON을 사용하세요.</div>
       <div class="grind-actions grind-reset-row">
         <button class="btn-grind secondary" id="grindResetBtn" onclick="resetGrindCapture()">다시 촬영 준비</button>
       </div>
@@ -1256,7 +1309,7 @@
       </div>
       <div class="guide-step">
         <div class="step-num">2</div>
-        <div class="step-text">GRIND SIZE 탭에서 컵 규격을 고른 뒤, 컵 <strong>안쪽 바닥 원</strong>이 화면의 점선 원과 겹치도록 높이 또는 점선 원 크기를 맞추기</div>
+        <div class="step-text">GRIND SIZE 탭에서 컵 규격을 고른 뒤, 컵 <strong>안쪽 바닥 원</strong>이 화면의 가이드 원과 겹치도록 높이 또는 가이드 원를 맞추기</div>
       </div>
       <div class="guide-step">
         <div class="step-num">3</div>
@@ -3118,17 +3171,17 @@ function sampleGrindLiveFrame() {
   const light = assessCupLight(grindLiveTinyCanvas, guide);
   const edge = light.edge || { detected:false, err:1, r:guide.bottomR };
   let align = 'ALIGN GUIDE';
-  let alignAdvice = '컵 안쪽 바닥 원을 점선 원에 맞추세요.';
+  let alignAdvice = '컵 안쪽 바닥 원을 가이드 원에 맞추세요.';
   if (edge.detected) {
     if (edge.err <= 0.075) {
       align = 'ALIGN OK';
       alignAdvice = '정렬 좋음 · 흔들리지 않게 CAPTURE';
     } else if (edge.r < guide.bottomR) {
       align = 'MOVE CLOSER';
-      alignAdvice = '컵 바닥 원이 점선 원보다 작습니다 · 점선 원 크기 또는 촬영 위치를 다시 맞춰주세요';
+      alignAdvice = '컵 바닥 원이 점선 원보다 작습니다 · 가이드 원 또는 촬영 위치를 다시 맞춰주세요';
     } else {
       align = 'MOVE UP';
-      alignAdvice = '컵 바닥 원이 점선 원보다 큽니다 · 점선 원 크기 또는 촬영 위치를 다시 맞춰주세요';
+      alignAdvice = '컵 바닥 원이 점선 원보다 큽니다 · 가이드 원 또는 촬영 위치를 다시 맞춰주세요';
     }
   }
   const status = document.getElementById('grindLoadStatus');
@@ -4206,7 +4259,7 @@ function updateGrindScaleRatio(v) {
   if (lab) lab.textContent = n + '%';
   const status = document.getElementById('grindLoadStatus');
   if (status && currentAnalyzer === 'grind' && !grindLastAnalysis) {
-    status.innerHTML = `<strong>점선 원 ${n}%</strong><br>컵 안쪽 바닥 원이 점선 원과 겹치도록 맞춘 뒤 CAPTURE 하세요.`;
+    status.innerHTML = `<strong>점선 원 ${n}%</strong><br>컵 안쪽 바닥 원이 가이드 원과 겹치도록 맞춘 뒤 CAPTURE 하세요.`;
   }
 }
 
@@ -4256,7 +4309,7 @@ function sampleGrindLiveFrame() {
   if (hudL) hudL.textContent = msg;
   if (status && !grindLastAnalysis) {
     status.innerHTML = `<strong>SCALE GUIDE ${ratio}%</strong> · ${light.label} · ${light.flashHint}<br>` +
-      `컵 안쪽 바닥 원이 점선 원과 정확히 겹치게 맞추세요. 수치가 계속 낮으면 점선 원을 조금 줄여 재측정하세요.<br>` +
+      `컵 안쪽 바닥 원이 점선 원과 정확히 겹치게 맞추세요. 수치가 계속 낮으면 가이드 원을 조금 줄여 재측정하세요.<br>` +
       `${light.advice}`;
   }
 }
@@ -4323,7 +4376,7 @@ function analyzeCupGrindCanvas(sourceCanvas) {
       lumas.push(Math.round(luma(d[i],d[i+1],d[i+2])));
     }
   }
-  if (lumas.length < 1800) throw new Error('컵 바닥 기준 영역이 부족합니다. 점선 원을 컵 안쪽 바닥 원에 다시 맞추고 촬영해 주세요.');
+  if (lumas.length < 1800) throw new Error('컵 바닥 기준 영역이 부족합니다. 가이드 원을 컵 안쪽 바닥 원에 다시 맞추고 촬영해 주세요.');
 
   const bgCandidates = lumas.filter(v=>v>128).sort((a,b)=>a-b);
   const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length*0.76)] : median(lumas);
@@ -4532,7 +4585,7 @@ switchAnalyzer(currentAnalyzer || 'color');
     if (lab) lab.textContent = n + '%';
     const status = $('grindLoadStatus');
     if (status && currentAnalyzer === 'grind' && !grindLastAnalysis) {
-      status.innerHTML = '<strong>점선 원 ' + n + '%</strong><br>컵 안쪽 바닥 원과 점선 원이 겹치도록 맞춘 뒤 CAPTURE 하세요.';
+      status.innerHTML = '<strong>점선 원 ' + n + '%</strong><br>컵 안쪽 바닥 원과 가이드 원이 겹치도록 맞춘 뒤 CAPTURE 하세요.';
     }
     if (currentAnalyzer === 'grind' && stream) {
       try { sampleGrindLiveFrame(); } catch(e) {}
@@ -4735,9 +4788,9 @@ switchAnalyzer(currentAnalyzer || 'color');
     bar = document.createElement('div');
     bar.id = 'v9GrindControls';
     bar.innerHTML = `
-      <div class="v9-scale-row" aria-label="점선 원 크기 조절">
+      <div class="v9-scale-row" aria-label="가이드 원 조절">
         <button type="button" id="v9ScaleMinus" aria-label="점선 원 줄이기">−</button>
-        <input type="range" id="v9ScaleRange" min="30" max="85" step="1" value="50" aria-label="점선 원 크기">
+        <input type="range" id="v9ScaleRange" min="30" max="85" step="1" value="50" aria-label="가이드 원">
         <button type="button" id="v9ScalePlus" aria-label="점선 원 키우기">＋</button>
         <div id="v9ScaleLabel">50%</div>
       </div>
@@ -4773,7 +4826,7 @@ switchAnalyzer(currentAnalyzer || 'color');
     if (!silent) {
       const status = $('grindLoadStatus');
       if (status && (typeof currentAnalyzer === 'undefined' || currentAnalyzer === 'grind') && !window.grindLastAnalysis) {
-        status.innerHTML = '<strong>점선 원 ' + n + '%</strong><br>컵 안쪽 바닥 원과 점선 원이 겹치도록 맞춘 뒤 CAPTURE 하세요.';
+        status.innerHTML = '<strong>점선 원 ' + n + '%</strong><br>컵 안쪽 바닥 원과 가이드 원이 겹치도록 맞춘 뒤 CAPTURE 하세요.';
       }
     }
     try { if (typeof sampleGrindLiveFrame === 'function' && currentAnalyzer === 'grind' && stream) sampleGrindLiveFrame(); } catch(e) {}
@@ -4937,6 +4990,205 @@ switchAnalyzer(currentAnalyzer || 'color');
   v9SetScale((typeof grindBottomRatio !== 'undefined' ? Math.round(grindBottomRatio * 100) : 50), true);
   refreshV9Controls();
   setInterval(refreshV9Controls, 500);
+})();
+
+
+/* =========================================================
+   FINAL v10 WORKING CONTROL FIX
+   - Removes dotted-circle size controls.
+   - Adds a single body-level FLASH / RESET / CAPTURE bar.
+   - Uses pointerdown/touchstart/click capture handlers for mobile reliability.
+========================================================= */
+(function finalV10WorkingControlFix(){
+  function $(id){ return document.getElementById(id); }
+  function showMsg(msg){
+    var status = $('grindLoadStatus');
+    if (status) status.innerHTML = msg;
+  }
+
+  // Fixed guide scale: no user adjustment.
+  try { grindBottomRatio = 0.58; } catch(e) {}
+  window.grindBottomRatio = 0.58;
+  document.documentElement.style.setProperty('--grind-bottom-size', '58%');
+  var ring = $('sampleRing');
+  if (ring) ring.style.setProperty('--grind-bottom-size', '58%');
+
+  // Hide all older/experimental controls.
+  ['floatingGrindCtrl','v9GrindControls','grindBottomRatio','grindBottomRatioLabel'].forEach(function(id){
+    var el = $(id);
+    if (el) el.style.display = 'none';
+  });
+  var scaleField = document.querySelector('.grind-scale-field');
+  if (scaleField) scaleField.style.display = 'none';
+
+  // Build simple fixed controls.
+  var bar = $('v10GrindControls');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'v10GrindControls';
+    bar.innerHTML = '' +
+      '<button type="button" id="v10FlashBtn">FLASH OFF</button>' +
+      '<button type="button" id="v10ResetBtn">RESET</button>' +
+      '<button type="button" id="v10CaptureBtn">CAPTURE</button>';
+    document.body.appendChild(bar);
+  }
+
+  function v10Refresh(){
+    var show = false;
+    try { show = currentAnalyzer === 'grind'; } catch(e) { show = false; }
+    if (bar) bar.style.display = show ? 'grid' : 'none';
+    var oldFloat = $('floatingGrindCtrl');
+    if (oldFloat) oldFloat.style.display = 'none';
+    var v9 = $('v9GrindControls');
+    if (v9) v9.style.display = 'none';
+    var controls = $('controlsBar');
+    try { if (controls && currentAnalyzer === 'grind') controls.style.display = 'none'; } catch(e) {}
+    var flash = $('v10FlashBtn');
+    try { if (flash) flash.textContent = torchOn ? 'FLASH ON' : 'FLASH OFF'; } catch(e) {}
+  }
+  window.v10Refresh = v10Refresh;
+
+  function v10Reset(opts){
+    opts = opts || {};
+    try { grindSrcCanvas = null; } catch(e) {}
+    try { grindLastAnalysis = null; } catch(e) {}
+    window.grindLastAnalysis = null;
+    var wrap = $('grindCanvasWrap');
+    var results = $('grindResults');
+    var canvas = $('grindCanvas');
+    if (wrap) wrap.style.display = 'none';
+    if (results) results.style.display = 'none';
+    if (canvas && canvas.getContext) {
+      var ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+    }
+    var hud = $('hudL');
+    try { if (hud && currentAnalyzer === 'grind') hud.textContent = '컵 바닥 원을 가이드에 맞추세요'; } catch(e) {}
+    var sel = $('cupPreset');
+    var label = sel && sel.options && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '10oz · 48mm';
+    showMsg('<strong>다시 촬영 준비 완료</strong><br>' + label + ' 기준 · 컵 안쪽 바닥 원을 가이드 원에 맞춘 뒤 CAPTURE 하세요.');
+    try { if (stream && currentAnalyzer === 'grind') setStatus('active','GRIND'); } catch(e) {}
+    if (!opts.noScroll) {
+      var vp = document.querySelector('.camera-viewport');
+      if (vp && vp.scrollIntoView) vp.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+    v10Refresh();
+  }
+
+  async function v10Capture(){
+    var cap = $('v10CaptureBtn');
+    var reset = $('v10ResetBtn');
+    var video = $('video');
+    if (!video || video.readyState < 2 || !video.videoWidth) {
+      alert('카메라가 준비되지 않았습니다. 카메라 시작 후 다시 시도해 주세요.');
+      return;
+    }
+    [cap, reset].forEach(function(b){ if (b) b.disabled = true; });
+    if (cap) cap.textContent = 'CAPTURING';
+    try { setStatus('active','CAPTURING'); } catch(e) {}
+
+    try {
+      v10Reset({ noScroll:true });
+      await new Promise(function(resolve){ setTimeout(resolve, 80); });
+
+      var scale = Math.min(1, 2200 / Math.max(video.videoWidth, video.videoHeight));
+      var w = Math.max(1, Math.round(video.videoWidth * scale));
+      var h = Math.max(1, Math.round(video.videoHeight * scale));
+      var src = document.createElement('canvas');
+      src.width = w;
+      src.height = h;
+      var sctx = src.getContext('2d', { willReadFrequently:true });
+      sctx.drawImage(video, 0, 0, w, h);
+
+      grindSrcCanvas = src;
+      var result = analyzeCupGrindCanvas(src);
+      grindLastAnalysis = result;
+      window.grindLastAnalysis = result;
+
+      var view = $('grindCanvas');
+      if (view) {
+        view.width = w;
+        view.height = h;
+        var vctx = view.getContext('2d', { willReadFrequently:true });
+        vctx.drawImage(src, 0, 0);
+        if (typeof drawGrindOverlay === 'function') drawGrindOverlay(vctx, result.guide, result.roi, result.valid, result);
+      }
+      var wrap = $('grindCanvasWrap');
+      if (wrap) wrap.style.display = 'block';
+      if (typeof renderGrindResults === 'function') renderGrindResults(result);
+      var results = $('grindResults');
+      if (results) results.style.display = 'block';
+      try { setStatus('active', result.qLabel || 'DONE'); } catch(e) {}
+    } catch(err) {
+      console.error(err);
+      try { setStatus('error','RETRY'); } catch(e) {}
+      alert((err && err.message) ? err.message : '분석 중 오류가 발생했습니다. RESET 후 다시 촬영해 주세요.');
+    } finally {
+      [cap, reset].forEach(function(b){ if (b) b.disabled = false; });
+      if (cap) cap.textContent = 'CAPTURE';
+      v10Refresh();
+    }
+  }
+
+  async function v10Flash(){
+    try { await toggleTorch(); } catch(e) { console.warn(e); }
+    v10Refresh();
+  }
+
+  window.resetGrindCapture = function(options){ v10Reset(options || {noScroll:true}); };
+  try { resetGrindCapture = window.resetGrindCapture; } catch(e) {}
+  window.captureGrindCupMode = v10Capture;
+  try { captureGrindCupMode = v10Capture; } catch(e) {}
+  window.handleMeasure = function(){
+    try { if (currentAnalyzer === 'grind') return v10Capture(); } catch(e) {}
+    return capture();
+  };
+  try { handleMeasure = window.handleMeasure; } catch(e) {}
+
+  // Very robust event delegation: works even if a previous script overwrote onclick.
+  var lastTap = 0;
+  function onControlEvent(ev){
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest('#v10CaptureBtn,#v10ResetBtn,#v10FlashBtn');
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    var now = Date.now();
+    if (now - lastTap < 260) return false;
+    lastTap = now;
+    if (btn.id === 'v10CaptureBtn') v10Capture();
+    if (btn.id === 'v10ResetBtn') v10Reset({noScroll:true});
+    if (btn.id === 'v10FlashBtn') v10Flash();
+    return false;
+  }
+  ['pointerdown','touchstart','click'].forEach(function(type){
+    document.addEventListener(type, onControlEvent, true);
+  });
+
+  // Keep mode refresh, but do not depend on previous wrappers.
+  var prevSwitch = switchAnalyzer;
+  switchAnalyzer = function(mode){
+    var r = prevSwitch(mode);
+    setTimeout(v10Refresh, 0);
+    return r;
+  };
+  var prevStart = startCamera;
+  startCamera = async function(){
+    var r = await prevStart();
+    setTimeout(v10Refresh, 0);
+    return r;
+  };
+  var prevStop = stopCamera;
+  stopCamera = function(){
+    var r = prevStop();
+    setTimeout(v10Refresh, 0);
+    return r;
+  };
+
+  v10Refresh();
+  setInterval(v10Refresh, 350);
 })();
 
 </script>
