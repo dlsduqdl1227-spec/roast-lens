@@ -3657,6 +3657,384 @@ renderGrindResults = function(r) {
 window.addEventListener('resize', updateModeUI);
 switchAnalyzer(currentAnalyzer || 'color');
 
+
+
+/* =========================================================
+   v4 refinement patch
+   - Removed misleading MOVE CLOSER / MOVE UP prompt.
+   - Multi-channel local background segmentation.
+   - Larger morphological closing + nearby-fragment merge so coarse particles
+     are not reduced to tiny dark cores.
+   - Scale is clamped and reported instead of used as a strict alignment gate.
+========================================================= */
+function _buildTileBgRGB(d, w, h, cx, cy, r, tile) {
+  const gw = Math.ceil(w / tile), gh = Math.ceil(h / tile);
+  const rBg = new Float32Array(gw * gh);
+  const gBg = new Float32Array(gw * gh);
+  const bBg = new Float32Array(gw * gh);
+  const yBg = new Float32Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const rs=[], gs=[], bs=[], ys=[];
+      const y0 = gy * tile, y1 = Math.min(h, y0 + tile);
+      const x0 = gx * tile, x1 = Math.min(w, x0 + tile);
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1; x += 2) {
+          const dx = x - cx, dy = y - cy;
+          if (dx*dx + dy*dy > r*r) continue;
+          const i = (y*w + x) * 4;
+          const R=d[i], G=d[i+1], B=d[i+2];
+          const Y = luma(R,G,B);
+          // Use lighter pixels to estimate cup background; reject obvious coffee pixels.
+          if (Y > 118) { rs.push(R); gs.push(G); bs.push(B); ys.push(Y); }
+        }
+      }
+      const idx = gy * gw + gx;
+      if (ys.length) {
+        const pick = arr => { arr.sort((a,b)=>a-b); return arr[Math.min(arr.length-1, Math.floor(arr.length*0.82))]; };
+        rBg[idx]=pick(rs); gBg[idx]=pick(gs); bBg[idx]=pick(bs); yBg[idx]=pick(ys);
+      } else {
+        rBg[idx]=238; gBg[idx]=238; bBg[idx]=238; yBg[idx]=238;
+      }
+    }
+  }
+  const smoothOne = src => {
+    const dst = new Float32Array(src.length);
+    for (let gy=0; gy<gh; gy++) {
+      for (let gx=0; gx<gw; gx++) {
+        let s=0,n=0;
+        for (let oy=-1; oy<=1; oy++) for (let ox=-1; ox<=1; ox++) {
+          const nx=gx+ox, ny=gy+oy;
+          if (nx<0||ny<0||nx>=gw||ny>=gh) continue;
+          s += src[ny*gw+nx]; n++;
+        }
+        dst[gy*gw+gx] = n ? s/n : src[gy*gw+gx];
+      }
+    }
+    return dst;
+  };
+  return { rBg:smoothOne(rBg), gBg:smoothOne(gBg), bBg:smoothOne(bBg), yBg:smoothOne(yBg), gw, gh, tile };
+}
+
+function _tileBgRGBAt(bg, x, y) {
+  const gx = Math.max(0, Math.min(bg.gw - 1, Math.floor(x / bg.tile)));
+  const gy = Math.max(0, Math.min(bg.gh - 1, Math.floor(y / bg.tile)));
+  const idx = gy * bg.gw + gx;
+  return { r:bg.rBg[idx]||238, g:bg.gBg[idx]||238, b:bg.bBg[idx]||238, y:bg.yBg[idx]||238 };
+}
+
+function _morphCloseRadius(mask, w, h, radius) {
+  radius = Math.max(1, Math.round(radius || 1));
+  const dil = new Uint8Array(mask.length);
+  for (let y=radius; y<h-radius; y++) {
+    for (let x=radius; x<w-radius; x++) {
+      const idx=y*w+x;
+      if (!mask[idx]) continue;
+      for (let oy=-radius; oy<=radius; oy++) {
+        for (let ox=-radius; ox<=radius; ox++) {
+          if (ox*ox + oy*oy <= radius*radius) dil[(y+oy)*w + (x+ox)] = 1;
+        }
+      }
+    }
+  }
+  const ero = new Uint8Array(mask.length);
+  for (let y=radius; y<h-radius; y++) {
+    for (let x=radius; x<w-radius; x++) {
+      let ok = 1;
+      for (let oy=-radius; oy<=radius && ok; oy++) {
+        for (let ox=-radius; ox<=radius; ox++) {
+          if (ox*ox + oy*oy > radius*radius) continue;
+          if (!dil[(y+oy)*w + (x+ox)]) { ok=0; break; }
+        }
+      }
+      if (ok) ero[y*w+x] = 1;
+    }
+  }
+  return ero;
+}
+
+function _bboxGap(a, b) {
+  const dx = Math.max(0, Math.max(a.minx - b.maxx - 1, b.minx - a.maxx - 1));
+  const dy = Math.max(0, Math.max(a.miny - b.maxy - 1, b.miny - a.maxy - 1));
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function _mergeNearbyFragments(comps, gapPx) {
+  if (!comps || comps.length < 2) return comps || [];
+  const n = comps.length;
+  const parent = Array.from({length:n}, (_,i)=>i);
+  const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+  const unite = (a,b) => { const ra=find(a), rb=find(b); if (ra!==rb) parent[rb]=ra; };
+  for (let i=0; i<n; i++) {
+    for (let j=i+1; j<n; j++) {
+      if (_bboxGap(comps[i], comps[j]) <= gapPx) {
+        const bigEnough = Math.max(comps[i].area, comps[j].area) >= 3;
+        const notFar = Math.abs(((comps[i].minx+comps[i].maxx)/2)-((comps[j].minx+comps[j].maxx)/2)) <= Math.max(comps[i].maxx-comps[i].minx, comps[j].maxx-comps[j].minx) + gapPx*3
+          && Math.abs(((comps[i].miny+comps[i].maxy)/2)-((comps[j].miny+comps[j].maxy)/2)) <= Math.max(comps[i].maxy-comps[i].miny, comps[j].maxy-comps[j].miny) + gapPx*3;
+        if (bigEnough && notFar) unite(i,j);
+      }
+    }
+  }
+  const groups = new Map();
+  for (let i=0; i<n; i++) {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(comps[i]);
+  }
+  const merged = [];
+  for (const list of groups.values()) {
+    if (list.length === 1) { merged.push(list[0]); continue; }
+    let area=0, minx=Infinity, miny=Infinity, maxx=0, maxy=0;
+    for (const c of list) {
+      area += c.area;
+      minx = Math.min(minx, c.minx); miny = Math.min(miny, c.miny);
+      maxx = Math.max(maxx, c.maxx); maxy = Math.max(maxy, c.maxy);
+    }
+    const bw=maxx-minx+1, bh=maxy-miny+1;
+    const fill = area / Math.max(1, bw*bh);
+    const aspect = Math.max(bw,bh) / Math.max(1, Math.min(bw,bh));
+    merged.push({ area, minx, miny, maxx, maxy, fill, aspect, merged:list.length });
+  }
+  return merged;
+}
+
+function _updateGrindHud(label, statusHtml) {
+  const hudL = document.getElementById('hudL');
+  const status = document.getElementById('grindLoadStatus');
+  if (hudL) hudL.textContent = label;
+  if (status) status.innerHTML = statusHtml;
+}
+
+sampleGrindLiveFrame = function() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || !video.videoWidth) return;
+  ensureGrindTinyCanvas();
+  const maxDim = 360;
+  const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.max(1, Math.round(video.videoWidth * scale));
+  const h = Math.max(1, Math.round(video.videoHeight * scale));
+  grindLiveTinyCanvas.width = w;
+  grindLiveTinyCanvas.height = h;
+  grindLiveTinyCtx.drawImage(video, 0, 0, w, h);
+  const guide = getGrindGuideGeom(w, h);
+  const light = assessCupLight(grindLiveTinyCanvas, guide);
+  const edge = light.edge || { detected:false, err:1, r:guide.bottomR, strength:0 };
+  let scaleState = 'SCALE READY';
+  let scaleAdvice = '가이드 원 안에 컵 바닥이 들어오면 CAPTURE 하세요.';
+  if (edge.detected && edge.err <= 0.18) {
+    scaleState = 'CUP EDGE OK';
+    scaleAdvice = '컵 바닥 자동 보정 가능 · 그대로 CAPTURE 하세요.';
+  } else if (edge.detected) {
+    scaleState = 'GUIDE SCALE';
+    scaleAdvice = '거리 지시 대신 가이드 기준으로 보정합니다. 화면을 더 맞추려 하지 않아도 됩니다.';
+  } else {
+    scaleState = 'GUIDE SCALE';
+    scaleAdvice = '컵 바닥 경계가 약합니다. 그래도 가이드 원 기준으로 분석합니다.';
+  }
+  _updateGrindHud(`${scaleState} · ${light.label} · ${light.flashHint}`,
+    `<strong>${scaleState}</strong> · ${light.label} · ${light.flashHint}<br>${scaleAdvice}<br>${light.advice}`);
+};
+
+analyzeCupGrindCanvas = function(sourceCanvas) {
+  const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  const w = sourceCanvas.width, h = sourceCanvas.height;
+  const guide = getGrindGuideGeom(w, h);
+  const edge = estimateCupBottom(sourceCanvas, guide);
+  // Edge detection may pick an internal shadow ring. Clamp it so scale cannot collapse too much.
+  let baseR = edge.detected ? edge.r : guide.bottomR;
+  baseR = Math.max(guide.bottomR * 0.70, Math.min(guide.bottomR * 1.28, baseR));
+  const analysisR = baseR * 0.84;
+  const light = assessCupLight(sourceCanvas, guide);
+  const mmPerPx = grindCupBaseMM / Math.max(1, baseR * 2);
+
+  const roi = {
+    x: Math.max(0, Math.round(guide.cx - analysisR)),
+    y: Math.max(0, Math.round(guide.cy - analysisR)),
+    w: Math.min(w, Math.round(analysisR * 2)),
+    h: Math.min(h, Math.round(analysisR * 2)),
+    cx: guide.cx,
+    cy: guide.cy,
+    r: analysisR
+  };
+  roi.cxLocal = guide.cx - roi.x;
+  roi.cyLocal = guide.cy - roi.y;
+
+  const img = ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
+  const d = img.data;
+  const lumas = [];
+  for (let y=0; y<roi.h; y++) {
+    for (let x=0; x<roi.w; x++) {
+      const dx=x-roi.cxLocal, dy=y-roi.cyLocal;
+      if (dx*dx+dy*dy > analysisR*analysisR) continue;
+      const i=(y*roi.w+x)*4;
+      lumas.push(Math.round(luma(d[i],d[i+1],d[i+2])));
+    }
+  }
+  if (lumas.length < 2000) throw new Error('컵 바닥 영역이 너무 작게 잡혔습니다. 컵 안쪽 바닥 원을 가이드 원 안에 넣고 다시 촬영해 주세요.');
+
+  const bgCandidates = lumas.filter(v=>v>125).sort((a,b)=>a-b);
+  const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length*0.75)] : median(lumas);
+  const otsu = otsuThreshold(lumas);
+  const tile = Math.max(24, Math.min(64, Math.round(analysisR / 8.5)));
+  const bgObj = _buildTileBgRGB(d, roi.w, roi.h, roi.cxLocal, roi.cyLocal, analysisR, tile);
+
+  const hard = new Uint8Array(roi.w * roi.h);
+  const soft = new Uint8Array(roi.w * roi.h);
+  let coreArea = 0;
+  for (let y=0; y<roi.h; y++) {
+    for (let x=0; x<roi.w; x++) {
+      const dx=x-roi.cxLocal, dy=y-roi.cyLocal;
+      if (dx*dx+dy*dy > analysisR*analysisR) continue;
+      const idx=y*roi.w+x, i=idx*4;
+      const R=d[i], G=d[i+1], B=d[i+2];
+      const Y=luma(R,G,B), C=chroma(R,G,B);
+      const bg=_tileBgRGBAt(bgObj,x,y);
+      const yContrast = bg.y - Y;
+      const colorDist = Math.sqrt((R-bg.r)*(R-bg.r)*0.22 + (G-bg.g)*(G-bg.g)*0.56 + (B-bg.b)*(B-bg.b)*0.22);
+      const coffeeHue = (R < bg.r - 8 && G < bg.g - 6 && B < bg.b - 3) || (C > 8 && Y < bg.y - 6);
+      // Hard core + soft boundary. The soft layer is what prevents 700µm grains from becoming 150µm dark specks.
+      const hardHit = ((yContrast > 18 && Y < 214) || (colorDist > 22 && coffeeHue) || (Y < Math.min(otsu-2, bgL-32))) && !(C < 6 && yContrast < 34 && Y > 88);
+      const softHit = ((yContrast > 7 && Y < 232) || colorDist > 12 || (coffeeHue && yContrast > 4)) && !(C < 5 && yContrast < 20 && Y > 100);
+      if (hardHit) { hard[idx]=1; coreArea++; }
+      if (softHit) soft[idx]=1;
+    }
+  }
+
+  let mask = _constrainedGrow(hard, soft, roi.w, roi.h, 5);
+  const closeRad = Math.max(2, Math.min(4, Math.round((700 / Math.max(1, mmPerPx*1000)) * 0.22)));
+  mask = _morphCloseRadius(mask, roi.w, roi.h, closeRad);
+
+  const visited = new Uint8Array(mask.length);
+  const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+  const fragments = [];
+  const stack = [];
+  for (let idx=0; idx<mask.length; idx++) {
+    if (!mask[idx] || visited[idx]) continue;
+    let area=0, minx=roi.w, miny=roi.h, maxx=0, maxy=0;
+    stack.length=0; stack.push(idx); visited[idx]=1;
+    while (stack.length) {
+      const cur=stack.pop();
+      const y=Math.floor(cur/roi.w), x=cur-y*roi.w;
+      area++;
+      if (x<minx) minx=x; if (x>maxx) maxx=x; if (y<miny) miny=y; if (y>maxy) maxy=y;
+      for (const [ox,oy] of neighbors) {
+        const nx=x+ox, ny=y+oy;
+        if (nx<0||ny<0||nx>=roi.w||ny>=roi.h) continue;
+        const ni=ny*roi.w+nx;
+        if (mask[ni] && !visited[ni]) { visited[ni]=1; stack.push(ni); }
+      }
+    }
+    if (area < 2) continue;
+    const bw=maxx-minx+1, bh=maxy-miny+1;
+    const fill=area/Math.max(1,bw*bh);
+    const aspect=Math.max(bw,bh)/Math.max(1,Math.min(bw,bh));
+    fragments.push({area,minx,miny,maxx,maxy,fill,aspect});
+  }
+
+  const gapPx = Math.max(2, Math.min(6, Math.round(180 / Math.max(1, mmPerPx*1000))));
+  const merged = _mergeNearbyFragments(fragments, gapPx);
+  const comps = [];
+  for (const c of merged) {
+    const bw=c.maxx-c.minx+1, bh=c.maxy-c.miny+1;
+    const eqPx=Math.sqrt((4*c.area)/Math.PI);
+    const boxPx=Math.sqrt(bw*bh)*0.92;
+    const feretPx=Math.max(bw,bh)*0.70;
+    let diaPx;
+    if (c.fill > 0.45) diaPx = 0.56*eqPx + 0.44*Math.max(boxPx, feretPx);
+    else diaPx = 0.36*eqPx + 0.64*Math.max(boxPx, feretPx);
+    // Sparse cup sampling: prevent dark cores from dominating, but do not force a target size.
+    const diaUm = diaPx * mmPerPx * 1000 * 1.08;
+    if (diaUm >= 50 && diaUm <= 3600) comps.push({...c, d:diaUm, weight:Math.max(c.area, Math.PI*Math.pow(diaPx/2,2)*0.85), eqPx, boxPx, feretPx});
+  }
+
+  if (comps.length < 8) throw new Error('입자를 충분히 인식하지 못했습니다. 분쇄 원두를 조금 더 넓게 퍼뜨리고 다시 촬영해 주세요.');
+
+  const rawDs=comps.map(c=>c.d).sort((a,b)=>a-b);
+  const rawMed=median(rawDs), rawSd=stdev(rawDs);
+  const valid=[]; let clumpCount=0, clumpArea=0;
+  for (const c of comps) {
+    const huge = c.d > Math.max(3000, rawMed + 3.3*rawSd);
+    const sliver = c.aspect > 5.2 && c.fill < 0.25 && c.d > 850;
+    const hollow = c.fill < 0.10 && c.d > 1250;
+    if (huge || sliver || hollow) { clumpCount++; clumpArea += c.area; }
+    else valid.push(c);
+  }
+  if (valid.length < 8) throw new Error('유효 입자가 너무 적습니다. 원두 양을 아주 조금 늘리거나 입자가 겹치지 않게 다시 촬영해 주세요.');
+
+  const countDs=valid.map(c=>c.d).sort((a,b)=>a-b);
+  const countD10=percentileSorted(countDs,0.10);
+  const countD50=percentileSorted(countDs,0.50);
+  const countD90=percentileSorted(countDs,0.90);
+  const d10=_percentileWeightedBy(valid,0.10,'weight');
+  const d50=_percentileWeightedBy(valid,0.50,'weight');
+  const d90=_percentileWeightedBy(valid,0.90,'weight');
+  const areaD50=countD50;
+  const span=d50 ? (d90-d10)/d50 : 0;
+  const finesPct=_pctWeighted(valid,c=>c.d<300,'weight');
+  const bouldersPct=_pctWeighted(valid,c=>c.d>1200,'weight');
+  const totalWeight=valid.reduce((s,c)=>s+Math.max(0.0001,c.weight||c.area||1),0)||1;
+  const bins=[[0,200],[200,300],[300,500],[500,700],[700,850],[850,1000],[1000,1200],[1200,1600],[1600,99999]].map(([lo,hi])=>{
+    const wt=valid.reduce((s,c)=>s+(c.d>=lo&&c.d<hi?Math.max(0.0001,c.weight||c.area||1):0),0);
+    return {lo,hi,pct:wt/totalWeight*100};
+  });
+
+  let qScore=100;
+  const darkCoverage=coreArea/Math.max(1,roi.w*roi.h);
+  const clumpRatio=clumpArea/Math.max(1,coreArea);
+  if (!edge.detected) qScore-=10;
+  if (edge.detected && edge.err>0.25) qScore-=8;
+  if (light.score<75) qScore-=Math.round((75-light.score)*0.45);
+  if (valid.length<40) qScore-=12;
+  if (darkCoverage<0.0005 || darkCoverage>0.16) qScore-=10;
+  if (clumpRatio>0.18) qScore-=12;
+  if (span>3.2) qScore-=6;
+  const fineSkew=d50&&countD50?d50/countD50:1;
+  if (fineSkew>5.5) qScore-=8;
+  qScore=Math.max(0,Math.min(100,Math.round(qScore)));
+  const qLabel=qScore>=78?'HIGH':qScore>=55?'MID':'LOW';
+
+  return {
+    guide:{...guide,bottomR:baseR,edgeDetected:edge.detected,edgeStrength:edge.strength,edgeErr:edge.err},
+    light,edge,valid,roi,d10,d50,d90,areaD50,countD10,countD50,countD90,span,
+    finesPct,bouldersPct,bins,qScore,qLabel,clumpCount,
+    threshold:Math.min(otsu,bgL),bgL,scaleUmPerPx:mmPerPx*1000,
+    cup:{baseMM:grindCupBaseMM,label:document.getElementById('cupPreset').options[document.getElementById('cupPreset').selectedIndex].text},
+    method:'AREA_WEIGHTED_V4_FRAGMENT_MERGE', debug:{fragments:fragments.length, merged:merged.length, closeRad, gapPx}
+  };
+};
+
+renderGrindResults = function(r) {
+  const fmt = v => Math.round(v).toLocaleString('ko-KR');
+  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
+  document.getElementById('grindClass').textContent = _grindInterpretation(r.d50);
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  const areaEl = document.getElementById('grindAreaD50');
+  if (areaEl) areaEl.textContent = fmt(r.countD50 || r.areaD50);
+  document.getElementById('grindSpan').textContent = r.span.toFixed(2);
+  document.getElementById('grindFines').textContent = r.finesPct.toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = r.bouldersPct.toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = r.valid.length.toLocaleString('ko-KR');
+  const maxPct = Math.max(1, ...r.bins.map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = r.bins.map(b => {
+    const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
+    const width = Math.max(2, b.pct / maxPct * 100);
+    return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
+  }).join('');
+  const edgeText = r.edge.detected ? `컵 바닥 자동 보정 참고 · 감지 편차 ${(r.edge.err*100).toFixed(1)}%` : '컵 바닥 경계 약함 · 가이드 기준 스케일 사용';
+  const countText = r.countD50 ? ` · COUNT D50 ${Math.round(r.countD50).toLocaleString('ko-KR')}µm` : '';
+  const dbg = r.debug ? ` · fragments ${r.debug.fragments}→${r.debug.merged}` : '';
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${r.cup.label} 기준 · ${edgeText}<br>` +
+    `대표값은 면적가중 D50입니다${countText}. 미분이 많으면 COUNT D50은 낮게 나올 수 있습니다.<br>` +
+    `스케일 ${r.scaleUmPerPx.toFixed(1)}µm/px · ${r.light.label} · ${r.light.flashHint}<br>` +
+    `${r.light.advice}<br>` +
+    `v4: 거리 강제 안내 제거, 컬러+밝기 배경분리, 입자 조각 병합 적용${dbg}. 공식 체 분석/레이저 분석을 대체하지 않습니다. 덩어리/채프 의심 ${r.clumpCount}개 제외.`;
+};
+
+switchAnalyzer(currentAnalyzer || 'color');
+
 </script>
 </body>
 </html>
