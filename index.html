@@ -7826,6 +7826,701 @@ applyNoReferenceGrindUI();
 switchAnalyzer(currentAnalyzer || 'color');
 
 
+
+
+/* ===== Marker Sheet Grind Mode v2 ===== */
+(function(){
+  const MK = {
+    pageMM: { w:210, h:297 },
+    squareMM: 100,
+    warpPx: 1400,
+    innerMarginMM: 12,
+    previewMaxDim: 420,
+    particleCorrection: 0.90,
+    minParticleUm: 90,
+    maxParticleUm: 1800,
+    minValidParticles: 14,
+    sieveBins: [
+      { um:105, mesh:'No. 140' },
+      { um:125, mesh:'No. 120' },
+      { um:149, mesh:'No. 100' },
+      { um:177, mesh:'No. 80'  },
+      { um:210, mesh:'No. 70'  },
+      { um:250, mesh:'No. 60'  },
+      { um:297, mesh:'No. 50'  },
+      { um:354, mesh:'No. 45'  },
+      { um:420, mesh:'No. 40'  },
+      { um:500, mesh:'No. 35'  },
+      { um:595, mesh:'No. 30'  },
+      { um:707, mesh:'No. 25'  },
+      { um:841, mesh:'No. 20'  },
+      { um:1000, mesh:'No. 18' },
+      { um:1190, mesh:'No. 16' }
+    ]
+  };
+
+  let markerPreviewCanvas = null;
+  let markerPreviewCtx = null;
+  let markerLastCapture = null;
+
+  function ensureMarkerPreviewCanvas(){
+    if (!markerPreviewCanvas){
+      markerPreviewCanvas = document.createElement('canvas');
+      markerPreviewCtx = markerPreviewCanvas.getContext('2d', { willReadFrequently:true });
+    }
+  }
+
+  function injectMarkerStyles(){
+    if (document.getElementById('markerSheetModeStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'markerSheetModeStyle';
+    style.textContent = `
+      .camera-viewport.grind-mode .sample-ring{display:none!important;}
+      .marker-sheet-overlay{display:none;position:absolute;inset:0;pointer-events:none;}
+      .camera-viewport.grind-mode .marker-sheet-overlay{display:block;}
+      .marker-guide-box{position:absolute;left:16%;top:16%;width:68%;height:68%;border:1.4px solid rgba(255,255,255,.8);border-radius:10px;box-shadow: inset 0 0 0 1px rgba(255,255,255,.15);}
+      .marker-guide-box::before,.marker-guide-box::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.18);}
+      .marker-guide-box::before{width:1px;height:100%;}
+      .marker-guide-box::after{width:100%;height:1px;}
+      .marker-cross{position:absolute;width:22px;height:22px;transform:translate(-50%,-50%);}
+      .marker-cross::before,.marker-cross::after{content:'';position:absolute;background:rgba(255,255,255,.95);}
+      .marker-cross::before{left:50%;top:0;transform:translateX(-50%);width:2px;height:22px;}
+      .marker-cross::after{top:50%;left:0;transform:translateY(-50%);height:2px;width:22px;}
+      .marker-cross.tl{left:16%;top:16%;}
+      .marker-cross.tr{left:84%;top:16%;}
+      .marker-cross.br{left:84%;top:84%;}
+      .marker-cross.bl{left:16%;top:84%;}
+      .marker-center-note{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:4px 8px;border:1px solid rgba(255,255,255,.25);border-radius:999px;background:rgba(0,0,0,.35);color:rgba(255,255,255,.9);font-size:10px;letter-spacing:1.1px;}
+      .marker-sheet-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+      .btn-marker-sheet{flex:1;min-width:120px;background:var(--surf2);color:var(--w1);border:0.5px solid var(--border);padding:11px 12px;border-radius:10px;font-size:12px;letter-spacing:1px;font-family:var(--font-main);}
+      .btn-marker-sheet:active{opacity:.75;}
+      .marker-sheet-note{margin-top:10px;padding:12px 14px;border-radius:12px;background:var(--surf2);border:0.5px solid var(--border);font-size:12px;color:var(--w3);line-height:1.55;}
+      .marker-sheet-note strong{color:var(--w2);}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureMarkerOverlay(){
+    injectMarkerStyles();
+    const overlay = document.getElementById('camOverlay');
+    if (!overlay || document.getElementById('markerSheetOverlay')) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'markerSheetOverlay';
+    wrap.className = 'marker-sheet-overlay';
+    wrap.innerHTML = `
+      <div class="marker-guide-box"></div>
+      <div class="marker-cross tl"></div>
+      <div class="marker-cross tr"></div>
+      <div class="marker-cross br"></div>
+      <div class="marker-cross bl"></div>
+      <div class="marker-center-note">CENTER SAMPLE AREA</div>
+    `;
+    overlay.appendChild(wrap);
+  }
+
+  function ensureMarkerActionButtons(){
+    const panel = document.getElementById('grindPanel');
+    if (!panel) return;
+    let actions = document.getElementById('markerSheetActions');
+    if (!actions){
+      actions = document.createElement('div');
+      actions.id = 'markerSheetActions';
+      actions.className = 'marker-sheet-actions';
+      actions.innerHTML = `
+        <button type="button" class="btn-marker-sheet" onclick="openMarkerSheetPrint()">A4 마커 시트 열기 / 인쇄</button>
+        <button type="button" class="btn-marker-sheet" onclick="resetGrindA4State(true)">RESET / 다시 촬영</button>
+      `;
+      const card = panel.querySelector('.grind-card');
+      if (card) card.appendChild(actions);
+    }
+    let note = document.getElementById('markerSheetNote');
+    if (!note){
+      note = document.createElement('div');
+      note.id = 'markerSheetNote';
+      note.className = 'marker-sheet-note';
+      note.innerHTML = `<strong>추천 방식</strong><br>A4 마커 시트를 인쇄해 중앙 사각영역에 원두를 한 겹으로 펼친 뒤 촬영합니다. 십자 마커 4점을 이용해 왜곡을 보정한 후 100–1200µm 범위를 분석합니다.`;
+      const card = panel.querySelector('.grind-card');
+      if (card) card.appendChild(note);
+    }
+  }
+
+  function buildMarkerSheetSVG(){
+    const pageW = 210, pageH = 297;
+    const size = 100;
+    const x0 = (pageW - size) / 2;
+    const y0 = 82;
+    const x1 = x0 + size;
+    const y1 = y0 + size;
+    const ix0 = x0 + 12, iy0 = y0 + 12, isz = size - 24;
+    return `
+<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297">
+  <rect x="0" y="0" width="210" height="297" fill="white"/>
+  <text x="105" y="18" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" fill="#111">Roast-Lens · Grind Marker Sheet</text>
+  <text x="105" y="24" text-anchor="middle" font-family="Arial, sans-serif" font-size="4.2" fill="#555">중앙 점선 영역에 분쇄 원두를 얇게 펼치고, 검은 십자 4개가 모두 보이게 촬영하세요.</text>
+  <rect x="${x0}" y="${y0}" width="${size}" height="${size}" fill="none" stroke="#999" stroke-width="0.25"/>
+  <rect x="${ix0}" y="${iy0}" width="${isz}" height="${isz}" fill="none" stroke="#bbb" stroke-width="0.25" stroke-dasharray="2.2 1.8"/>
+  <text x="105" y="${iy0 + isz/2}" text-anchor="middle" font-family="Arial, sans-serif" font-size="4.4" fill="#bbb">SAMPLE AREA</text>
+  ${drawPrintCross(x0, y0, 'TL')}
+  ${drawPrintCross(x1, y0, 'TR')}
+  ${drawPrintCross(x1, y1, 'BR')}
+  ${drawPrintCross(x0, y1, 'BL')}
+  <text x="105" y="196" text-anchor="middle" font-family="Arial, sans-serif" font-size="4.5" fill="#444">Reference square: 100mm × 100mm</text>
+  <text x="105" y="202" text-anchor="middle" font-family="Arial, sans-serif" font-size="4.2" fill="#666">© inyub Kim. All rights reserved.</text>
+</svg>`;
+  }
+
+  function drawPrintCross(cx, cy, label){
+    const arm = 5.5, thick = 0.9, box = 12;
+    return `
+      <g>
+        <rect x="${cx - thick/2}" y="${cy - arm}" width="${thick}" height="${arm*2}" fill="#000"/>
+        <rect x="${cx - arm}" y="${cy - thick/2}" width="${arm*2}" height="${thick}" fill="#000"/>
+        <rect x="${cx - box/2}" y="${cy - box/2}" width="${box}" height="${box}" fill="none" stroke="#000" stroke-width="0.25"/>
+        <text x="${cx + 7.5}" y="${cy - 6.5}" font-family="Arial, sans-serif" font-size="3.4" fill="#333">${label}</text>
+      </g>`;
+  }
+
+  window.openMarkerSheetPrint = function(){
+    const svg = buildMarkerSheetSVG();
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>Roast-Lens Marker Sheet</title><style>
+      @page{size:A4 portrait;margin:0;}
+      html,body{margin:0;padding:0;background:#fff;}
+      .page{width:210mm;height:297mm;margin:0 auto;display:flex;align-items:center;justify-content:center;}
+      svg{width:210mm;height:297mm;display:block;}
+      .toolbar{position:fixed;right:16px;bottom:16px;display:flex;gap:8px;}
+      button{padding:10px 14px;border:1px solid #ccc;background:#111;color:#fff;border-radius:10px;font:12px/1.2 sans-serif;}
+      @media print {.toolbar{display:none;}}
+    </style></head><body><div class="page">${svg}</div><div class="toolbar"><button onclick="window.print()">인쇄</button></div></body></html>`);
+    w.document.close();
+  };
+
+  function quantile(arr, q){
+    if (!arr.length) return 0;
+    const s = arr.slice().sort((a,b)=>a-b);
+    const pos = (s.length - 1) * q;
+    const base = Math.floor(pos), rest = pos - base;
+    return s[base + 1] !== undefined ? s[base] + rest * (s[base+1] - s[base]) : s[base];
+  }
+
+  function argMax(arr){ let idx=0, max=-Infinity; for(let i=0;i<arr.length;i++){ if(arr[i]>max){ max=arr[i]; idx=i; } } return { idx, max }; }
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+  function orderQuad(pts){
+    const p = pts.slice();
+    const sums = p.map(pt=>pt.x+pt.y);
+    const difs = p.map(pt=>pt.x-pt.y);
+    const tl = p[sums.indexOf(Math.min(...sums))];
+    const br = p[sums.indexOf(Math.max(...sums))];
+    const tr = p[difs.indexOf(Math.max(...difs))];
+    const bl = p[difs.indexOf(Math.min(...difs))];
+    return [tl,tr,br,bl];
+  }
+  function polygonArea(pts){
+    let a=0; for(let i=0;i<pts.length;i++){ const p=pts[i], n=pts[(i+1)%pts.length]; a += p.x*n.y - n.x*p.y; } return Math.abs(a)/2;
+  }
+  function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+  function solveLinearSystem(A, b){
+    const n = A.length;
+    const M = A.map((row,i)=>row.slice().concat([b[i]]));
+    for (let i=0;i<n;i++){
+      let maxRow = i;
+      for (let r=i+1;r<n;r++) if (Math.abs(M[r][i]) > Math.abs(M[maxRow][i])) maxRow = r;
+      if (Math.abs(M[maxRow][i]) < 1e-10) return null;
+      [M[i], M[maxRow]] = [M[maxRow], M[i]];
+      const pivot = M[i][i];
+      for (let c=i;c<=n;c++) M[i][c] /= pivot;
+      for (let r=0;r<n;r++) if (r !== i){
+        const f = M[r][i];
+        for (let c=i;c<=n;c++) M[r][c] -= f * M[i][c];
+      }
+    }
+    return M.map(row=>row[n]);
+  }
+
+  function computeHomography(srcPts, dstPts){
+    const A = [], b = [];
+    for (let i=0;i<4;i++){
+      const {x,y} = srcPts[i]; const u = dstPts[i].x, v = dstPts[i].y;
+      A.push([x,y,1,0,0,0,-u*x,-u*y]); b.push(u);
+      A.push([0,0,0,x,y,1,-v*x,-v*y]); b.push(v);
+    }
+    const h = solveLinearSystem(A,b);
+    if (!h) return null;
+    return [h[0],h[1],h[2], h[3],h[4],h[5], h[6],h[7],1];
+  }
+
+  function invert3x3(m){
+    const [a,b,c,d,e,f,g,h,i] = m;
+    const A = e*i-f*h, B = -(d*i-f*g), C = d*h-e*g;
+    const D = -(b*i-c*h), E = a*i-c*g, F = -(a*h-b*g);
+    const G = b*f-c*e, H = -(a*f-c*d), I = a*e-b*d;
+    const det = a*A + b*B + c*C;
+    if (Math.abs(det) < 1e-10) return null;
+    return [A/det,D/det,G/det, B/det,E/det,H/det, C/det,F/det,I/det];
+  }
+
+  function mapPoint(H, x, y){
+    const d = H[6]*x + H[7]*y + H[8];
+    if (!d) return { x:0, y:0 };
+    return { x:(H[0]*x + H[1]*y + H[2]) / d, y:(H[3]*x + H[4]*y + H[5]) / d };
+  }
+
+  function warpPerspectiveFromCanvas(sourceCanvas, srcPts, outSize){
+    const dstPts = [{x:0,y:0},{x:outSize-1,y:0},{x:outSize-1,y:outSize-1},{x:0,y:outSize-1}];
+    const H = computeHomography(srcPts, dstPts);
+    if (!H) throw new Error('왜곡 보정 행렬 계산에 실패했습니다.');
+    const inv = invert3x3(H);
+    if (!inv) throw new Error('왜곡 보정 역행렬 계산에 실패했습니다.');
+    const sctx = sourceCanvas.getContext('2d', { willReadFrequently:true });
+    const sw = sourceCanvas.width, sh = sourceCanvas.height;
+    const src = sctx.getImageData(0,0,sw,sh).data;
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outCanvas.height = outSize;
+    const octx = outCanvas.getContext('2d', { willReadFrequently:true });
+    const out = octx.createImageData(outSize, outSize);
+    const od = out.data;
+    for (let y=0;y<outSize;y++){
+      for (let x=0;x<outSize;x++){
+        const p = mapPoint(inv, x, y);
+        const sx = p.x, sy = p.y;
+        const oi = (y*outSize + x)*4;
+        if (sx < 0 || sy < 0 || sx >= sw-1 || sy >= sh-1){
+          od[oi]=255; od[oi+1]=255; od[oi+2]=255; od[oi+3]=255; continue;
+        }
+        const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(sw-1, x0+1), y1 = Math.min(sh-1, y0+1);
+        const dx = sx - x0, dy = sy - y0;
+        const i00 = (y0*sw + x0)*4, i10 = (y0*sw + x1)*4, i01 = (y1*sw + x0)*4, i11 = (y1*sw + x1)*4;
+        for (let c=0;c<3;c++){
+          const v = src[i00+c]*(1-dx)*(1-dy) + src[i10+c]*dx*(1-dy) + src[i01+c]*(1-dx)*dy + src[i11+c]*dx*dy;
+          od[oi+c] = Math.round(v);
+        }
+        od[oi+3] = 255;
+      }
+    }
+    octx.putImageData(out,0,0);
+    return outCanvas;
+  }
+
+  function detectMarkerSheet(canvas){
+    const ctx = canvas.getContext('2d', { willReadFrequently:true });
+    const w = canvas.width, h = canvas.height;
+    const img = ctx.getImageData(0,0,w,h);
+    const paper = typeof detectA4Paper === 'function' ? detectA4Paper(img,w,h) : { detected:true, minX:0,minY:0,maxX:w-1,maxY:h-1,bw:w,bh:h,coverage:1,touchesEdge:false,ratioError:0,mmPerPx:0.1 };
+    const light = typeof assessGrindLight === 'function' ? assessGrindLight(img,w,h,paper) : { score:80, label:'LIGHT OK', advice:'조명 상태 확인' };
+    if (!paper.detected) return { ok:false, paper, light, reason:'A4 시트를 찾지 못했습니다.', markers:[] };
+    const zones = [
+      { key:'tl', x0:paper.minX, y0:paper.minY, x1:paper.minX + paper.bw*0.28, y1:paper.minY + paper.bh*0.28 },
+      { key:'tr', x0:paper.maxX - paper.bw*0.28, y0:paper.minY, x1:paper.maxX, y1:paper.minY + paper.bh*0.28 },
+      { key:'br', x0:paper.maxX - paper.bw*0.28, y0:paper.maxY - paper.bh*0.28, x1:paper.maxX, y1:paper.maxY },
+      { key:'bl', x0:paper.minX, y0:paper.maxY - paper.bh*0.28, x1:paper.minX + paper.bw*0.28, y1:paper.maxY }
+    ];
+    const markers = [];
+    for (const z of zones){
+      const x0 = clamp(Math.floor(z.x0),0,w-1), y0 = clamp(Math.floor(z.y0),0,h-1), x1 = clamp(Math.ceil(z.x1),1,w), y1 = clamp(Math.ceil(z.y1),1,h);
+      const zw = x1 - x0, zh = y1 - y0;
+      const vals = [];
+      for (let y=y0; y<y1; y+=2){
+        for (let x=x0; x<x1; x+=2){
+          const i = (y*w+x)*4;
+          vals.push(Math.round(luma(img.data[i], img.data[i+1], img.data[i+2])));
+        }
+      }
+      const bg = quantile(vals, 0.84);
+      const th = Math.max(20, Math.min(130, bg - 65));
+      const cols = new Array(zw).fill(0);
+      const rows = new Array(zh).fill(0);
+      for (let y=y0; y<y1; y++){
+        for (let x=x0; x<x1; x++){
+          const i = (y*w+x)*4;
+          const Y = luma(img.data[i], img.data[i+1], img.data[i+2]);
+          if (Y < th){ cols[x-x0]++; rows[y-y0]++; }
+        }
+      }
+      const colPeak = argMax(cols), rowPeak = argMax(rows);
+      const minColPeak = zh * 0.18, minRowPeak = zw * 0.18;
+      if (colPeak.max < minColPeak || rowPeak.max < minRowPeak) continue;
+      let cx = x0 + colPeak.idx, cy = y0 + rowPeak.idx;
+      let sx=0, sy=0, n=0;
+      const rw = Math.max(6, Math.round(Math.min(zw,zh)*0.10));
+      for (let y=Math.max(y0, cy-rw); y<Math.min(y1, cy+rw); y++){
+        for (let x=Math.max(x0, cx-rw); x<Math.min(x1, cx+rw); x++){
+          const i = (y*w+x)*4;
+          const Y = luma(img.data[i], img.data[i+1], img.data[i+2]);
+          if (Y < th){ sx += x; sy += y; n++; }
+        }
+      }
+      if (n < rw*2) continue;
+      cx = sx / n; cy = sy / n;
+      markers.push({ key:z.key, x:cx, y:cy, strength:(colPeak.max/zh + rowPeak.max/zw)/2 });
+    }
+    const sorted = ['tl','tr','br','bl'].map(k=>markers.find(m=>m.key===k)).filter(Boolean);
+    if (sorted.length !== 4) return { ok:false, paper, light, reason:'십자 마커 4개를 모두 찾지 못했습니다.', markers:sorted };
+    const quad = orderQuad(sorted);
+    const area = polygonArea(quad);
+    const edgeTouch = quad.some(p => p.x < w*0.02 || p.x > w*0.98 || p.y < h*0.02 || p.y > h*0.98);
+    const top = dist(quad[0], quad[1]), right = dist(quad[1], quad[2]), bottom = dist(quad[2], quad[3]), left = dist(quad[3], quad[0]);
+    const sideAvg = (top+right+bottom+left)/4;
+    const sideSpread = Math.max(Math.abs(top-bottom), Math.abs(left-right)) / Math.max(1, sideAvg);
+    return {
+      ok:true,
+      paper,
+      light,
+      markers:quad,
+      area,
+      edgeTouch,
+      sideSpread,
+      qHint: clamp(Math.round(100 - sideSpread*90 - (edgeTouch?18:0) - (100-light.score)*0.35), 0, 100)
+    };
+  }
+
+  function classifyGrindMarker(d50){
+    if (d50 < 180) return 'EXTRA FINE';
+    if (d50 < 280) return 'FINE';
+    if (d50 < 450) return 'MEDIUM-FINE';
+    if (d50 < 700) return 'MEDIUM';
+    if (d50 < 950) return 'MEDIUM-COARSE';
+    return 'COARSE';
+  }
+
+  function closestSieve(um){
+    let best = MK.sieveBins[0], err = Infinity;
+    for (const s of MK.sieveBins){ const e = Math.abs(s.um - um); if (e < err){ err = e; best = s; } }
+    return best;
+  }
+
+  function percentileByCountLocal(list, p){
+    if (!list.length) return 0;
+    const ds = list.map(v=>v.d).sort((a,b)=>a-b);
+    const pos = (ds.length-1) * p;
+    const i = Math.floor(pos), f = pos - i;
+    return ds[i+1] !== undefined ? ds[i] + (ds[i+1]-ds[i])*f : ds[i];
+  }
+
+  function analyzeRectifiedParticles(rectCanvas){
+    const outSize = rectCanvas.width;
+    const mmPerPx = MK.squareMM / outSize;
+    const marginPx = Math.round(MK.innerMarginMM / mmPerPx);
+    const roiX = marginPx, roiY = marginPx, roiW = outSize - marginPx*2, roiH = outSize - marginPx*2;
+    const ctx = rectCanvas.getContext('2d', { willReadFrequently:true });
+    const roi = ctx.getImageData(roiX, roiY, roiW, roiH);
+    const d = roi.data;
+    const sampleVals = [];
+    for (let y=0; y<roiH; y+=2){
+      for (let x=0; x<roiW; x+=2){
+        const i = (y*roiW+x)*4;
+        sampleVals.push(Math.round(luma(d[i],d[i+1],d[i+2])));
+      }
+    }
+    const bg = quantile(sampleVals, 0.78);
+    const th = Math.max(26, Math.min(158, bg - 52));
+    const mask = new Uint8Array(roiW*roiH);
+    let darkCount = 0;
+    for (let y=0; y<roiH; y++){
+      for (let x=0; x<roiW; x++){
+        const i = (y*roiW+x)*4;
+        const Y = luma(d[i],d[i+1],d[i+2]);
+        const C = chroma(d[i],d[i+1],d[i+2]);
+        if (Y < th && (bg - Y) > 42 && !(C < 9 && Y > 85)) { mask[y*roiW+x] = 1; darkCount++; }
+      }
+    }
+    const visited = new Uint8Array(mask.length);
+    const comps = [];
+    const stack = [];
+    const nb = [[1,0],[-1,0],[0,1],[0,-1]];
+    for (let idx=0; idx<mask.length; idx++){
+      if (!mask[idx] || visited[idx]) continue;
+      let area=0, minx=roiW, miny=roiH, maxx=0, maxy=0;
+      stack.length = 0; stack.push(idx); visited[idx] = 1;
+      while(stack.length){
+        const cur = stack.pop();
+        const y = Math.floor(cur/roiW), x = cur - y*roiW;
+        area++;
+        if (x<minx) minx=x; if (x>maxx) maxx=x; if (y<miny) miny=y; if (y>maxy) maxy=y;
+        for (let k=0;k<4;k++){
+          const nx=x+nb[k][0], ny=y+nb[k][1];
+          if (nx<0||ny<0||nx>=roiW||ny>=roiH) continue;
+          const ni = ny*roiW + nx;
+          if (mask[ni] && !visited[ni]) { visited[ni]=1; stack.push(ni); }
+        }
+      }
+      if (area < 2) continue;
+      const bw = maxx-minx+1, bh = maxy-miny+1;
+      const fill = area / Math.max(1, bw*bh);
+      const aspect = Math.max(bw,bh) / Math.max(1, Math.min(bw,bh));
+      const eqPx = Math.sqrt((4*area)/Math.PI);
+      const minorPx = Math.min(bw,bh) * 0.92;
+      const particlePx = (eqPx * 0.62 + minorPx * 0.38) * MK.particleCorrection;
+      const dUm = particlePx * mmPerPx * 1000;
+      comps.push({ d:dUm, area, minx, miny, maxx, maxy, bw, bh, fill, aspect });
+    }
+    const med = median(comps.map(c=>c.d));
+    const sd = stdev(comps.map(c=>c.d));
+    const valid = [];
+    let clumpCount = 0;
+    for (const c of comps){
+      const clump = c.d > Math.max(1500, med + 2.2*sd) || (c.aspect > 3.5 && c.d > 350) || (c.fill < 0.22 && c.d > 260) || c.area > 1800;
+      if (clump) { clumpCount++; continue; }
+      if (c.d >= MK.minParticleUm && c.d <= MK.maxParticleUm) valid.push(c);
+    }
+    if (valid.length < MK.minValidParticles) throw new Error('유효 입자를 충분히 인식하지 못했습니다. 중앙 점선 영역에 원두를 더 얇고 넓게 펼친 뒤 다시 촬영해 주세요.');
+    const d10 = percentileByCountLocal(valid, 0.10);
+    const d50 = percentileByCountLocal(valid, 0.50);
+    const d90 = percentileByCountLocal(valid, 0.90);
+    const areaD50 = typeof weightedPercentile === 'function' ? weightedPercentile(valid, 0.50) : d50;
+    const span = d50 ? (d90-d10)/d50 : 0;
+    const finesPct = valid.filter(c=>c.d < 300).length / valid.length * 100;
+    const bouldersPct = valid.filter(c=>c.d > 1000).length / valid.length * 100;
+    const bins = [];
+    const edges = [0,105,149,210,297,420,595,707,841,1000,1190,9999];
+    for (let i=0;i<edges.length-1;i++){
+      const lo = edges[i], hi = edges[i+1];
+      const count = valid.filter(c=>c.d >= lo && c.d < hi).length;
+      bins.push({ lo, hi, pct: count / valid.length * 100 });
+    }
+    return { roi:{x:roiX,y:roiY,w:roiW,h:roiH}, valid, d10, d50, d90, areaD50, span, finesPct, bouldersPct, bins, clumpCount, threshold:th, mmPerPx, bg };
+  }
+
+  function renderMarkerResults(result){
+    const fmt = v => Math.round(v).toLocaleString('ko-KR');
+    const results = document.getElementById('grindResults');
+    if (results) results.style.display = 'block';
+    document.getElementById('grindD50').textContent = fmt(result.d50) + 'µm';
+    const sieve = closestSieve(result.d50);
+    document.getElementById('grindClass').textContent = `${classifyGrindMarker(result.d50)} · ${sieve.mesh} / ${sieve.um}µm`;
+    document.getElementById('grindD10').textContent = fmt(result.d10);
+    document.getElementById('grindD90').textContent = fmt(result.d90);
+    const areaEl = document.getElementById('grindAreaD50');
+    if (areaEl) areaEl.textContent = fmt(result.areaD50);
+    document.getElementById('grindSpan').textContent = result.span.toFixed(2);
+    document.getElementById('grindFines').textContent = result.finesPct.toFixed(1) + '%';
+    document.getElementById('grindBoulders').textContent = result.bouldersPct.toFixed(1) + '%';
+    document.getElementById('grindCount').textContent = result.valid.length.toLocaleString('ko-KR');
+    const maxPct = Math.max(1, ...result.bins.map(b=>b.pct));
+    document.getElementById('grindHistogram').innerHTML = result.bins.map(b => {
+      const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
+      const width = Math.max(2, b.pct / maxPct * 100);
+      return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
+    }).join('');
+    document.getElementById('grindQualityNote').innerHTML =
+      `<strong>CONFIDENCE ${result.qLabel} · ${result.qScore}/100</strong><br>` +
+      `4점 십자 마커 기반 왜곡 보정 적용 · ${result.light.label}<br>` +
+      `${result.light.advice} · 기준 정사각형 100×100mm · 스케일 ${(result.mmPerPx*1000).toFixed(1)}µm/px<br>` +
+      `가장 가까운 체눈: <strong>${sieve.mesh}</strong> / ${sieve.um}µm · 덩어리/채프 의심 ${result.clumpCount}개 제외`;
+  }
+
+  function drawMarkerOverlay(canvas, detection, result){
+    const ctx = canvas.getContext('2d', { willReadFrequently:true });
+    ctx.save();
+    if (detection && detection.markers && detection.markers.length){
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = Math.max(2, canvas.width/900);
+      ctx.beginPath();
+      ctx.moveTo(detection.markers[0].x, detection.markers[0].y);
+      for (let i=1;i<detection.markers.length;i++) ctx.lineTo(detection.markers[i].x, detection.markers[i].y);
+      ctx.closePath(); ctx.stroke();
+      for (const m of detection.markers){
+        ctx.beginPath(); ctx.arc(m.x,m.y, Math.max(5, canvas.width/120), 0, Math.PI*2); ctx.stroke();
+      }
+    }
+    if (result && result.roi){
+      const scale = canvas.width / result.rectCanvas.width;
+      ctx.strokeStyle = 'rgba(210,210,210,0.9)';
+      ctx.strokeRect(result.roi.x * scale, result.roi.y * scale, result.roi.w * scale, result.roi.h * scale);
+    }
+    ctx.restore();
+  }
+
+  function scoreMarkerResult(det, analysis){
+    let q = det.qHint;
+    if (det.paper.touchesEdge) q -= 12;
+    if (det.paper.coverage < 0.35 || det.paper.coverage > 0.92) q -= 14;
+    if (analysis.valid.length < 30) q -= 12;
+    if (analysis.span > 2.4) q -= 6;
+    q -= Math.round((100 - det.light.score)*0.40);
+    return clamp(Math.round(q), 0, 100);
+  }
+
+  window.captureGrindMarkerMode = async function(){
+    const video = document.getElementById('video');
+    if (!video || video.readyState < 2 || !video.videoWidth){
+      showGrindCupRetry('카메라 준비 중입니다.', '잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    const btns = ['floatCaptureBtn','measureBtn'];
+    btns.forEach(id=>{ const b=document.getElementById(id); if (b){ b.disabled = true; b.textContent = 'ANALYZING'; }});
+    setStatus('active', 'ANALYZING');
+    try {
+      const maxDim = 1800;
+      const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+      const w = Math.max(1, Math.round(video.videoWidth * scale));
+      const h = Math.max(1, Math.round(video.videoHeight * scale));
+      const rawCanvas = document.createElement('canvas');
+      rawCanvas.width = w; rawCanvas.height = h;
+      rawCanvas.getContext('2d', { willReadFrequently:true }).drawImage(video, 0, 0, w, h);
+      const det = detectMarkerSheet(rawCanvas);
+      if (!det.ok) throw new Error(det.reason + ' A4 마커 시트의 십자 4개가 모두 보이게 다시 맞춰 주세요.');
+      const rectCanvas = warpPerspectiveFromCanvas(rawCanvas, det.markers, MK.warpPx);
+      const analysis = analyzeRectifiedParticles(rectCanvas);
+      const qScore = scoreMarkerResult(det, analysis);
+      const qLabel = qScore >= 82 ? 'HIGH' : qScore >= 60 ? 'MID' : 'LOW';
+      const result = Object.assign({}, analysis, { light:det.light, paper:det.paper, markers:det.markers, qScore, qLabel, rectCanvas, rawCanvas });
+      markerLastCapture = result;
+      const view = document.getElementById('grindCanvas');
+      view.width = rawCanvas.width; view.height = rawCanvas.height;
+      view.getContext('2d', { willReadFrequently:true }).drawImage(rawCanvas,0,0);
+      drawMarkerOverlay(view, det, result);
+      document.getElementById('grindCanvasWrap').style.display = 'block';
+      renderMarkerResults(result);
+      document.getElementById('grindLoadStatus').innerHTML = `<strong>왜곡 보정 완료</strong><br>십자 4점 기준으로 사영 보정 후 분석했습니다. 가장 가까운 체눈은 <strong>${closestSieve(result.d50).mesh}</strong> / ${closestSieve(result.d50).um}µm 입니다.`;
+      const hudL = document.getElementById('hudL');
+      if (hudL) hudL.textContent = `MARKER CAL OK · D50 ${Math.round(result.d50)}µm`;
+      setStatus('active', qLabel);
+    } catch(err){
+      showGrindCupRetry('분쇄도 분석 실패', err.message || String(err));
+    } finally {
+      btns.forEach(id=>{ const b=document.getElementById(id); if (b){ b.disabled = false; b.textContent = 'CAPTURE'; }});
+    }
+  };
+
+  window.resetGrindA4State = function(showMsg=true){
+    markerLastCapture = null;
+    const wrap = document.getElementById('grindCanvasWrap');
+    const results = document.getElementById('grindResults');
+    const canvas = document.getElementById('grindCanvas');
+    if (wrap) wrap.style.display = 'none';
+    if (results) results.style.display = 'none';
+    if (canvas){ const c = canvas.getContext('2d'); c.clearRect(0,0,canvas.width||1,canvas.height||1); }
+    const status = document.getElementById('grindLoadStatus');
+    if (status) status.innerHTML = showMsg ? '<strong>RESET 완료</strong><br>A4 마커 시트를 화면 안에 두고, 중앙 사각영역에 분쇄 원두를 얇게 펼친 뒤 다시 CAPTURE 하세요.' : 'A4 마커 시트를 화면 안에 두고 다시 CAPTURE 하세요.';
+    const hudL = document.getElementById('hudL');
+    if (hudL && currentAnalyzer === 'grind') hudL.textContent = 'MARKER SHEET · READY';
+    ['floatCaptureBtn','measureBtn'].forEach(id=>{ const b=document.getElementById(id); if (b){ b.disabled = false; b.textContent='CAPTURE'; } });
+    setStatus(stream ? 'active' : '', stream ? (currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE') : 'STANDBY');
+  };
+
+  function sampleGrindMarkerFrame(){
+    const video = document.getElementById('video');
+    if (!video || video.readyState < 2 || !video.videoWidth) return;
+    ensureMarkerPreviewCanvas();
+    const scale = Math.min(1, MK.previewMaxDim / Math.max(video.videoWidth, video.videoHeight));
+    const w = Math.max(1, Math.round(video.videoWidth * scale));
+    const h = Math.max(1, Math.round(video.videoHeight * scale));
+    markerPreviewCanvas.width = w; markerPreviewCanvas.height = h;
+    markerPreviewCtx.drawImage(video, 0, 0, w, h);
+    const det = detectMarkerSheet(markerPreviewCanvas);
+    const hudL = document.getElementById('hudL');
+    const status = document.getElementById('grindLoadStatus');
+    if (!det.ok){
+      if (hudL) hudL.textContent = 'ALIGN 4 CROSSES';
+      if (status) status.innerHTML = `<strong>ALIGN 4 CROSSES</strong><br>${det.reason} · A4 마커 시트 전체와 검은 십자 4개가 모두 보이도록 맞춰주세요.`;
+      setStatus('active', 'ALIGN');
+      return;
+    }
+    const q = det.qHint;
+    const qLabel = q >= 82 ? 'HIGH' : q >= 60 ? 'MID' : 'LOW';
+    const guidance = det.edgeTouch ? '화면과 여유를 조금 더 두고 촬영' : (det.sideSpread > 0.12 ? '휴대폰을 조금 더 수직으로' : '정렬 양호');
+    if (hudL) hudL.textContent = `MARKER READY · ${det.light.label}`;
+    if (status) status.innerHTML = `<strong>MARKER READY · ${qLabel}</strong><br>${det.light.label} · ${guidance} · CAPTURE 하면 왜곡 보정 후 분석합니다.`;
+    setStatus('active', qLabel);
+  }
+
+  window.applyMarkerSheetGrindUI = function(){
+    ensureMarkerOverlay();
+    ensureMarkerActionButtons();
+    const title = document.querySelector('#grindPanel .grind-title');
+    const desc = document.querySelector('#grindPanel .grind-desc');
+    if (title) title.style.display = 'none';
+    if (desc) desc.style.display = 'none';
+    const status = document.getElementById('grindLoadStatus');
+    if (status) status.innerHTML = '<strong>A4 마커 시트 방식</strong><br>인쇄한 A4 시트의 검은 십자 4개가 모두 보이게 맞춘 뒤, 중앙 점선 영역의 분쇄 원두를 CAPTURE 하세요.';
+    const guide = document.getElementById('grindGuideSection');
+    if (guide) guide.innerHTML = `
+      <div class="section-title">분쇄도 측정 가이드 · 4점 마커 왜곡 보정</div>
+      <div class="guide-steps">
+        <div class="guide-step"><div class="step-num">1</div><div class="step-text">A4 마커 시트를 인쇄한 뒤 평평한 바닥에 놓습니다.</div></div>
+        <div class="guide-step"><div class="step-num">2</div><div class="step-text">중앙 점선 영역에 분쇄 원두를 서로 겹치지 않게 아주 얇게 펼칩니다.</div></div>
+        <div class="guide-step"><div class="step-num">3</div><div class="step-text">검은 십자 4개가 모두 화면 안에 보이도록 맞춘 뒤 CAPTURE 합니다.</div></div>
+        <div class="guide-step"><div class="step-num">4</div><div class="step-text">앱이 4점을 기준으로 왜곡을 보정한 뒤, 100–1200µm 범위를 중심으로 D50과 체눈 구간을 분석합니다.</div></div>
+      </div>`;
+    const note = document.getElementById('markerSheetNote');
+    if (note) note.innerHTML = `<strong>왜 이 방식이 더 안정적인가요?</strong><br>Reference 1점 방식보다 4점 마커 방식이 카메라 기울어짐과 원근 왜곡을 더 잘 보정합니다. 따라서 분쇄도 값이 과하게 굵게 튀는 문제를 줄이는 데 유리합니다.`;
+  };
+
+  window.handleMeasure = function(){
+    if (currentAnalyzer === 'grind') return window.captureGrindMarkerMode();
+    return capture();
+  };
+
+  window.updateModeUI = function(){
+    ensureMarkerOverlay();
+    ensureMarkerActionButtons();
+    const colorMode = currentAnalyzer === 'color';
+    const viewport = document.querySelector('.camera-viewport');
+    if (viewport) viewport.classList.toggle('grind-mode', !colorMode);
+    const permTitle = document.getElementById('permTitle');
+    const permDesc = document.getElementById('permDesc');
+    if (permTitle) permTitle.textContent = colorMode ? '카메라 접근 필요' : '분쇄도 측정 준비';
+    if (permDesc) permDesc.innerHTML = colorMode
+      ? '분쇄된 원두를 종이컵에 담고<br>플래시를 켜서 위에서 비추면<br>로스팅 컬러를 측정합니다'
+      : 'A4 마커 시트를 인쇄한 뒤<br>십자 4개가 모두 보이게 맞추고<br>중앙 영역을 CAPTURE 하면 왜곡 보정 후 µm 분석합니다';
+    const measureBtn = document.getElementById('measureBtn');
+    if (measureBtn) measureBtn.textContent = colorMode ? 'MEASURE' : 'CAPTURE';
+    const floatCapture = document.getElementById('floatCaptureBtn');
+    if (floatCapture) floatCapture.textContent = 'CAPTURE';
+    [document.getElementById('resultsPanel'), document.getElementById('historySection'), document.querySelector('.guide-section'), document.querySelector('.ref-section')].forEach(el => {
+      if (!el) return;
+      if (el.id === 'historySection') el.style.display = colorMode && history.length ? 'block' : 'none';
+      else if (el.id === 'resultsPanel') el.style.display = colorMode && stream ? 'block' : 'none';
+      else el.style.display = colorMode ? '' : 'none';
+    });
+    [document.getElementById('grindPanel'), document.getElementById('grindGuideSection')].forEach(el => { if (el) el.style.display = colorMode ? 'none' : 'block'; });
+    const controlsBar = document.getElementById('controlsBar');
+    if (controlsBar) controlsBar.style.display = stream && colorMode ? 'flex' : 'none';
+    const permission = document.getElementById('permissionScreen');
+    if (permission) permission.style.display = stream ? 'none' : 'flex';
+    const overlay = document.getElementById('camOverlay');
+    if (overlay) overlay.style.display = stream ? 'block' : 'none';
+    const error = document.getElementById('errorMsg');
+    if (error) error.style.display = 'none';
+    const hudL = document.getElementById('hudL');
+    if (hudL && !stream) hudL.textContent = colorMode ? 'L* —' : 'MARKER SHEET · READY';
+    if (!colorMode) applyMarkerSheetGrindUI();
+    if (typeof syncTorchButtons === 'function') syncTorchButtons();
+  };
+
+  window.switchAnalyzer = function(mode){
+    currentAnalyzer = mode === 'grind' ? 'grind' : 'color';
+    const colorMode = currentAnalyzer === 'color';
+    document.getElementById('tabColor').classList.toggle('active', colorMode);
+    document.getElementById('tabGrind').classList.toggle('active', !colorMode);
+    updateModeUI();
+    if (stream && torchSupported) applyTorch(colorMode);
+    setStatus(stream ? 'active' : '', stream ? (colorMode ? 'ACTIVE' : 'GRIND') : 'STANDBY');
+  };
+
+  window.startLiveSampling = function(){
+    function loop(ts){
+      if (!lastLiveTs || ts - lastLiveTs >= AUTO_CAL.liveInterval){
+        if (currentAnalyzer === 'grind') sampleGrindMarkerFrame();
+        else {
+          const f = sampleFrame();
+          if (f) livePreviewAutoCal(f);
+        }
+        lastLiveTs = ts;
+      }
+      animFrameId = requestAnimationFrame(loop);
+    }
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    animFrameId = requestAnimationFrame(loop);
+  };
+
+  applyMarkerSheetGrindUI();
+  switchAnalyzer(currentAnalyzer || 'color');
+})();
+/* ===== End Marker Sheet Grind Mode v2 ===== */
+
 </script>
 </body>
 </html>
