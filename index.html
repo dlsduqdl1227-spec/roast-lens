@@ -9,9 +9,7 @@
 <title>Roast-Lens</title>
 <meta name="author" content="Monthly Coffee Education Leader _ Inyub Kim">
 <meta name="copyright" content="© Monthly Coffee Education Leader _ Inyub Kim">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -27,8 +25,9 @@
     --w3:     #888888;
     --w4:     #505050;
     --w5:     #303030;
-    --font-brand: 'Syne', sans-serif;
-    --font-mono:  'DM Mono', 'Courier New', monospace;
+    --font-main:  'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Segoe UI', sans-serif;
+    --font-brand: var(--font-main);
+    --font-mono:  var(--font-main);
   }
 
   html, body {
@@ -174,7 +173,7 @@
     text-align: center;
     line-height: 1.7;
     margin-bottom: 28px;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-main);
   }
 
   .btn-start {
@@ -463,7 +462,7 @@
     color: var(--w3);
     line-height: 1.5;
     padding-top: 3px;
-    font-family: -apple-system, 'Segoe UI', sans-serif;
+    font-family: var(--font-main);
   }
 
   /* HISTORY */
@@ -548,7 +547,7 @@
   }
 
   .error-msg p:first-child { font-size: 12px; color: var(--w2); letter-spacing: 1px; }
-  .error-msg p:last-child  { font-size: 11px; color: var(--w4); line-height: 1.6; font-family: -apple-system, sans-serif; }
+  .error-msg p:last-child  { font-size: 11px; color: var(--w4); line-height: 1.6; font-family: var(--font-main); }
 
   .divider { height: 0.5px; background: var(--border); margin: 0 20px; }
 
@@ -559,6 +558,233 @@
   }
 
   .sample-ring.scanning { animation: pulse-ring 2s ease-out infinite; }
+
+
+  /* MODE TABS */
+  .mode-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 0 20px 14px;
+    flex-shrink: 0;
+  }
+
+  .mode-tab {
+    background: var(--surf2);
+    color: var(--w4);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1.4px;
+    cursor: pointer;
+  }
+
+  .mode-tab.active {
+    background: var(--w1);
+    color: var(--bg);
+    border-color: var(--w1);
+  }
+
+  /* GRIND ANALYZER */
+  .grind-panel {
+    display: none;
+    padding: 0 20px 0;
+  }
+
+  .grind-card {
+    background: var(--surf);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+
+  .grind-title {
+    font-family: var(--font-brand);
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    margin-bottom: 4px;
+  }
+
+  .grind-desc {
+    font-family: var(--font-main);
+    color: var(--w3);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .grind-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .btn-grind {
+    background: var(--w1);
+    color: var(--bg);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 1.2px;
+    cursor: pointer;
+  }
+
+  .btn-grind.secondary {
+    background: var(--surf2);
+    color: var(--w3);
+    border: 0.5px solid var(--bdr2);
+  }
+
+  .btn-grind:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+
+  #grindFile { display: none; }
+
+  .grind-canvas-wrap {
+    display: none;
+    background: #080808;
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+
+  #grindCanvas {
+    display: block;
+    width: 100%;
+    max-height: 420px;
+    object-fit: contain;
+    background: #080808;
+  }
+
+  .grind-results { display: none; }
+
+  .grind-headline {
+    text-align: center;
+    padding: 18px 0;
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 14px;
+  }
+
+  .grind-main-value {
+    font-family: var(--font-brand);
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .grind-main-label {
+    font-size: 10px;
+    color: var(--w4);
+    letter-spacing: 2px;
+    margin-top: 6px;
+  }
+
+  .grind-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .grind-metric {
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 10px;
+  }
+
+  .grind-metric-label {
+    font-size: 8px;
+    color: var(--w4);
+    letter-spacing: 1.4px;
+    margin-bottom: 6px;
+  }
+
+  .grind-metric-value {
+    font-size: 20px;
+    color: var(--w1);
+    line-height: 1;
+  }
+
+  .grind-metric-sub {
+    font-size: 8px;
+    color: var(--w4);
+    margin-top: 4px;
+  }
+
+  .histogram {
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .hist-row {
+    display: grid;
+    grid-template-columns: 78px 1fr 42px;
+    gap: 8px;
+    align-items: center;
+    margin: 7px 0;
+  }
+
+  .hist-label, .hist-pct {
+    font-size: 9px;
+    color: var(--w4);
+  }
+
+  .hist-bar-bg {
+    height: 7px;
+    background: var(--surf3);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .hist-bar {
+    height: 100%;
+    background: var(--w2);
+    border-radius: 6px;
+    width: 0%;
+  }
+
+  .grind-note {
+    font-family: var(--font-main);
+    color: var(--w3);
+    font-size: 11px;
+    line-height: 1.65;
+    background: rgba(255,255,255,0.035);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  .grind-quality {
+    color: var(--w2);
+    font-size: 11px;
+    line-height: 1.6;
+    margin-top: 8px;
+  }
+
+  .grind-guide-section {
+    display: none;
+    padding: 16px 20px 20px;
+    border-top: 0.5px solid var(--border);
+    margin-top: 16px;
+  }
+
+  @media (max-width: 380px) {
+    .grind-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
 </style>
 </head>
 <body>
@@ -568,12 +794,17 @@
   <div class="header">
     <div>
       <div class="brand-name">Roast-Lens</div>
-      <div class="brand-sub">ROAST COLOR ANALYZER</div>
+      <div class="brand-sub">COLOR · GRIND ANALYZER</div>
     </div>
     <div class="status-pill">
       <div class="status-dot" id="statusDot"></div>
       <span class="status-label" id="statusLabel">STANDBY</span>
     </div>
+  </div>
+
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tabColor" onclick="switchAnalyzer('color')">COLOR</button>
+    <button class="mode-tab" id="tabGrind" onclick="switchAnalyzer('grind')">GRIND SIZE</button>
   </div>
 
   <div class="camera-viewport">
@@ -606,6 +837,74 @@
       <div class="sample-ring" id="sampleRing"></div>
       <div class="hud-color" id="hudColor"></div>
       <div class="hud-L" id="hudL">L* —</div>
+    </div>
+  </div>
+
+
+  <div class="grind-panel" id="grindPanel">
+    <div class="grind-card">
+      <div class="grind-title">Grind-Lens</div>
+      <div class="grind-desc">
+        A4 하얀 종이를 기준 면으로 사용해 분쇄 입자의 크기 분포를 추정합니다.<br>
+        종이컵 방식은 곡면·깊이·스케일 오차가 커서 분쇄도 측정에는 권장하지 않습니다.
+      </div>
+      <div class="grind-actions">
+        <button class="btn-grind secondary" onclick="document.getElementById('grindFile').click()">PHOTO</button>
+        <button class="btn-grind" id="grindAnalyzeBtn" onclick="analyzeGrind()" disabled>ANALYZE</button>
+      </div>
+      <input type="file" id="grindFile" accept="image/*" capture="environment" onchange="loadGrindImage(this)">
+      <div class="grind-quality" id="grindLoadStatus">A4 전체 모서리가 보이게 촬영하면 자동으로 mm/px 기준을 잡습니다.</div>
+    </div>
+
+    <div class="grind-canvas-wrap" id="grindCanvasWrap">
+      <canvas id="grindCanvas"></canvas>
+    </div>
+
+    <div class="grind-results" id="grindResults">
+      <div class="grind-headline">
+        <div class="grind-main-value" id="grindD50">—</div>
+        <div class="grind-main-label" id="grindClass">MEDIAN PARTICLE SIZE</div>
+      </div>
+
+      <div class="grind-grid">
+        <div class="grind-metric">
+          <div class="grind-metric-label">D10</div>
+          <div class="grind-metric-value" id="grindD10">—</div>
+          <div class="grind-metric-sub">µm</div>
+        </div>
+        <div class="grind-metric">
+          <div class="grind-metric-label">D90</div>
+          <div class="grind-metric-value" id="grindD90">—</div>
+          <div class="grind-metric-sub">µm</div>
+        </div>
+        <div class="grind-metric">
+          <div class="grind-metric-label">SPAN</div>
+          <div class="grind-metric-value" id="grindSpan">—</div>
+          <div class="grind-metric-sub">분포 폭</div>
+        </div>
+        <div class="grind-metric">
+          <div class="grind-metric-label">FINES</div>
+          <div class="grind-metric-value" id="grindFines">—</div>
+          <div class="grind-metric-sub">&lt;300µm area</div>
+        </div>
+        <div class="grind-metric">
+          <div class="grind-metric-label">BOULDERS</div>
+          <div class="grind-metric-value" id="grindBoulders">—</div>
+          <div class="grind-metric-sub">&gt;1200µm area</div>
+        </div>
+        <div class="grind-metric">
+          <div class="grind-metric-label">COUNT</div>
+          <div class="grind-metric-value" id="grindCount">—</div>
+          <div class="grind-metric-sub">valid particles</div>
+        </div>
+      </div>
+
+      <div class="histogram">
+        <div class="section-title" style="margin-bottom:8px;">AREA-WEIGHTED DISTRIBUTION</div>
+        <div id="grindHistogram"></div>
+      </div>
+
+      <div class="grind-note" id="grindQualityNote">—</div>
     </div>
   </div>
 
@@ -689,6 +988,28 @@
       <div class="guide-step">
         <div class="step-num">4</div>
         <div class="step-text">흰 종이컵 기준 자동 보정 + 30프레임 평균 측정 · Agtron은 L* 기반 추정치</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grind-guide-section" id="grindGuideSection">
+    <div class="section-title">분쇄도 측정 가이드 · HOW TO MEASURE</div>
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="step-num">1</div>
+        <div class="step-text">A4 하얀 종이를 어두운 테이블 위에 올리고 종이 4개 모서리가 사진에 보이게 준비</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">2</div>
+        <div class="step-text">0.2~0.5g 정도의 분쇄 원두를 한 겹으로 얇게 흩뿌리기 · 서로 붙은 덩어리는 최대한 분리</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">3</div>
+        <div class="step-text">핸드폰을 A4 위에서 수직에 가깝게 두고 고해상도로 촬영 · 그림자와 흔들림은 피하기</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">4</div>
+        <div class="step-text">PHOTO로 사진을 불러온 뒤 ANALYZE · D50, D10, D90, 미분/거대입자 비율을 참고값으로 확인</div>
       </div>
     </div>
   </div>
@@ -1105,6 +1426,400 @@ function renderHistory() {
       <div class="history-time">${m.ts}</div>
     </div>
   `).join('');
+}
+
+
+function stopCamera() {
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    videoTrack = null;
+  }
+  torchOn = false;
+  torchSupported = false;
+  const video = document.getElementById('video');
+  if (video) {
+    video.srcObject = null;
+    video.style.display = 'none';
+  }
+  const torchBtn = document.getElementById('torchBtn');
+  if (torchBtn) {
+    torchBtn.textContent = 'FLASH OFF';
+    torchBtn.classList.remove('on');
+  }
+  const ring = document.getElementById('sampleRing');
+  if (ring) ring.classList.remove('scanning');
+}
+
+function switchAnalyzer(mode) {
+  const colorMode = mode === 'color';
+  document.getElementById('tabColor').classList.toggle('active', colorMode);
+  document.getElementById('tabGrind').classList.toggle('active', !colorMode);
+
+  const colorEls = [
+    document.querySelector('.camera-viewport'),
+    document.getElementById('controlsBar'),
+    document.getElementById('resultsPanel'),
+    document.getElementById('historySection'),
+    document.querySelector('.guide-section'),
+    document.querySelector('.ref-section')
+  ];
+  colorEls.forEach(el => {
+    if (!el) return;
+    if (el.id === 'controlsBar') el.style.display = colorMode && stream ? 'flex' : 'none';
+    else if (el.id === 'resultsPanel') el.style.display = colorMode && stream ? 'block' : 'none';
+    else if (el.id === 'historySection') el.style.display = colorMode && history.length ? 'block' : 'none';
+    else el.style.display = colorMode ? '' : 'none';
+  });
+
+  document.getElementById('grindPanel').style.display = colorMode ? 'none' : 'block';
+  document.getElementById('grindGuideSection').style.display = colorMode ? 'none' : 'block';
+
+  if (!colorMode) {
+    stopCamera();
+    document.getElementById('permissionScreen').style.display = 'flex';
+    document.getElementById('camOverlay').style.display = 'none';
+    document.getElementById('errorMsg').style.display = 'none';
+    setStatus('active', 'GRIND');
+  } else {
+    setStatus(stream ? 'active' : '', stream ? 'ACTIVE' : 'STANDBY');
+  }
+}
+
+let grindSrcCanvas = null;
+let grindLastAnalysis = null;
+
+const GRIND_CAL = {
+  maxDim: 2600,
+  a4ShortMM: 210,
+  a4LongMM: 297,
+  paperInset: 0.075,
+  minParticleUm: 80,
+  maxParticleUm: 3600,
+  finesUm: 300,
+  boulderUm: 1200,
+  minValidParticles: 60
+};
+
+function loadGrindImage(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const scale = Math.min(1, GRIND_CAL.maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      grindSrcCanvas = document.createElement('canvas');
+      grindSrcCanvas.width = w;
+      grindSrcCanvas.height = h;
+      const sctx = grindSrcCanvas.getContext('2d', { willReadFrequently: true });
+      sctx.drawImage(img, 0, 0, w, h);
+      const canvas = document.getElementById('grindCanvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(grindSrcCanvas, 0, 0);
+      document.getElementById('grindCanvasWrap').style.display = 'block';
+      document.getElementById('grindAnalyzeBtn').disabled = false;
+      document.getElementById('grindResults').style.display = 'none';
+      document.getElementById('grindLoadStatus').textContent = `이미지 준비 완료 · ${w}×${h}px · A4 모서리가 보이면 분석 정확도가 올라갑니다.`;
+      setStatus('active', 'READY');
+    };
+    img.onerror = function(){ alert('이미지를 불러오지 못했습니다. 다른 사진으로 다시 시도해 주세요.'); };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function detectA4Paper(imageData, w, h) {
+  const d = imageData.data;
+  const step = Math.max(2, Math.floor(Math.min(w, h) / 700));
+  let minX = w, minY = h, maxX = 0, maxY = 0, count = 0;
+
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const i = (y*w + x) * 4;
+      const R = d[i], G = d[i+1], B = d[i+2];
+      const Y = luma(R, G, B);
+      const C = chroma(R, G, B);
+      if (Y > 150 && C < 42 && R > 120 && G > 120 && B > 120) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        count++;
+      }
+    }
+  }
+
+  const sampled = Math.ceil(w/step) * Math.ceil(h/step);
+  const whiteRatio = count / Math.max(1, sampled);
+  let detected = whiteRatio > 0.22 && minX < maxX && minY < maxY;
+
+  if (!detected) {
+    minX = 0; minY = 0; maxX = w-1; maxY = h-1;
+  }
+
+  let bw = maxX - minX + 1;
+  let bh = maxY - minY + 1;
+  const landscape = bw >= bh;
+  const realW = landscape ? GRIND_CAL.a4LongMM : GRIND_CAL.a4ShortMM;
+  const realH = landscape ? GRIND_CAL.a4ShortMM : GRIND_CAL.a4LongMM;
+  const mmPerPxX = realW / bw;
+  const mmPerPxY = realH / bh;
+  const mmPerPx = (mmPerPxX + mmPerPxY) / 2;
+  const ratio = bw / bh;
+  const expected = realW / realH;
+  const ratioError = Math.abs(ratio - expected) / expected;
+  const touchesEdge = minX < w*0.02 || minY < h*0.02 || maxX > w*0.98 || maxY > h*0.98;
+  const coverage = (bw*bh) / (w*h);
+
+  return { minX, minY, maxX, maxY, bw, bh, mmPerPx, mmPerPxX, mmPerPxY, ratioError, whiteRatio, detected, touchesEdge, coverage };
+}
+
+function otsuThreshold(values) {
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < values.length; i++) hist[Math.max(0, Math.min(255, values[i]|0))]++;
+  let total = values.length, sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0, wB = 0, wF = 0, maxVar = 0, threshold = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * Math.pow(mB - mF, 2);
+    if (between > maxVar) { maxVar = between; threshold = t; }
+  }
+  return threshold;
+}
+
+function weightedPercentile(items, p) {
+  if (!items.length) return 0;
+  const sorted = items.slice().sort((a,b) => a.d - b.d);
+  const total = sorted.reduce((s, it) => s + it.area, 0);
+  let acc = 0;
+  for (const it of sorted) {
+    acc += it.area;
+    if (acc >= total * p) return it.d;
+  }
+  return sorted[sorted.length - 1].d;
+}
+
+function classifyGrind(d50) {
+  if (d50 < 300) return 'VERY FINE / TURKISH';
+  if (d50 < 500) return 'FINE / ESPRESSO';
+  if (d50 < 700) return 'MEDIUM-FINE';
+  if (d50 < 950) return 'MEDIUM / POUR OVER';
+  if (d50 < 1250) return 'MEDIUM-COARSE';
+  return 'COARSE';
+}
+
+function analyzeGrind() {
+  if (!grindSrcCanvas) return;
+  const btn = document.getElementById('grindAnalyzeBtn');
+  btn.disabled = true;
+  btn.textContent = 'ANALYZING';
+  setStatus('active', 'ANALYZING');
+
+  setTimeout(() => {
+    try {
+      const canvas = document.getElementById('grindCanvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      canvas.width = grindSrcCanvas.width;
+      canvas.height = grindSrcCanvas.height;
+      ctx.drawImage(grindSrcCanvas, 0, 0);
+      const w = canvas.width, h = canvas.height;
+      const full = ctx.getImageData(0, 0, w, h);
+      const paper = detectA4Paper(full, w, h);
+
+      const insetX = Math.round(paper.bw * GRIND_CAL.paperInset);
+      const insetY = Math.round(paper.bh * GRIND_CAL.paperInset);
+      const rx = Math.max(0, paper.minX + insetX);
+      const ry = Math.max(0, paper.minY + insetY);
+      const rw = Math.min(w - rx, paper.bw - insetX*2);
+      const rh = Math.min(h - ry, paper.bh - insetY*2);
+      if (rw < 80 || rh < 80) throw new Error('A4 기준 영역이 너무 작습니다. A4 종이가 더 크게 보이도록 다시 촬영해 주세요.');
+
+      const roi = ctx.getImageData(rx, ry, rw, rh);
+      const rd = roi.data;
+      const lumas = [];
+      const step = Math.max(1, Math.floor(Math.min(rw, rh) / 900));
+      for (let y = 0; y < rh; y += step) {
+        for (let x = 0; x < rw; x += step) {
+          const i = (y*rw + x) * 4;
+          lumas.push(Math.round(luma(rd[i], rd[i+1], rd[i+2])));
+        }
+      }
+      const bgCandidates = lumas.filter(v => v > 150).sort((a,b)=>a-b);
+      const bgL = bgCandidates.length ? bgCandidates[Math.floor(bgCandidates.length * 0.55)] : median(lumas);
+      const otsu = otsuThreshold(lumas);
+      const threshold = Math.max(35, Math.min(175, Math.min(otsu + 10, bgL - 42)));
+
+      const mask = new Uint8Array(rw * rh);
+      let darkArea = 0;
+      for (let y = 0; y < rh; y++) {
+        for (let x = 0; x < rw; x++) {
+          const i = (y*rw + x) * 4;
+          const R = rd[i], G = rd[i+1], B = rd[i+2];
+          const Y = luma(R, G, B);
+          if (Y < threshold && (bgL - Y) > 32) {
+            mask[y*rw + x] = 1;
+            darkArea++;
+          }
+        }
+      }
+
+      const visited = new Uint8Array(mask.length);
+      const comps = [];
+      const stack = [];
+      const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+      for (let idx = 0; idx < mask.length; idx++) {
+        if (!mask[idx] || visited[idx]) continue;
+        let area = 0, minx = rw, miny = rh, maxx = 0, maxy = 0;
+        stack.length = 0;
+        stack.push(idx);
+        visited[idx] = 1;
+        while (stack.length) {
+          const cur = stack.pop();
+          const y = Math.floor(cur / rw), x = cur - y*rw;
+          area++;
+          if (x < minx) minx = x;
+          if (x > maxx) maxx = x;
+          if (y < miny) miny = y;
+          if (y > maxy) maxy = y;
+          for (let n = 0; n < 4; n++) {
+            const nx = x + neighbors[n][0], ny = y + neighbors[n][1];
+            if (nx < 0 || nx >= rw || ny < 0 || ny >= rh) continue;
+            const ni = ny*rw + nx;
+            if (mask[ni] && !visited[ni]) { visited[ni] = 1; stack.push(ni); }
+          }
+        }
+        if (area < 3) continue;
+        const bw = maxx - minx + 1, bh = maxy - miny + 1;
+        const eqDiaUm = Math.sqrt((4 * area) / Math.PI) * paper.mmPerPx * 1000;
+        const fill = area / Math.max(1, bw*bh);
+        const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
+        if (eqDiaUm >= GRIND_CAL.minParticleUm && eqDiaUm <= GRIND_CAL.maxParticleUm) {
+          comps.push({ d: eqDiaUm, area, minx, miny, maxx, maxy, fill, aspect });
+        }
+      }
+
+      if (comps.length < 10) throw new Error('입자를 충분히 인식하지 못했습니다. 흰 A4 배경 위에 분쇄 원두를 더 넓게 흩뿌려 주세요.');
+
+      const ds = comps.map(c => c.d);
+      const med = median(ds);
+      const sd = stdev(ds);
+      const clumpLimit = Math.max(1800, med + 2.2 * sd);
+      const valid = [];
+      let clumpCount = 0, clumpArea = 0;
+      for (const c of comps) {
+        const likelyClump = (c.d > clumpLimit && c.fill < 0.42) || (c.aspect > 4.2 && c.d > 650) || c.d > 3200;
+        if (likelyClump) { clumpCount++; clumpArea += c.area; }
+        else valid.push(c);
+      }
+      if (valid.length < GRIND_CAL.minValidParticles) {
+        // 너무 적어도 결과는 보여주되 신뢰도에서 낮게 처리
+      }
+
+      const d10 = weightedPercentile(valid, 0.10);
+      const d50 = weightedPercentile(valid, 0.50);
+      const d90 = weightedPercentile(valid, 0.90);
+      const span = d50 ? (d90 - d10) / d50 : 0;
+      const totalArea = valid.reduce((s, c) => s + c.area, 0) || 1;
+      const finesPct = valid.filter(c => c.d < GRIND_CAL.finesUm).reduce((s,c)=>s+c.area,0) / totalArea * 100;
+      const bouldersPct = valid.filter(c => c.d > GRIND_CAL.boulderUm).reduce((s,c)=>s+c.area,0) / totalArea * 100;
+
+      const bins = [
+        [0,200], [200,300], [300,500], [500,700], [700,1000], [1000,1400], [1400,2000], [2000,99999]
+      ].map(([lo, hi]) => {
+        const area = valid.filter(c => c.d >= lo && c.d < hi).reduce((s,c)=>s+c.area,0);
+        return { lo, hi, pct: area / totalArea * 100 };
+      });
+
+      let qScore = 100;
+      const darkCoverage = darkArea / (rw*rh);
+      const clumpRatio = clumpArea / Math.max(1, darkArea);
+      if (!paper.detected) qScore -= 35;
+      if (paper.ratioError > 0.10) qScore -= 18;
+      if (paper.ratioError > 0.18) qScore -= 20;
+      if (paper.touchesEdge) qScore -= 12;
+      if (valid.length < GRIND_CAL.minValidParticles) qScore -= 26;
+      if (darkCoverage < 0.0015 || darkCoverage > 0.16) qScore -= 18;
+      if (clumpRatio > 0.15) qScore -= 18;
+      if (span > 2.4) qScore -= 8;
+      qScore = Math.max(0, Math.min(100, Math.round(qScore)));
+      let qLabel = qScore >= 78 ? 'HIGH' : qScore >= 55 ? 'MID' : 'LOW';
+
+      grindLastAnalysis = { paper, valid, d10, d50, d90, span, finesPct, bouldersPct, bins, qScore, qLabel, clumpCount, threshold, bgL };
+      renderGrindResults(grindLastAnalysis);
+      drawGrindOverlay(ctx, paper, {x:rx,y:ry,w:rw,h:rh}, valid);
+      setStatus('active', qLabel);
+    } catch (err) {
+      alert(err.message || String(err));
+      setStatus('error', 'RETRY');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'ANALYZE';
+    }
+  }, 60);
+}
+
+function renderGrindResults(r) {
+  const fmt = v => Math.round(v).toLocaleString('ko-KR');
+  document.getElementById('grindResults').style.display = 'block';
+  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
+  document.getElementById('grindClass').textContent = classifyGrind(r.d50);
+  document.getElementById('grindD10').textContent = fmt(r.d10);
+  document.getElementById('grindD90').textContent = fmt(r.d90);
+  document.getElementById('grindSpan').textContent = r.span.toFixed(2);
+  document.getElementById('grindFines').textContent = r.finesPct.toFixed(1) + '%';
+  document.getElementById('grindBoulders').textContent = r.bouldersPct.toFixed(1) + '%';
+  document.getElementById('grindCount').textContent = r.valid.length.toLocaleString('ko-KR');
+
+  const maxPct = Math.max(1, ...r.bins.map(b => b.pct));
+  document.getElementById('grindHistogram').innerHTML = r.bins.map(b => {
+    const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
+    const width = Math.max(2, b.pct / maxPct * 100);
+    return `<div class="hist-row">
+      <div class="hist-label">${label}µm</div>
+      <div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div>
+      <div class="hist-pct">${b.pct.toFixed(1)}%</div>
+    </div>`;
+  }).join('');
+
+  const paperText = r.paper.detected ? 'A4 기준 감지' : 'A4 기준 미확실';
+  const edgeText = r.paper.touchesEdge ? ' · 모서리 일부가 화면 끝에 닿음' : '';
+  document.getElementById('grindQualityNote').innerHTML =
+    `<strong>CONFIDENCE ${r.qLabel} · ${r.qScore}/100</strong><br>` +
+    `${paperText}${edgeText} · 스케일 ${r.paper.mmPerPx.toFixed(4)}mm/px · threshold ${Math.round(r.threshold)}<br>` +
+    `덩어리/채프 의심 ${r.clumpCount}개 제외. 결과는 A4 사진 기반의 면적가중 추정값이며, 공식 체/레이저 입도 분석을 대체하지 않습니다.`;
+}
+
+function drawGrindOverlay(ctx, paper, roi, valid) {
+  ctx.save();
+  ctx.lineWidth = Math.max(2, ctx.canvas.width / 900);
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.strokeRect(paper.minX, paper.minY, paper.bw, paper.bh);
+  ctx.strokeStyle = 'rgba(200,200,200,0.95)';
+  ctx.strokeRect(roi.x, roi.y, roi.w, roi.h);
+
+  ctx.lineWidth = Math.max(1, ctx.canvas.width / 1600);
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  const maxBoxes = 260;
+  const step = Math.max(1, Math.floor(valid.length / maxBoxes));
+  for (let i = 0; i < valid.length; i += step) {
+    const c = valid[i];
+    ctx.strokeRect(roi.x + c.minx, roi.y + c.miny, c.maxx - c.minx + 1, c.maxy - c.miny + 1);
+  }
+  ctx.restore();
 }
 
 function setStatus(type, label) {
