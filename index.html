@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Roast-Lens</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%230E0E0E%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2717%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%274%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%275%27 fill=%27%23888%27/%3E%3C/svg%3E">
 <meta name="author" content="월간커피 · inyub Kim">
 <meta name="copyright" content="© inyub Kim. All rights reserved.">
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
@@ -605,380 +606,6 @@
     color: var(--bg);
     border-color: var(--w1);
   }
-
-  /* GRIND ANALYZER */
-  .grind-panel {
-    display: none;
-    padding: 0 20px 0;
-  }
-
-  .grind-card {
-    background: var(--surf);
-    border: 0.5px solid var(--border);
-    border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 14px;
-  }
-
-  .grind-title {
-    font-family: var(--font-brand);
-    font-size: 24px;
-    font-weight: 800;
-    letter-spacing: -0.4px;
-    margin-bottom: 4px;
-  }
-
-  .grind-desc {
-    font-family: var(--font-main);
-    color: var(--w3);
-    font-size: 12px;
-    line-height: 1.6;
-  }
-
-  .grind-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-top: 14px;
-  }
-
-  .btn-grind {
-    background: var(--w1);
-    color: var(--bg);
-    border: none;
-    border-radius: 10px;
-    padding: 12px 10px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    letter-spacing: 1.2px;
-    cursor: pointer;
-  }
-
-  .btn-grind.secondary {
-    background: var(--surf2);
-    color: var(--w3);
-    border: 0.5px solid var(--bdr2);
-  }
-
-  .btn-grind:disabled {
-    opacity: .45;
-    cursor: not-allowed;
-  }
-
-  #grindFile { display: none; }
-
-  .grind-canvas-wrap {
-    display: none;
-    background: #080808;
-    border: 0.5px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-    margin-bottom: 14px;
-  }
-
-  #grindCanvas {
-    display: block;
-    width: 100%;
-    max-height: 420px;
-    object-fit: contain;
-    background: #080808;
-  }
-
-  .grind-results { display: none; }
-
-  .grind-headline {
-    text-align: center;
-    padding: 18px 0;
-    border-bottom: 0.5px solid var(--border);
-    margin-bottom: 14px;
-  }
-
-  .grind-main-value {
-    font-family: var(--font-brand);
-    font-size: 34px;
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .grind-main-label {
-    font-size: 10px;
-    color: var(--w4);
-    letter-spacing: 2px;
-    margin-top: 6px;
-  }
-
-  .grind-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .grind-metric {
-    background: var(--surf2);
-    border: 0.5px solid var(--border);
-    border-radius: 10px;
-    padding: 11px 10px;
-  }
-
-  .grind-metric-label {
-    font-size: 8px;
-    color: var(--w4);
-    letter-spacing: 1.4px;
-    margin-bottom: 6px;
-  }
-
-  .grind-metric-value {
-    font-size: 20px;
-    color: var(--w1);
-    line-height: 1;
-  }
-
-  .grind-metric-sub {
-    font-size: 8px;
-    color: var(--w4);
-    margin-top: 4px;
-  }
-
-  .histogram {
-    background: var(--surf2);
-    border: 0.5px solid var(--border);
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-
-  .hist-row {
-    display: grid;
-    grid-template-columns: 78px 1fr 42px;
-    gap: 8px;
-    align-items: center;
-    margin: 7px 0;
-  }
-
-  .hist-label, .hist-pct {
-    font-size: 9px;
-    color: var(--w4);
-  }
-
-  .hist-bar-bg {
-    height: 7px;
-    background: var(--surf3);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-
-  .hist-bar {
-    height: 100%;
-    background: var(--w2);
-    border-radius: 6px;
-    width: 0%;
-  }
-
-  .grind-note {
-    font-family: var(--font-main);
-    color: var(--w3);
-    font-size: 11px;
-    line-height: 1.65;
-    background: rgba(255,255,255,0.035);
-    border: 0.5px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-
-  .grind-quality {
-    color: var(--w2);
-    font-size: 11px;
-    line-height: 1.6;
-    margin-top: 8px;
-  }
-
-  .grind-guide-section {
-    display: none;
-    padding: 16px 20px 20px;
-    border-top: 0.5px solid var(--border);
-    margin-top: 16px;
-  }
-
-  @media (max-width: 380px) {
-    .grind-grid { grid-template-columns: repeat(2, 1fr); }
-  }
-
-
-  .camera-viewport.grind-mode .sample-ring {
-    width: var(--grind-ring-size, 230px);
-    height: var(--grind-ring-size, 230px);
-    border-width: 2px;
-  }
-  .camera-viewport.grind-mode .sample-ring::after {
-    content: '';
-    position: absolute;
-    top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 58%; height: 58%;
-    border-radius: 50%;
-    border: 1px dashed rgba(255,255,255,0.50);
-  }
-  .camera-viewport.grind-mode .hud-color { display: none; }
-  .camera-viewport.grind-mode .hud-L {
-    bottom: 10px;
-    font-size: 10px;
-    max-width: calc(100% - 24px);
-    white-space: normal;
-    text-align: center;
-    line-height: 1.45;
-    padding: 7px 10px;
-  }
-  .grind-settings { grid-template-columns: 1fr 1fr; }
-  .grind-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
-  .grind-field label {
-    font-size: 11px;
-    letter-spacing: 0.4px;
-    color: #787878;
-  }
-  .grind-field select {
-    appearance: none;
-    border: 1px solid var(--border);
-    background: #fff;
-    border-radius: 10px;
-    padding: 12px 14px;
-    font-family: var(--font-main);
-    font-size: 13px;
-    color: #111;
-  }
-  .grind-pill {
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    padding: 0 14px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: #fff;
-    font-size: 13px;
-    color: #111;
-  }
-
-
-  /* GRIND MODE: camera-first capture controls */
-  .floating-grind-ctrl {
-    display: none;
-    position: absolute;
-    left: 14px;
-    right: 14px;
-    bottom: 14px;
-    z-index: 20;
-    gap: 8px;
-    pointer-events: auto;
-  }
-  .camera-viewport.grind-mode .floating-grind-ctrl { display: flex; }
-  .float-torch,
-  .float-capture,
-  .float-reset {
-    min-height: 48px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,.18);
-    font-family: var(--font-main);
-    font-weight: 800;
-    letter-spacing: .6px;
-    box-shadow: 0 10px 24px rgba(0,0,0,.38);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  .float-torch {
-    flex: .92;
-    background: rgba(16,16,16,.72);
-    color: #d6d6d6;
-  }
-  .float-torch.on {
-    background: rgba(255,255,255,.12);
-    color: #fff;
-    border-color: rgba(255,255,255,.38);
-  }
-  .float-capture {
-    flex: 1.55;
-    background: #fff;
-    color: #0E0E0E;
-    border-color: #fff;
-    font-size: 14px;
-  }
-  .float-reset {
-    flex: .78;
-    background: rgba(16,16,16,.72);
-    color: #d6d6d6;
-    font-size: 12px;
-  }
-  .float-capture:active,
-  .float-torch:active,
-  .float-reset:active { transform: scale(.985); opacity: .86; }
-  .float-capture:disabled,
-  .float-reset:disabled { opacity: .55; }
-  .grind-brief {
-    margin-top: 10px;
-    color: var(--w4);
-    font-size: 11.5px;
-    line-height: 1.62;
-    text-align: center;
-    font-family: var(--font-main);
-    letter-spacing: .01em;
-  }
-  .grind-retry {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: rgba(255,255,255,.10);
-    color: var(--w1);
-    font-size: 11px;
-    border: .5px solid rgba(255,255,255,.22);
-  }
-  .camera-viewport.grind-mode .hud-L {
-    bottom: 74px;
-    left: 12px;
-    right: 12px;
-    transform: none;
-    max-width: none;
-    border-radius: 10px;
-    font-size: 10.5px;
-    background: rgba(0,0,0,.66);
-  }
-  .camera-viewport.grind-mode .ch-h,
-  .camera-viewport.grind-mode .ch-v { opacity: .7; }
-  .camera-viewport.grind-mode .sample-ring {
-    box-shadow: 0 0 0 9999px rgba(0,0,0,.12);
-  }
-
-
-
-  /* CLEAN GRIND MODE */
-  .compact-grind-card { padding: 14px; }
-  .compact-grind-card .grind-quality { margin-top: 0; }
-  .grind-guide-section { display: none !important; }
-  .camera-viewport.grind-mode .sample-ring { display: none !important; }
-  .camera-viewport.grind-mode .hud-color { display: none !important; }
-  .camera-viewport.grind-mode .hud-L {
-    bottom: 74px; left: 12px; right: 12px; transform: none; max-width: none;
-    border-radius: 10px; font-size: 10.5px; background: rgba(0,0,0,.66);
-  }
-  .vc-overlay { display:none; position:absolute; inset:0; pointer-events:none; }
-  .camera-viewport.grind-mode .vc-overlay { display:block; }
-  .vc-box { position:absolute; left:15%; top:15%; width:70%; height:70%; border:1.5px solid rgba(255,255,255,.92); border-radius:16px; box-shadow:0 0 0 999px rgba(0,0,0,.08), inset 0 0 0 1px rgba(255,255,255,.12); }
-  .vc-box::before,.vc-box::after { content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:rgba(255,255,255,.22); }
-  .vc-box::before { width:1px; height:100%; }
-  .vc-box::after { width:100%; height:1px; }
-  .vc-inner { position:absolute; left:25%; top:25%; width:50%; height:50%; border:1px dashed rgba(255,255,255,.42); border-radius:10px; }
-  .vc-label { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:5px 10px; border-radius:999px; background:rgba(0,0,0,.42); border:1px solid rgba(255,255,255,.24); color:rgba(255,255,255,.9); font-size:10px; letter-spacing:1.2px; white-space:nowrap; }
-  .floating-grind-ctrl { display:none; position:absolute; left:14px; right:14px; bottom:14px; z-index:20; gap:8px; pointer-events:auto; }
-  .camera-viewport.grind-mode .floating-grind-ctrl { display:flex; }
-  .float-torch,.float-capture,.float-reset { min-height:48px; border-radius:14px; border:1px solid rgba(255,255,255,.18); font-family:var(--font-main); font-weight:800; letter-spacing:.6px; box-shadow:0 10px 24px rgba(0,0,0,.38); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
-  .float-torch { flex:.92; background:rgba(16,16,16,.72); color:#d6d6d6; }
-  .float-torch.on { background:rgba(255,255,255,.12); color:#fff; border-color:rgba(255,255,255,.38); }
-  .float-capture { flex:1.55; background:#fff; color:#0E0E0E; border-color:#fff; font-size:14px; }
-  .float-reset { flex:.78; background:rgba(16,16,16,.72); color:#d6d6d6; font-size:12px; }
-
 </style>
 </head>
 <body>
@@ -989,7 +616,7 @@
     <div>
       <div class="brand-kicker">월간커피</div>
       <div class="brand-name">Roast-Lens</div>
-      <div class="brand-sub">COLOR · GRIND ANALYZER</div>
+      <div class="brand-sub">COLOR ANALYZER</div>
       <div class="brand-copy">© inyub Kim. All rights reserved.</div>
     </div>
     <div class="status-pill">
@@ -998,9 +625,8 @@
     </div>
   </div>
 
-  <div class="mode-tabs">
-    <button class="mode-tab active" id="tabColor" onclick="switchAnalyzer('color')">COLOR</button>
-    <button class="mode-tab" id="tabGrind" onclick="switchAnalyzer('grind')">GRIND SIZE</button>
+  <div class="mode-tabs" style="grid-template-columns: 1fr;">
+    <button class="mode-tab active" id="tabColor" type="button">COLOR</button>
   </div>
 
   <div class="camera-viewport">
@@ -1011,7 +637,7 @@
       <div class="lens-icon"></div>
       <p class="perm-title" id="permTitle">카메라 접근 필요</p>
       <p class="perm-desc" id="permDesc">
-        분쇄된 원두를 종이컵에 담고<br>
+        측정할 원두 샘플을 종이컵에 담고<br>
         플래시를 켜서 위에서 비추면<br>
         로스팅 컬러를 측정합니다
       </p>
@@ -1033,52 +659,12 @@
       <div class="sample-ring" id="sampleRing"></div>
       <div class="hud-color" id="hudColor"></div>
       <div class="hud-L" id="hudL">L* —</div>
-      <div class="floating-grind-ctrl" id="floatingGrindCtrl">
-        <button class="float-torch" id="floatTorchBtn" onclick="toggleTorch()">FLASH OFF</button>
-        <button class="float-capture" id="floatCaptureBtn" onclick="handleMeasure()">CAPTURE</button>
-        <button class="float-reset" id="floatResetBtn" onclick="resetGrindState(true)">RESET</button>
-      </div>
-    </div>
-  </div>
-
-
-  <div class="grind-panel" id="grindPanel">
-    <div class="grind-card compact-grind-card">
-      <div class="grind-quality" id="grindLoadStatus">READY</div>
-      <div class="grind-brief">1. 흰 배경 위에 원두를 한 겹으로 펼칩니다.<br>2. 중앙 사각 영역 안에 입자가 겹치지 않게 맞춥니다.<br>3. CAPTURE 후 신뢰도 HIGH / MID 값만 참고합니다.</div>
-    </div>
-
-    <div class="grind-canvas-wrap" id="grindCanvasWrap">
-      <canvas id="grindCanvas"></canvas>
-    </div>
-
-    <div class="grind-results" id="grindResults">
-      <div class="grind-headline">
-        <div class="grind-main-value" id="grindD50">—</div>
-        <div class="grind-main-label" id="grindClass">REPRESENTATIVE GRIND SIZE</div>
-      </div>
-
-      <div class="grind-grid">
-        <div class="grind-metric"><div class="grind-metric-label">D10</div><div class="grind-metric-value" id="grindD10">—</div><div class="grind-metric-sub">µm</div></div>
-        <div class="grind-metric"><div class="grind-metric-label">D90</div><div class="grind-metric-value" id="grindD90">—</div><div class="grind-metric-sub">µm</div></div>
-        <div class="grind-metric"><div class="grind-metric-label">COUNT D50</div><div class="grind-metric-value" id="grindAreaD50">—</div><div class="grind-metric-sub">µm</div></div>
-        <div class="grind-metric"><div class="grind-metric-label">SPAN</div><div class="grind-metric-value" id="grindSpan">—</div><div class="grind-metric-sub">폭</div></div>
-        <div class="grind-metric"><div class="grind-metric-label">FINES</div><div class="grind-metric-value" id="grindFines">—</div><div class="grind-metric-sub">&lt;300µm</div></div>
-        <div class="grind-metric"><div class="grind-metric-label">COUNT</div><div class="grind-metric-value" id="grindCount">—</div><div class="grind-metric-sub">particles</div></div>
-      </div>
-
-      <div class="histogram">
-        <div class="section-title" style="margin-bottom:8px;">DISTRIBUTION</div>
-        <div id="grindHistogram"></div>
-      </div>
-
-      <div class="grind-note" id="grindQualityNote">—</div>
     </div>
   </div>
 
   <div class="controls-bar" id="controlsBar">
     <button class="btn-torch" id="torchBtn" onclick="toggleTorch()">FLASH OFF</button>
-    <button class="btn-measure" id="measureBtn" onclick="handleMeasure()">MEASURE</button>
+    <button class="btn-measure" id="measureBtn" onclick="capture()">MEASURE</button>
   </div>
 
   <div class="results-panel" id="resultsPanel">
@@ -1143,7 +729,7 @@
     <div class="guide-steps">
       <div class="guide-step">
         <div class="step-num">1</div>
-        <div class="step-text">원두를 미디엄 그라인드로 분쇄 후 종이컵에 평평하게 담기</div>
+        <div class="step-text">원두 샘플을 종이컵에 평평하게 담기</div>
       </div>
       <div class="guide-step">
         <div class="step-num">2</div>
@@ -1159,10 +745,7 @@
       </div>
     </div>
   </div>
-
-  <div class="grind-guide-section" id="grindGuideSection"></div>
-
-  <div class="divider"></div>
+<div class="divider"></div>
 
   <div class="ref-section" style="margin-top: 16px;">
     <div class="section-title">SCA ROAST REFERENCE</div>
@@ -1247,6 +830,7 @@ async function startCamera() {
     const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
     if (caps.torch) { torchSupported = true; await applyTorch(true); }
     else { document.getElementById('torchBtn').textContent = 'NO FLASH'; }
+    video.removeEventListener('loadeddata', startLiveSampling);
     video.addEventListener('loadeddata', startLiveSampling);
     document.getElementById('sampleRing').classList.add('scanning');
   } catch (err) {
@@ -1323,6 +907,22 @@ function avgRGB(list) {
   };
 }
 
+function trimmedChannel(values, low=0.10, high=0.90) {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const start = Math.floor(sorted.length * low);
+  const end = Math.max(start + 1, Math.ceil(sorted.length * high));
+  return mean(sorted.slice(start, end));
+}
+
+function robustRGB(list) {
+  if (!list.length) return null;
+  return {
+    r: Math.round(trimmedChannel(list.map(p => p.r))),
+    g: Math.round(trimmedChannel(list.map(p => p.g))),
+    b: Math.round(trimmedChannel(list.map(p => p.b)))
+  };
+}
 function getFrameData() {
   const video = document.getElementById('video');
   if (!video || video.readyState < 2 || video.videoWidth === 0) return null;
@@ -1431,7 +1031,7 @@ function getQuality(frames, labs) {
   const avgWhiteCount = mean(frames.map(f => f.whiteCount || 0));
 
   let score = 100;
-  if (!torchOn) score -= 18;
+  if (torchSupported && !torchOn) score -= 12;
   if (whiteRatio < 0.8) score -= 28;
   if (avgWhiteCount < AUTO_CAL.minWhitePixels * 1.5) score -= 14;
   if (lStd > 1.5) score -= 18;
@@ -1443,9 +1043,9 @@ function getQuality(frames, labs) {
   else if (score >= 55) label = 'MID';
 
   const messages = [];
-  messages.push(frames[0] && frames[0].white ? '흰 컵 기준 보정' : '흰 기준 부족');
+  messages.push(validWhite > 0 ? '흰 컵 기준 보정' : '흰 기준 부족');
   messages.push(`흔들림 ±${lStd.toFixed(1)}`);
-  if (!torchOn) messages.push('플래시 미사용');
+  if (torchSupported && !torchOn) messages.push('플래시 미사용');
 
   return { score, label, text: messages.join(' · ') };
 }
@@ -1475,7 +1075,7 @@ async function captureAutoCalibrated() {
   }
 
   const colors = frames.map(f => f.corrected);
-  const color = avgRGB(colors);
+  const color = robustRGB(colors);
   const lab = rgbToLab(color.r, color.g, color.b);
   const frameLabs = frames.map(f => rgbToLab(f.corrected.r, f.corrected.g, f.corrected.b));
   const quality = getQuality(frames, frameLabs);
@@ -1611,528 +1211,6 @@ function setStatus(type, label) {
   if (lab) lab.textContent = label || 'STANDBY';
 }
 
-let currentAnalyzer = 'color';
-let grindPreviewCanvas = null;
-let grindPreviewCtx = null;
-let grindSrcCanvas = null;
-let grindLastAnalysis = null;
-
-const GRIND = {
-  frac: 0.70,
-  innerFrac: 0.50,
-  physicalMM: 34,
-  // GRIND v3: no-reference mobile estimation.
-  // The color analyzer is intentionally untouched.
-  diameterBoost: 1.30,
-  boxBoost: 0.96,
-  minParticleUm: 80,
-  maxParticleUm: 2800,
-  clumpBaseUm: 2200,
-  maxDim: 1800,
-  previewDim: 420,
-  frames: 5,
-  frameDelay: 70,
-  liveInterval: 520,
-  minValid: 18,
-  pixelReliableMin: 5.2,
-  pixelIdealMin: 7.0,
-  bins: [0,105,149,210,297,420,595,707,841,1000,1190,9999],
-  sieves: [
-    {um:105, mesh:'No. 140'}, {um:125, mesh:'No. 120'}, {um:149, mesh:'No. 100'},
-    {um:177, mesh:'No. 80'}, {um:210, mesh:'No. 70'}, {um:250, mesh:'No. 60'},
-    {um:297, mesh:'No. 50'}, {um:354, mesh:'No. 45'}, {um:420, mesh:'No. 40'},
-    {um:500, mesh:'No. 35'}, {um:595, mesh:'No. 30'}, {um:707, mesh:'No. 25'},
-    {um:841, mesh:'No. 20'}, {um:1000, mesh:'No. 18'}, {um:1190, mesh:'No. 16'}
-  ]
-};
-
-function ensureCleanOverlay(){
-  const overlay = document.getElementById('camOverlay');
-  if (!overlay || document.getElementById('vcOverlay')) return;
-  const wrap = document.createElement('div');
-  wrap.id = 'vcOverlay';
-  wrap.className = 'vc-overlay';
-  wrap.innerHTML = '<div class="vc-box"><div class="vc-inner"></div></div><div class="vc-label">GRIND AREA</div>';
-  overlay.appendChild(wrap);
-}
-
-function syncTorchButtons(){
-  const text = torchSupported ? (torchOn ? 'FLASH ON' : 'FLASH OFF') : 'NO FLASH';
-  ['torchBtn','floatTorchBtn'].forEach(id => {
-    const b = document.getElementById(id);
-    if (!b) return;
-    b.textContent = text;
-    b.classList.toggle('on', !!torchOn && !!torchSupported);
-  });
-}
-
-applyTorch = async function(on){
-  try {
-    if (!videoTrack) throw new Error('no video track');
-    await videoTrack.applyConstraints({ advanced: [{ torch: !!on }] });
-    torchOn = !!on;
-    torchSupported = true;
-  } catch(e) {
-    torchOn = false;
-    torchSupported = false;
-  }
-  syncTorchButtons();
-};
-
-toggleTorch = async function(){
-  if (!videoTrack || !torchSupported) { syncTorchButtons(); return; }
-  await applyTorch(!torchOn);
-};
-
-function updateModeUI(){
-  ensureCleanOverlay();
-  const colorMode = currentAnalyzer === 'color';
-  const viewport = document.querySelector('.camera-viewport');
-  if (viewport) viewport.classList.toggle('grind-mode', !colorMode);
-
-  const permTitle = document.getElementById('permTitle');
-  const permDesc = document.getElementById('permDesc');
-  if (permTitle) permTitle.textContent = colorMode ? '카메라 접근 필요' : '분쇄도 측정';
-  if (permDesc) permDesc.innerHTML = colorMode
-    ? '분쇄된 원두를 종이컵에 담고<br>플래시를 켜서 위에서 비추면<br>로스팅 컬러를 측정합니다'
-    : '흰 종이 위 원두를 중앙에 맞춘 뒤<br>CAPTURE';
-
-  const measureBtn = document.getElementById('measureBtn');
-  if (measureBtn) measureBtn.textContent = colorMode ? 'MEASURE' : 'CAPTURE';
-  const floatCapture = document.getElementById('floatCaptureBtn');
-  if (floatCapture) floatCapture.textContent = 'CAPTURE';
-
-  [document.getElementById('resultsPanel'), document.getElementById('historySection'), document.querySelector('.guide-section'), document.querySelector('.ref-section')].forEach(el => {
-    if (!el) return;
-    if (el.id === 'historySection') el.style.display = colorMode && history.length ? 'block' : 'none';
-    else if (el.id === 'resultsPanel') el.style.display = colorMode && stream ? 'block' : 'none';
-    else el.style.display = colorMode ? '' : 'none';
-  });
-
-  const grindPanel = document.getElementById('grindPanel');
-  if (grindPanel) grindPanel.style.display = colorMode ? 'none' : 'block';
-  const grindGuide = document.getElementById('grindGuideSection');
-  if (grindGuide) grindGuide.style.display = 'none';
-  const controlsBar = document.getElementById('controlsBar');
-  if (controlsBar) controlsBar.style.display = stream && colorMode ? 'flex' : 'none';
-  const permission = document.getElementById('permissionScreen');
-  if (permission) permission.style.display = stream ? 'none' : 'flex';
-  const overlay = document.getElementById('camOverlay');
-  if (overlay) overlay.style.display = stream ? 'block' : 'none';
-  const vc = document.getElementById('vcOverlay');
-  if (vc) vc.style.display = (!colorMode && stream) ? 'block' : 'none';
-  const err = document.getElementById('errorMsg');
-  if (err && stream) err.style.display = 'none';
-  const hudL = document.getElementById('hudL');
-  if (hudL && !stream) hudL.textContent = colorMode ? 'L* —' : 'READY';
-  syncTorchButtons();
-}
-
-function switchAnalyzer(mode){
-  currentAnalyzer = mode === 'grind' ? 'grind' : 'color';
-  const colorMode = currentAnalyzer === 'color';
-  document.getElementById('tabColor').classList.toggle('active', colorMode);
-  document.getElementById('tabGrind').classList.toggle('active', !colorMode);
-  updateModeUI();
-  if (stream && torchSupported) applyTorch(colorMode);
-  setStatus(stream ? 'active' : '', stream ? (colorMode ? 'ACTIVE' : 'GRIND') : 'STANDBY');
-}
-
-function handleMeasure(){
-  if (currentAnalyzer === 'grind') return captureGrind();
-  return capture();
-}
-
-const __cleanStartCamera = startCamera;
-startCamera = async function(){
-  await __cleanStartCamera();
-  if (stream) {
-    updateModeUI();
-    if (torchSupported) await applyTorch(currentAnalyzer === 'color');
-    setStatus('active', currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE');
-  }
-};
-
-const __cleanStopCamera = stopCamera;
-stopCamera = function(){
-  __cleanStopCamera();
-  updateModeUI();
-};
-
-function qValue(arr, p){
-  if (!arr.length) return 0;
-  const s = arr.slice().sort((a,b)=>a-b);
-  const pos = (s.length - 1) * p;
-  const i = Math.floor(pos), f = pos - i;
-  return s[i+1] !== undefined ? s[i] + (s[i+1]-s[i]) * f : s[i];
-}
-function closestSieve(um){
-  let best = GRIND.sieves[0], err = Infinity;
-  for (const s of GRIND.sieves){ const e = Math.abs(s.um - um); if (e < err){ err = e; best = s; } }
-  return best;
-}
-function classifyGrindClean(d50){
-  if (d50 < 180) return 'EXTRA FINE';
-  if (d50 < 300) return 'FINE';
-  if (d50 < 500) return 'MEDIUM-FINE';
-  if (d50 < 750) return 'MEDIUM';
-  if (d50 < 1000) return 'MEDIUM-COARSE';
-  return 'COARSE';
-}
-function weightedP(items, p){
-  if (!items.length) return 0;
-  const sorted = items.slice().sort((a,b)=>a.d-b.d);
-  const total = sorted.reduce((s,c)=>s + Math.max(0.0001, c.weight || c.area || 1), 0);
-  let acc = 0;
-  for (const c of sorted){
-    acc += Math.max(0.0001, c.weight || c.area || 1);
-    if (acc >= total*p) return c.d;
-  }
-  return sorted[sorted.length-1].d;
-}
-function otsu(vals){
-  const hist = new Array(256).fill(0);
-  vals.forEach(v => hist[Math.max(0, Math.min(255, v|0))]++);
-  const total = vals.length || 1;
-  let sum = 0; for (let i=0;i<256;i++) sum += i*hist[i];
-  let sumB = 0, wB = 0, best = 128, maxVar = -1;
-  for (let t=0;t<256;t++){
-    wB += hist[t]; if (!wB) continue;
-    const wF = total - wB; if (!wF) break;
-    sumB += t*hist[t];
-    const mB = sumB/wB, mF = (sum-sumB)/wF;
-    const v = wB*wF*(mB-mF)*(mB-mF);
-    if (v > maxVar){ maxVar = v; best = t; }
-  }
-  return best;
-}
-function makeCanvasFromVideo(maxDim){
-  const video = document.getElementById('video');
-  if (!video || video.readyState < 2 || !video.videoWidth) return null;
-  const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(video.videoWidth * scale));
-  c.height = Math.max(1, Math.round(video.videoHeight * scale));
-  c.getContext('2d', { willReadFrequently:true }).drawImage(video,0,0,c.width,c.height);
-  return c;
-}
-function roiFor(c){
-  const m = Math.min(c.width, c.height);
-  const full = m * GRIND.frac;
-  const inner = full * GRIND.innerFrac;
-  const x = Math.round((c.width-inner)/2), y = Math.round((c.height-inner)/2);
-  return {
-    x, y, w: Math.round(inner), h: Math.round(inner),
-    fullX: Math.round((c.width-full)/2), fullY: Math.round((c.height-full)/2),
-    fullW: Math.round(full), fullH: Math.round(full),
-    umPerPx: GRIND.physicalMM * 1000 / full
-  };
-}
-function assessLightSimple(canvas, roi){
-  const ctx = canvas.getContext('2d', { willReadFrequently:true });
-  const img = ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
-  const vals = [];
-  for (let y=0;y<roi.h;y+=3){
-    for (let x=0;x<roi.w;x+=3){
-      const i = (y*roi.w+x)*4;
-      const Y = luma(img.data[i],img.data[i+1],img.data[i+2]);
-      if (Y > 120) vals.push(Y);
-    }
-  }
-  const bg = vals.length ? median(vals) : 0;
-  const dev = vals.length ? stdev(vals) : 99;
-  let label = 'LIGHT OK', advice = 'OK', score = 100;
-  if (bg < 135){ label='LIGHT LOW'; advice='LIGHT +'; score -= 28; }
-  else if (bg > 246){ label='TOO BRIGHT'; advice='FLASH OFF'; score -= 24; }
-  if (dev > 36){ label='UNEVEN'; advice='SHADOW'; score -= 20; }
-  return { label, advice, score: Math.max(0, Math.min(100, Math.round(score))), bg, dev };
-}
-
-function cleanGrindMask(mask, w, h){
-  // Fill tiny holes and remove isolated noise. This reduces under-reading caused by
-  // highlight gaps inside a particle, while avoiding heavy dilation that merges grains.
-  const pass1 = new Uint8Array(mask.length);
-  for (let y=0;y<h;y++){
-    for (let x=0;x<w;x++){
-      const idx = y*w+x;
-      let n = 0;
-      for (let oy=-1; oy<=1; oy++){
-        for (let ox=-1; ox<=1; ox++){
-          if (!ox && !oy) continue;
-          const nx=x+ox, ny=y+oy;
-          if (nx<0 || ny<0 || nx>=w || ny>=h) continue;
-          if (mask[ny*w+nx]) n++;
-        }
-      }
-      if (mask[idx]) pass1[idx] = n >= 1 ? 1 : 0;
-      else pass1[idx] = n >= 6 ? 1 : 0;
-    }
-  }
-  return pass1;
-}
-function robustParticlePx(area, bw, bh, fill){
-  const eqPx = Math.sqrt((4*area)/Math.PI);
-  const geomPx = Math.sqrt(bw*bh) * GRIND.boxBoost;
-  const maxSide = Math.max(bw,bh);
-  const minSide = Math.min(bw,bh);
-  // Projected coffee particles often have highlights and jagged edges.
-  // Blend equivalent diameter with Feret-style box measures instead of relying on contour area alone.
-  const shapeMix = fill > .42
-    ? (eqPx*.48 + geomPx*.34 + maxSide*.10 + minSide*.08)
-    : (eqPx*.34 + geomPx*.40 + maxSide*.16 + minSide*.10);
-  return shapeMix;
-}
-function particleWeightForD(dia, area){
-  // Sieve-style results are closer to mass/area distribution than pure count distribution.
-  // Use a softened area/diameter weight so a few boulders do not dominate excessively.
-  return Math.max(1, area) * Math.pow(Math.max(1, dia), 0.35);
-}
-
-function analyzeGrindCanvas(canvas, preview=false){
-  const ctx = canvas.getContext('2d', { willReadFrequently:true });
-  const roi = roiFor(canvas);
-  const light = assessLightSimple(canvas, roi);
-  const img = ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
-  const d = img.data;
-  const vals = [];
-  for (let y=0;y<roi.h;y+=2){
-    for (let x=0;x<roi.w;x+=2){
-      const i=(y*roi.w+x)*4;
-      vals.push(Math.round(luma(d[i],d[i+1],d[i+2])));
-    }
-  }
-  const sortedVals = vals.slice().sort((a,b)=>a-b);
-  const bgVals = vals.filter(v=>v>130).sort((a,b)=>a-b);
-  const bg = bgVals.length ? bgVals[Math.floor(bgVals.length*0.74)] : median(vals);
-  const shadow = sortedVals[Math.floor(sortedVals.length*0.12)] || 0;
-  const dynamicGap = Math.max(26, Math.min(58, (bg - shadow) * 0.34));
-  const th = Math.max(18, Math.min(170, Math.min(otsu(vals)-2, bg-dynamicGap)));
-
-  let mask = new Uint8Array(roi.w*roi.h);
-  let dark = 0;
-  for (let y=0;y<roi.h;y++){
-    for (let x=0;x<roi.w;x++){
-      const idx = y*roi.w+x, i=idx*4;
-      const Y = luma(d[i],d[i+1],d[i+2]);
-      const C = chroma(d[i],d[i+1],d[i+2]);
-      const isCoffee = Y < th && (bg-Y)>20 && !(C<6 && Y>92);
-      if (isCoffee) { mask[idx]=1; dark++; }
-    }
-  }
-  mask = cleanGrindMask(mask, roi.w, roi.h);
-
-  const visited = new Uint8Array(mask.length);
-  const stack = [], comps = [];
-  const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-  for (let idx=0; idx<mask.length; idx++){
-    if (!mask[idx] || visited[idx]) continue;
-    let area=0, minx=roi.w, miny=roi.h, maxx=0, maxy=0;
-    stack.length=0; stack.push(idx); visited[idx]=1;
-    while(stack.length){
-      const cur=stack.pop(); const y=Math.floor(cur/roi.w), x=cur-y*roi.w;
-      area++; if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
-      for (const [ox,oy] of nb){
-        const nx=x+ox, ny=y+oy;
-        if(nx<0||ny<0||nx>=roi.w||ny>=roi.h) continue;
-        const ni=ny*roi.w+nx;
-        if(mask[ni]&&!visited[ni]){visited[ni]=1; stack.push(ni);}
-      }
-    }
-    if (area < 3) continue;
-    const bw=maxx-minx+1, bh=maxy-miny+1;
-    const aspect=Math.max(bw,bh)/Math.max(1,Math.min(bw,bh));
-    const fill=area/Math.max(1,bw*bh);
-    const px = robustParticlePx(area, bw, bh, fill);
-    const dia = px * roi.umPerPx * GRIND.diameterBoost;
-    if (dia >= GRIND.minParticleUm && dia <= GRIND.maxParticleUm) {
-      comps.push({d:dia, area, weight:particleWeightForD(dia, area), minx,miny,maxx,maxy, bw,bh, aspect, fill});
-    }
-  }
-  if (comps.length < (preview ? 5 : GRIND.minValid)) throw new Error('입자 부족');
-
-  const raw = comps.map(c=>c.d);
-  const med = median(raw), sd = stdev(raw);
-  const valid=[]; let clumps=0;
-  for (const c of comps){
-    const veryLarge = c.d > Math.max(GRIND.clumpBaseUm, med + 3.2*sd);
-    const clearCluster = veryLarge && (c.fill < .34 || c.aspect > 3.8);
-    const chaffLike = c.aspect > 5.8 && c.d > 850 && c.fill < .42;
-    const edgeTouch = c.minx <= 1 || c.miny <= 1 || c.maxx >= roi.w-2 || c.maxy >= roi.h-2;
-    if (clearCluster || chaffLike || edgeTouch) clumps++;
-    else valid.push(c);
-  }
-  if (valid.length < (preview ? 4 : 12)) throw new Error('입자 겹침');
-
-  const countDs = valid.map(c=>c.d).sort((a,b)=>a-b);
-  const d10 = weightedP(valid,.10), d50 = weightedP(valid,.50), d90 = weightedP(valid,.90);
-  const countD50 = qValue(countDs,.50);
-  const span = d50 ? (d90-d10)/d50 : 0;
-  const totalW = valid.reduce((s,c)=>s+c.weight,0) || 1;
-  const pct = pred => valid.reduce((s,c)=>s+(pred(c)?c.weight:0),0)/totalW*100;
-  const bins = [];
-  for (let i=0;i<GRIND.bins.length-1;i++){
-    const lo=GRIND.bins[i], hi=GRIND.bins[i+1];
-    bins.push({lo,hi,pct:pct(c=>c.d>=lo&&c.d<hi)});
-  }
-  let qScore = 100;
-  const darkCoverage = dark / Math.max(1, roi.w*roi.h);
-  const medianPx = med / roi.umPerPx;
-  if (light.score < 80) qScore -= Math.round((80-light.score)*.45);
-  if (valid.length < 45) qScore -= 16;
-  if (darkCoverage < .001 || darkCoverage > .14) qScore -= 14;
-  if (span > 2.7) qScore -= 7;
-  if (medianPx < GRIND.pixelReliableMin) qScore -= 18;
-  else if (medianPx < GRIND.pixelIdealMin) qScore -= 8;
-  const clumpRatio = clumps / Math.max(1, comps.length);
-  if (clumpRatio > .22) qScore -= 10;
-  qScore = Math.max(0, Math.min(100, Math.round(qScore)));
-  const qLabel = qScore >= 78 ? 'HIGH' : qScore >= 55 ? 'MID' : 'LOW';
-  return { sourceCanvas:canvas, roi, valid, d10,d50,d90,countD50,span,bins, finesPct:pct(c=>c.d<300), bouldersPct:pct(c=>c.d>1200), qScore,qLabel, light, clumps, threshold:th, bg, darkCoverage, medianPx, clumpRatio };
-}
-function drawGrindResult(r){
-  const view = document.getElementById('grindCanvas');
-  view.width = r.sourceCanvas.width; view.height = r.sourceCanvas.height;
-  const ctx = view.getContext('2d', { willReadFrequently:true });
-  ctx.drawImage(r.sourceCanvas,0,0);
-  ctx.save();
-  ctx.lineWidth = Math.max(2, view.width/900);
-  ctx.strokeStyle = r.qScore >= 70 ? 'rgba(255,255,255,.95)' : 'rgba(255,210,120,.95)';
-  ctx.strokeRect(r.roi.fullX, r.roi.fullY, r.roi.fullW, r.roi.fullH);
-  ctx.setLineDash([8,6]); ctx.strokeStyle='rgba(230,230,230,.75)';
-  ctx.strokeRect(r.roi.x, r.roi.y, r.roi.w, r.roi.h);
-  ctx.setLineDash([]); ctx.lineWidth=Math.max(1, view.width/1500); ctx.strokeStyle='rgba(255,255,255,.55)';
-  const step=Math.max(1, Math.floor(r.valid.length/240));
-  for(let i=0;i<r.valid.length;i+=step){ const c=r.valid[i]; ctx.strokeRect(r.roi.x+c.minx, r.roi.y+c.miny, c.maxx-c.minx+1, c.maxy-c.miny+1); }
-  ctx.font = `${Math.max(18, view.width/48)}px Pretendard, sans-serif`;
-  const msg = `D50 ${Math.round(r.d50)}µm · ${r.qLabel}`;
-  const pad = Math.max(10, view.width/90), tw = ctx.measureText(msg).width+pad*2, th = Math.max(34, view.width/30);
-  ctx.fillStyle='rgba(0,0,0,.72)'; ctx.fillRect(pad,pad,tw,th); ctx.fillStyle='#fff'; ctx.fillText(msg,pad*2,pad+th*.68);
-  ctx.restore();
-  document.getElementById('grindCanvasWrap').style.display = 'block';
-}
-function renderGrindClean(r){
-  const fmt = v => Math.round(v).toLocaleString('ko-KR');
-  const sieve = closestSieve(r.d50);
-  document.getElementById('grindResults').style.display = 'block';
-  document.getElementById('grindD50').textContent = fmt(r.d50) + 'µm';
-  document.getElementById('grindClass').textContent = `${classifyGrindClean(r.d50)} · ${sieve.mesh}`;
-  document.getElementById('grindD10').textContent = fmt(r.d10);
-  document.getElementById('grindD90').textContent = fmt(r.d90);
-  document.getElementById('grindAreaD50').textContent = fmt(r.countD50);
-  document.getElementById('grindSpan').textContent = r.span.toFixed(2);
-  document.getElementById('grindFines').textContent = r.finesPct.toFixed(1) + '%';
-  const boulderEl = document.getElementById('grindBoulders');
-  if (boulderEl) boulderEl.textContent = r.bouldersPct.toFixed(1) + '%';
-  document.getElementById('grindCount').textContent = r.valid.length.toLocaleString('ko-KR');
-  const maxPct = Math.max(1, ...r.bins.map(b=>b.pct));
-  document.getElementById('grindHistogram').innerHTML = r.bins.map(b=>{
-    const label = b.hi > 9000 ? `${b.lo}+` : `${b.lo}-${b.hi}`;
-    const width = Math.max(2, b.pct/maxPct*100);
-    return `<div class="hist-row"><div class="hist-label">${label}µm</div><div class="hist-bar-bg"><div class="hist-bar" style="width:${width}%"></div></div><div class="hist-pct">${b.pct.toFixed(1)}%</div></div>`;
-  }).join('');
-  document.getElementById('grindQualityNote').innerHTML = `<strong>${r.qLabel} · ${r.qScore}/100</strong><br>D50 ${fmt(r.d50)}µm · ${r.light.label} · COUNT D50 ${fmt(r.countD50)}µm<br>체눈 근사: ${sieve.mesh} / ${sieve.um}µm · 보정 v3 · 제외 ${r.clumps}개`;
-}
-function bestResult(list){
-  const ok = list.filter(Boolean).sort((a,b)=>a.d50-b.d50);
-  return ok.length ? ok[Math.floor(ok.length/2)] : null;
-}
-async function captureGrind(){
-  const video = document.getElementById('video');
-  if (!video || video.readyState < 2 || !video.videoWidth) { setStatus('error','RETRY'); return; }
-  const btns = ['floatCaptureBtn','measureBtn'].map(id=>document.getElementById(id)).filter(Boolean);
-  btns.forEach(b => { b.disabled = true; b.textContent = 'ANALYZING'; });
-  setStatus('active','ANALYZING');
-  const status = document.getElementById('grindLoadStatus');
-  if (status) status.textContent = 'ANALYZING';
-  try {
-    const results=[]; let lastErr=null;
-    for (let i=0;i<GRIND.frames;i++){
-      const c = makeCanvasFromVideo(GRIND.maxDim);
-      if (!c) throw new Error('NO FRAME');
-      try { results.push(analyzeGrindCanvas(c, false)); } catch(e){ lastErr=e; }
-      if (i<GRIND.frames-1) await sleep(GRIND.frameDelay);
-    }
-    const r = bestResult(results);
-    if (!r) throw (lastErr || new Error('분석 실패'));
-    grindLastAnalysis = r;
-    renderGrindClean(r);
-    drawGrindResult(r);
-    if (status) status.textContent = `DONE · D50 ${Math.round(r.d50)}µm`;
-    const hud = document.getElementById('hudL');
-    if (hud) hud.textContent = `D50 ${Math.round(r.d50)}µm · ${r.qLabel}`;
-    setStatus('active', r.qLabel);
-  } catch(e) {
-    if (status) status.textContent = 'RETRY';
-    const hud = document.getElementById('hudL');
-    if (hud) hud.textContent = 'RETRY';
-    setStatus('error','RETRY');
-  } finally {
-    btns.forEach(b => { b.disabled = false; b.textContent = 'CAPTURE'; });
-  }
-}
-function sampleGrindPreview(){
-  const video = document.getElementById('video');
-  if (!video || video.readyState < 2 || !video.videoWidth) return;
-  if (!grindPreviewCanvas){ grindPreviewCanvas = document.createElement('canvas'); grindPreviewCtx = grindPreviewCanvas.getContext('2d', { willReadFrequently:true }); }
-  const scale = Math.min(1, GRIND.previewDim / Math.max(video.videoWidth, video.videoHeight));
-  grindPreviewCanvas.width = Math.max(1, Math.round(video.videoWidth*scale));
-  grindPreviewCanvas.height = Math.max(1, Math.round(video.videoHeight*scale));
-  grindPreviewCtx.drawImage(video,0,0,grindPreviewCanvas.width,grindPreviewCanvas.height);
-  const hud = document.getElementById('hudL');
-  const status = document.getElementById('grindLoadStatus');
-  try {
-    const r = analyzeGrindCanvas(grindPreviewCanvas, true);
-    let msg = 'READY';
-    if (r.valid.length < 8) msg = 'ADD SAMPLE';
-    else if (r.medianPx < GRIND.pixelReliableMin) msg = 'CLOSER';
-    else if (r.darkCoverage > .12) msg = 'SPREAD';
-    if (hud) hud.textContent = `${msg} · ${r.light.label}`;
-    if (status) status.textContent = `${msg} · ${r.light.label}`;
-    setStatus('active', msg === 'READY' ? 'READY' : 'ALIGN');
-  } catch(e) {
-    if (hud) hud.textContent = 'CENTER';
-    if (status) status.textContent = 'CENTER';
-    setStatus('active','ALIGN');
-  }
-}
-startLiveSampling = function(){
-  function loop(ts){
-    if (!lastLiveTs || ts - lastLiveTs >= (currentAnalyzer === 'grind' ? GRIND.liveInterval : AUTO_CAL.liveInterval)){
-      if (currentAnalyzer === 'grind') sampleGrindPreview();
-      else {
-        const f = sampleFrame();
-        if (f) {
-          const c = f.corrected;
-          const lab = rgbToLab(c.r,c.g,c.b);
-          const refText = f.white ? 'REF OK' : 'NO REF';
-          document.getElementById('hudColor').style.background = `rgb(${c.r},${c.g},${c.b})`;
-          document.getElementById('hudL').textContent = `L* ${lab.L.toFixed(1)} · ${refText}`;
-        }
-      }
-      lastLiveTs = ts;
-    }
-    animFrameId = requestAnimationFrame(loop);
-  }
-  if (animFrameId) cancelAnimationFrame(animFrameId);
-  animFrameId = requestAnimationFrame(loop);
-};
-function resetGrindState(showMsg=true){
-  grindLastAnalysis = null;
-  const wrap = document.getElementById('grindCanvasWrap');
-  const res = document.getElementById('grindResults');
-  const c = document.getElementById('grindCanvas');
-  if (wrap) wrap.style.display = 'none';
-  if (res) res.style.display = 'none';
-  if (c) { const ctx = c.getContext('2d'); if (ctx) ctx.clearRect(0,0,c.width||1,c.height||1); }
-  const status = document.getElementById('grindLoadStatus');
-  if (status) status.textContent = 'READY';
-  const hud = document.getElementById('hudL');
-  if (hud && currentAnalyzer === 'grind') hud.textContent = 'READY';
-  setStatus(stream ? 'active' : '', stream ? (currentAnalyzer === 'grind' ? 'GRIND' : 'ACTIVE') : 'STANDBY');
-}
-
-ensureCleanOverlay();
-switchAnalyzer('color');
 </script>
 </body>
 </html>
