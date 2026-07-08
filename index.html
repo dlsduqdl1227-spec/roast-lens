@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0E0E0E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Roast-Lens</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%230E0E0E%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2717%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%274%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%275%27 fill=%27%23888%27/%3E%3C/svg%3E">
+<meta name="author" content="월간커피 · inyub Kim">
+<meta name="copyright" content="© inyub Kim. All rights reserved.">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg:     #0E0E0E;
+    --surf:   #181818;
+    --surf2:  #202020;
+    --surf3:  #2A2A2A;
+    --border: #2C2C2C;
+    --bdr2:   #383838;
+    --w1:     #FFFFFF;
+    --w2:     #C8C8C8;
+    --w3:     #888888;
+    --w4:     #505050;
+    --w5:     #303030;
+    --font-main:  'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Segoe UI', sans-serif;
+    --font-brand: var(--font-main);
+    --font-mono:  var(--font-main);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--w1);
+    font-family: var(--font-mono);
+    overflow-x: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100%;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  #app {
+    width: 100%;
+    max-width: 430px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    flex-shrink: 0;
+  }
+
+  .brand-kicker {
+    font-family: var(--font-main);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    color: var(--w3);
+    line-height: 1;
+    margin-bottom: 5px;
+  }
+
+  .brand-name {
+    font-family: var(--font-brand);
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--w1);
+    line-height: 1;
+  }
+
+  .brand-sub {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2px;
+    margin-top: 4px;
+  }
+
+  .brand-copy {
+    font-size: 8.5px;
+    color: var(--w5);
+    letter-spacing: 0.2px;
+    margin-top: 5px;
+    font-family: var(--font-main);
+    line-height: 1.2;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 12px;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--w4);
+    transition: background 0.3s;
+  }
+
+  .status-dot.active { background: var(--w1); }
+  .status-dot.error  { background: var(--w3); }
+
+  .status-label {
+    font-size: 10px;
+    color: var(--w4);
+    letter-spacing: 1.5px;
+  }
+
+  /* CAMERA */
+  .camera-viewport {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #080808;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  #video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  #canvas { display: none; }
+
+  .permission-screen {
+    position: absolute; inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+  }
+
+  .lens-icon {
+    width: 72px; height: 72px;
+    border: 1.5px solid var(--w4);
+    border-radius: 50%;
+    position: relative;
+    margin-bottom: 24px;
+  }
+
+  .lens-icon::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 1.5px solid var(--w4);
+  }
+
+  .lens-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--w4);
+  }
+
+  .perm-title {
+    font-size: 11px;
+    color: var(--w2);
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  .perm-desc {
+    font-size: 12px;
+    color: var(--w3);
+    text-align: center;
+    line-height: 1.7;
+    margin-bottom: 28px;
+    font-family: var(--font-main);
+  }
+
+  .btn-start {
+    background: var(--w1);
+    color: #0E0E0E;
+    border: none;
+    padding: 14px 36px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    letter-spacing: 1.5px;
+    transition: opacity 0.15s;
+  }
+
+  .btn-start:active { opacity: 0.75; }
+
+  .cam-overlay {
+    position: absolute; inset: 0;
+    display: none;
+    pointer-events: none;
+  }
+
+  .ch-h {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 50%; height: 0;
+    border-top: 0.5px solid rgba(255,255,255,0.18);
+  }
+
+  .ch-v {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    height: 50%; width: 0;
+    border-left: 0.5px solid rgba(255,255,255,0.18);
+  }
+
+  .sample-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px;
+    border: 1.5px solid rgba(255,255,255,0.85);
+    border-radius: 50%;
+  }
+
+  .sample-ring::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--w1);
+  }
+
+  .bracket { position: absolute; width: 22px; height: 22px; }
+  .bracket.tl { top: 18px; left: 18px;   border-top: 1.5px solid rgba(255,255,255,0.55); border-left: 1.5px solid rgba(255,255,255,0.55); }
+  .bracket.tr { top: 18px; right: 18px;  border-top: 1.5px solid rgba(255,255,255,0.55); border-right: 1.5px solid rgba(255,255,255,0.55); }
+  .bracket.bl { bottom: 18px; left: 18px;  border-bottom: 1.5px solid rgba(255,255,255,0.55); border-left: 1.5px solid rgba(255,255,255,0.55); }
+  .bracket.br { bottom: 18px; right: 18px; border-bottom: 1.5px solid rgba(255,255,255,0.55); border-right: 1.5px solid rgba(255,255,255,0.55); }
+
+  .hud-color {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: #3C2210;
+    transition: background 0.1s;
+  }
+
+  .hud-L {
+    position: absolute;
+    bottom: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.72);
+    border: 0.5px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: var(--w2);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  /* CONTROLS */
+  .controls-bar {
+    display: none;
+    flex-direction: row;
+    gap: 10px;
+    padding: 14px 20px;
+    background: var(--surf);
+    border-top: 0.5px solid var(--border);
+    border-bottom: 0.5px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .btn-torch {
+    flex: 1;
+    background: var(--surf2);
+    color: var(--w4);
+    border: 0.5px solid var(--bdr2);
+    padding: 11px;
+    border-radius: 10px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .btn-torch.on {
+    color: var(--w1);
+    border-color: rgba(255,255,255,0.45);
+    background: rgba(255,255,255,0.07);
+  }
+
+  .btn-measure {
+    flex: 2.2;
+    background: var(--w1);
+    color: #0E0E0E;
+    border: none;
+    padding: 11px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    letter-spacing: 2px;
+    transition: all 0.2s;
+  }
+
+  .btn-measure:active { opacity: 0.8; transform: scale(0.98); }
+  .btn-measure.captured { background: var(--surf3); color: var(--w2); }
+
+  /* RESULTS */
+  .results-panel {
+    display: none;
+    padding: 20px 20px 0;
+    flex-shrink: 0;
+  }
+
+  .roast-display {
+    text-align: center;
+    padding: 20px 0;
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  .roast-label {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2.5px;
+    margin-bottom: 8px;
+  }
+
+  .roast-name-kr {
+    font-family: var(--font-brand);
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--w1);
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+
+  .roast-name-en {
+    font-size: 11px;
+    color: var(--w4);
+    letter-spacing: 3px;
+    margin-top: 5px;
+  }
+
+  .values-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .val-card {
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  .val-card.agtron {
+    border-color: var(--bdr2);
+    background: var(--surf3);
+  }
+
+  .val-card-label {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 1.5px;
+    margin-bottom: 5px;
+  }
+
+  .val-card-value {
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--w1);
+    line-height: 1;
+  }
+
+  .val-card-sub {
+    font-size: 9px;
+    color: var(--w4);
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  .scale-section { margin-bottom: 4px; }
+
+  .scale-label {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .scale-track {
+    position: relative;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right,
+      #120A05 0%, #1E0F07 12%, #32180B 25%,
+      #5A2E12 37%, #8B4A20 50%, #BA7030 62%,
+      #D9963C 75%, #EBB558 87%, #F5D090 100%
+    );
+    overflow: visible;
+  }
+
+  .scale-marker {
+    position: absolute;
+    top: -5px;
+    width: 2px; height: 16px;
+    background: var(--w1);
+    border-radius: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .scale-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+
+  .scale-tick { font-size: 8px; color: var(--w4); }
+
+  /* ROUGH CHECK */
+  .check-panel {
+    display: none;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 0.5px solid var(--border);
+  }
+
+  .check-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .check-status-main {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--w1);
+    line-height: 1.2;
+  }
+
+  .check-status-sub {
+    font-size: 10px;
+    color: var(--w4);
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  .check-badge {
+    min-width: 54px;
+    text-align: center;
+    border: 0.5px solid var(--bdr2);
+    border-radius: 999px;
+    padding: 6px 9px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--w2);
+    background: var(--surf2);
+  }
+
+  .check-badge.high { color: var(--bg); background: var(--w1); border-color: var(--w1); }
+  .check-badge.mid  { color: var(--w1); background: var(--surf3); }
+  .check-badge.low  { color: var(--w3); }
+
+  .check-swatches {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .check-swatch-card {
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    min-width: 0;
+  }
+
+  .check-swatch {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    border: 0.5px solid var(--bdr2);
+    background: #202020;
+    margin-bottom: 8px;
+  }
+
+  .check-swatch-label {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 1.2px;
+    margin-bottom: 3px;
+  }
+
+  .check-swatch-value {
+    font-size: 10px;
+    color: var(--w2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .check-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 0.5px solid var(--border);
+  }
+
+  .check-row span {
+    font-size: 10px;
+    color: var(--w4);
+    letter-spacing: 1.2px;
+    white-space: nowrap;
+  }
+
+  .check-row strong {
+    font-size: 11px;
+    color: var(--w2);
+    font-weight: 500;
+    text-align: right;
+    line-height: 1.35;
+  }
+
+  .check-note {
+    margin-top: 10px;
+    font-size: 10px;
+    color: var(--w4);
+    line-height: 1.5;
+    font-family: var(--font-main);
+  }
+
+  /* GUIDE */
+  .guide-section {
+    padding: 16px 20px 20px;
+    border-top: 0.5px solid var(--border);
+    margin-top: 16px;
+  }
+
+  .section-title {
+    font-size: 9px;
+    color: var(--w4);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+  }
+
+  .guide-steps { display: flex; flex-direction: column; gap: 8px; }
+
+  .guide-step { display: flex; align-items: flex-start; gap: 12px; }
+
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 0.5px solid var(--bdr2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--w2);
+    flex-shrink: 0;
+  }
+
+  .step-text {
+    font-size: 12px;
+    color: var(--w3);
+    line-height: 1.5;
+    padding-top: 3px;
+    font-family: var(--font-main);
+  }
+
+  /* HISTORY */
+  .history-section { display: none; padding: 0 20px 24px; }
+
+  .history-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surf2);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+
+  .history-swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 0.5px solid var(--bdr2);
+    flex-shrink: 0;
+  }
+
+  .history-info { flex: 1; min-width: 0; }
+
+  .history-roast {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--w1);
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+
+  .history-values { font-size: 10px; color: var(--w4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-time   { font-size: 9px; color: var(--w4); flex-shrink: 0; }
+
+  /* SCA REFERENCE */
+  .ref-section { padding: 0 20px 32px; }
+
+  .ref-table { width: 100%; border-collapse: collapse; }
+
+  .ref-table td {
+    padding: 7px 0;
+    border-bottom: 0.5px solid var(--border);
+    font-size: 11px;
+    color: var(--w2);
+  }
+
+  .ref-table td:first-child  { width: 36px; }
+  .ref-table td:nth-child(3) { text-align: right; color: var(--w4); }
+
+  .ref-swatch {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  /* COPYRIGHT */
+  .copyright {
+    padding: 0 20px 26px;
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: 0.8px;
+    color: var(--w5);
+    line-height: 1.6;
+  }
+
+  .copyright strong {
+    color: var(--w4);
+    font-weight: 400;
+  }
+
+  /* ERROR */
+  .error-msg {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px; text-align: center; gap: 12px;
+  }
+
+  .error-msg p:first-child { font-size: 12px; color: var(--w2); letter-spacing: 1px; }
+  .error-msg p:last-child  { font-size: 11px; color: var(--w4); line-height: 1.6; font-family: var(--font-main); }
+
+  .divider { height: 0.5px; background: var(--border); margin: 0 20px; }
+
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.25); }
+    70%  { box-shadow: 0 0 0 8px rgba(255,255,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+
+  .sample-ring.scanning { animation: pulse-ring 2s ease-out infinite; }
+
+
+  /* MODE TABS */
+  .mode-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 0 20px 14px;
+    flex-shrink: 0;
+  }
+
+  .mode-tab {
+    background: var(--surf2);
+    color: var(--w4);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1.4px;
+    cursor: pointer;
+  }
+
+  .mode-tab.active {
+    background: var(--w1);
+    color: var(--bg);
+    border-color: var(--w1);
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div class="header">
+    <div>
+      <div class="brand-kicker">월간커피</div>
+      <div class="brand-name">Roast-Lens</div>
+      <div class="brand-sub">COLOR ANALYZER</div>
+      <div class="brand-copy">© inyub Kim. All rights reserved.</div>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">STANDBY</span>
+    </div>
+  </div>
+
+  <div class="mode-tabs" style="grid-template-columns: 1fr;">
+    <button class="mode-tab active" id="tabColor" type="button">COLOR</button>
+  </div>
+
+  <div class="camera-viewport">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div class="permission-screen" id="permissionScreen">
+      <div class="lens-icon"></div>
+      <p class="perm-title" id="permTitle">카메라 접근 필요</p>
+      <p class="perm-desc" id="permDesc">
+        측정할 원두 샘플을 종이컵에 담고<br>
+        플래시를 켜서 위에서 비추면<br>
+        로스팅 컬러를 측정합니다
+      </p>
+      <button class="btn-start" onclick="startCamera()">카메라 시작</button>
+    </div>
+
+    <div class="error-msg" id="errorMsg">
+      <p>카메라 접근 실패</p>
+      <p id="errorDetail">브라우저 설정에서<br>카메라 권한을 허용해주세요</p>
+    </div>
+
+    <div class="cam-overlay" id="camOverlay">
+      <div class="bracket tl"></div>
+      <div class="bracket tr"></div>
+      <div class="bracket bl"></div>
+      <div class="bracket br"></div>
+      <div class="ch-h"></div>
+      <div class="ch-v"></div>
+      <div class="sample-ring" id="sampleRing"></div>
+      <div class="hud-color" id="hudColor"></div>
+      <div class="hud-L" id="hudL">L* —</div>
+    </div>
+  </div>
+
+  <div class="controls-bar" id="controlsBar">
+    <button class="btn-torch" id="torchBtn" onclick="toggleTorch()">FLASH OFF</button>
+    <button class="btn-measure" id="measureBtn" onclick="capture()">MEASURE</button>
+  </div>
+
+  <div class="results-panel" id="resultsPanel">
+    <div class="roast-display">
+      <div class="roast-label">ROAST LEVEL</div>
+      <div class="roast-name-kr" id="roastKr">—</div>
+      <div class="roast-name-en" id="roastEn">MEASURE TO ANALYZE</div>
+    </div>
+
+    <div class="values-grid">
+      <div class="val-card">
+        <div class="val-card-label">CIE L*</div>
+        <div class="val-card-value" id="valL">—</div>
+        <div class="val-card-sub">밝기 / Lightness</div>
+      </div>
+      <div class="val-card agtron">
+        <div class="val-card-label">AGTRON ~</div>
+        <div class="val-card-value" id="valAgtron">—</div>
+        <div class="val-card-sub">추정치 / Estimated</div>
+      </div>
+      <div class="val-card">
+        <div class="val-card-label">CONFIDENCE</div>
+        <div class="val-card-value" id="valConfidence">—</div>
+        <div class="val-card-sub" id="valQuality">자동 보정 상태</div>
+      </div>
+      <div class="val-card">
+        <div class="val-card-label">CIE a*</div>
+        <div class="val-card-value" id="valA">—</div>
+        <div class="val-card-sub">적색도 / Redness</div>
+      </div>
+      <div class="val-card">
+        <div class="val-card-label">CIE b*</div>
+        <div class="val-card-value" id="valB">—</div>
+        <div class="val-card-sub">황색도 / Yellowness</div>
+      </div>
+    </div>
+
+    <div class="scale-section">
+      <div class="scale-label">AGTRON SCALE</div>
+      <div class="scale-track">
+        <div class="scale-marker" id="scaleMarker"></div>
+      </div>
+      <div class="scale-ticks">
+        <span class="scale-tick">DARK #25</span>
+        <span class="scale-tick">#45</span>
+        <span class="scale-tick">#65</span>
+        <span class="scale-tick">#85</span>
+        <span class="scale-tick">LIGHT #95</span>
+      </div>
+    </div>
+
+    <div class="check-panel" id="checkPanel">
+      <div class="section-title">ROUGH CHECK</div>
+      <div class="check-status">
+        <div>
+          <div class="check-status-main" id="checkStatusMain">측정 후 표시</div>
+          <div class="check-status-sub" id="checkStatusSub">CAMERA ESTIMATE</div>
+        </div>
+        <div class="check-badge" id="checkBadge">READY</div>
+      </div>
+
+      <div class="check-swatches">
+        <div class="check-swatch-card">
+          <div class="check-swatch" id="swatchRaw"></div>
+          <div class="check-swatch-label">RAW</div>
+          <div class="check-swatch-value" id="textRaw">-</div>
+        </div>
+        <div class="check-swatch-card">
+          <div class="check-swatch" id="swatchCorrected"></div>
+          <div class="check-swatch-label">CORRECTED</div>
+          <div class="check-swatch-value" id="textCorrected">-</div>
+        </div>
+        <div class="check-swatch-card">
+          <div class="check-swatch" id="swatchWhite"></div>
+          <div class="check-swatch-label">WHITE REF</div>
+          <div class="check-swatch-value" id="textWhite">-</div>
+        </div>
+      </div>
+
+      <div class="check-grid">
+        <div class="check-row"><span>흰 기준</span><strong id="checkWhite">-</strong></div>
+        <div class="check-row"><span>흔들림</span><strong id="checkShake">-</strong></div>
+        <div class="check-row"><span>프레임</span><strong id="checkFrames">-</strong></div>
+        <div class="check-row"><span>보정 강도</span><strong id="checkCorrection">-</strong></div>
+        <div class="check-row"><span>추정 결과</span><strong id="checkEstimate">-</strong></div>
+      </div>
+      <div class="check-note" id="checkNote">기준 장비값이 아닌 카메라 기반 추정입니다.</div>
+    </div>
+  </div>
+
+  <div class="history-section" id="historySection">
+    <div class="section-title" style="padding: 0;">MEASUREMENT HISTORY</div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div class="divider" style="margin-top: 4px;"></div>
+
+  <div class="guide-section">
+    <div class="section-title">측정 방법</div>
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="step-num">1</div>
+        <div class="step-text">원두 샘플을 종이컵에 평평하게 담기</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">2</div>
+        <div class="step-text">FLASH ON 후 핸드폰을 원두 표면 위 약 5cm에 수직으로 위치</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">3</div>
+        <div class="step-text">원두는 중앙 원 안에, 흰 종이컵 면은 화면 가장자리에 일부 보이게 맞춘 뒤 MEASURE</div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">4</div>
+        <div class="step-text">흰 종이컵 기준 자동 보정 + 30프레임 평균 측정 · Agtron은 L* 기반 추정치</div>
+      </div>
+    </div>
+  </div>
+<div class="divider"></div>
+
+  <div class="ref-section" style="margin-top: 16px;">
+    <div class="section-title">SCA ROAST REFERENCE</div>
+    <table class="ref-table">
+      <tr>
+        <td><span class="ref-swatch" style="background:#F5D090;"></span></td>
+        <td>라이트 Light</td>
+        <td>Agtron #85–95</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#D9963C;"></span></td>
+        <td>미디엄 라이트 Medium-Light</td>
+        <td>Agtron #70–85</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#9A5522;"></span></td>
+        <td>미디엄 Medium</td>
+        <td>Agtron #55–70</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#6B3010;"></span></td>
+        <td>미디엄 다크 Medium-Dark</td>
+        <td>Agtron #45–55</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#3C180A;"></span></td>
+        <td>다크 Dark</td>
+        <td>Agtron #35–45</td>
+      </tr>
+      <tr>
+        <td><span class="ref-swatch" style="background:#1A0806;"></span></td>
+        <td>베리 다크 Very Dark</td>
+        <td>Agtron #25–35</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="copyright">
+    © <strong>inyub Kim. All rights reserved.</strong>
+  </div>
+
+</div>
+
+<script>
+let stream = null, videoTrack = null;
+let torchOn = false, torchSupported = false;
+let animFrameId = null, history = [];
+let lastLiveTs = 0;
+
+const AUTO_CAL = {
+  sampleRadius: 0.14,       // 중앙 원두 측정 영역. 화면 짧은 변 기준 14%
+  whiteMinLuma: 130,        // 흰 종이컵 후보 최소 밝기
+  whiteMaxChroma: 34,       // 흰 종이컵 후보 최대 색 편차. 낮을수록 무채색만 허용
+  targetWhite: 242,         // 보정 후 기준 흰색 밝기
+  frames: 30,               // 측정 시 평균낼 프레임 수
+  frameGap: 38,             // 프레임 간격 ms. 30프레임이면 약 1.1초
+  minWhitePixels: 350,      // 흰 기준 영역 최소 픽셀 수
+  liveInterval: 300         // 라이브 L* 표시 갱신 간격 ms
+};
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1920 },
+        exposureMode: { ideal: 'continuous' },
+        whiteBalanceMode: { ideal: 'continuous' },
+        focusMode: { ideal: 'continuous' }
+      }
+    });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('permissionScreen').style.display = 'none';
+    document.getElementById('camOverlay').style.display = 'block';
+    document.getElementById('controlsBar').style.display = 'flex';
+    document.getElementById('resultsPanel').style.display = 'block';
+    setStatus('active', 'ACTIVE');
+    videoTrack = stream.getVideoTracks()[0];
+    const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+    if (caps.torch) { torchSupported = true; await applyTorch(true); }
+    else { document.getElementById('torchBtn').textContent = 'NO FLASH'; }
+    video.removeEventListener('loadeddata', startLiveSampling);
+    video.addEventListener('loadeddata', startLiveSampling);
+    document.getElementById('sampleRing').classList.add('scanning');
+  } catch (err) {
+    document.getElementById('permissionScreen').style.display = 'none';
+    const em = document.getElementById('errorMsg');
+    em.style.display = 'flex';
+    document.getElementById('errorDetail').textContent =
+      err.name === 'NotAllowedError'
+        ? '카메라 권한을 거부하셨습니다.\n브라우저 설정에서 권한을 허용해주세요.'
+        : '카메라를 찾을 수 없습니다.\n(' + err.message + ')';
+    setStatus('error', 'ERROR');
+  }
+}
+
+async function applyTorch(on) {
+  try {
+    await videoTrack.applyConstraints({ advanced: [{ torch: on }] });
+    torchOn = on;
+    const btn = document.getElementById('torchBtn');
+    btn.textContent = on ? 'FLASH ON' : 'FLASH OFF';
+    if (on) btn.classList.add('on'); else btn.classList.remove('on');
+  } catch (e) {
+    torchSupported = false;
+    torchOn = false;
+    document.getElementById('torchBtn').textContent = 'NO FLASH';
+  }
+}
+
+async function toggleTorch() {
+  if (!videoTrack || !torchSupported) return;
+  await applyTorch(!torchOn);
+}
+
+function clamp(v, min=0, max=255) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function luma(r, g, b) {
+  return 0.2126*r + 0.7152*g + 0.0722*b;
+}
+
+function chroma(r, g, b) {
+  const mean = (r+g+b)/3;
+  return Math.sqrt(((r-mean)**2 + (g-mean)**2 + (b-mean)**2) / 3);
+}
+
+function median(arr) {
+  if (!arr.length) return 0;
+  const a = arr.slice().sort((x, y) => x-y);
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid-1] + a[mid]) / 2;
+}
+
+function mean(arr) {
+  return arr.reduce((s, v) => s + v, 0) / Math.max(1, arr.length);
+}
+
+function stdev(arr) {
+  if (arr.length < 2) return 0;
+  const m = mean(arr);
+  return Math.sqrt(mean(arr.map(v => (v-m)**2)));
+}
+
+function avgRGB(list) {
+  if (!list.length) return null;
+  return {
+    r: Math.round(mean(list.map(p => p.r))),
+    g: Math.round(mean(list.map(p => p.g))),
+    b: Math.round(mean(list.map(p => p.b)))
+  };
+}
+
+function trimmedChannel(values, low=0.10, high=0.90) {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const start = Math.floor(sorted.length * low);
+  const end = Math.max(start + 1, Math.ceil(sorted.length * high));
+  return mean(sorted.slice(start, end));
+}
+
+function robustRGB(list) {
+  if (!list.length) return null;
+  return {
+    r: Math.round(trimmedChannel(list.map(p => p.r))),
+    g: Math.round(trimmedChannel(list.map(p => p.g))),
+    b: Math.round(trimmedChannel(list.map(p => p.b)))
+  };
+}
+function getFrameData() {
+  const video = document.getElementById('video');
+  if (!video || video.readyState < 2 || video.videoWidth === 0) return null;
+
+  const canvas = document.getElementById('canvas');
+  const vw = video.videoWidth, vh = video.videoHeight;
+  canvas.width = vw; canvas.height = vh;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, vw, vh);
+
+  try {
+    return { data: ctx.getImageData(0, 0, vw, vh).data, width: vw, height: vh };
+  } catch(e) {
+    return null;
+  }
+}
+
+function sampleFrame() {
+  const frame = getFrameData();
+  if (!frame) return null;
+
+  const d = frame.data;
+  const w = frame.width, h = frame.height;
+  const cx = Math.floor(w/2), cy = Math.floor(h/2);
+  const shortSide = Math.min(w, h);
+  const r = Math.floor(shortSide * AUTO_CAL.sampleRadius);
+  const r2 = r*r;
+
+  const samplePixels = [];
+  const whitePixels = [];
+  const step = Math.max(1, Math.floor(shortSide / 420)); // 고해상도에서 과한 루프 방지
+
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const i = (y*w + x) * 4;
+      const R = d[i], G = d[i+1], B = d[i+2];
+      const dx = x - cx, dy = y - cy;
+      const dist2 = dx*dx + dy*dy;
+
+      // 중앙 원두 측정 영역
+      if (dist2 <= r2) {
+        const Y = luma(R, G, B);
+        // 반사 하이라이트/깊은 그림자 일부 제외
+        if (Y > 8 && Y < 248) samplePixels.push({ r:R, g:G, b:B, y:Y });
+        continue;
+      }
+
+      // 화면 바깥쪽의 밝고 무채색에 가까운 영역을 흰 종이컵 기준으로 추정
+      const inOuterArea = x < w*0.22 || x > w*0.78 || y < h*0.22 || y > h*0.78;
+      if (inOuterArea) {
+        const Y = luma(R, G, B);
+        const C = chroma(R, G, B);
+        if (Y >= AUTO_CAL.whiteMinLuma && Y < 252 && C <= AUTO_CAL.whiteMaxChroma) {
+          whitePixels.push({ r:R, g:G, b:B, y:Y });
+        }
+      }
+    }
+  }
+
+  if (samplePixels.length < 80) return null;
+
+  // 원두 영역은 극단값을 제외한 trimmed mean
+  const ys = samplePixels.map(p => p.y).sort((a,b)=>a-b);
+  const lo = ys[Math.floor(ys.length * 0.08)] || 0;
+  const hi = ys[Math.floor(ys.length * 0.92)] || 255;
+  const trimmedSample = samplePixels.filter(p => p.y >= lo && p.y <= hi);
+  const raw = avgRGB(trimmedSample);
+  if (!raw) return null;
+
+  // 흰 기준 영역은 중앙값 기반. 기준점이 없으면 raw만 반환하되 신뢰도 낮게 처리
+  let white = null;
+  if (whitePixels.length >= AUTO_CAL.minWhitePixels) {
+    white = {
+      r: median(whitePixels.map(p => p.r)),
+      g: median(whitePixels.map(p => p.g)),
+      b: median(whitePixels.map(p => p.b)),
+      y: median(whitePixels.map(p => p.y)),
+      count: whitePixels.length
+    };
+  }
+
+  const corrected = correctByWhite(raw, white);
+  return { raw, corrected, white, whiteCount: whitePixels.length, sampleCount: trimmedSample.length };
+}
+
+function correctByWhite(raw, white) {
+  if (!white) return raw;
+
+  // 채널별 gain으로 조명색과 밝기를 보정한다.
+  // 과보정을 막기 위해 gain 범위를 제한한다.
+  const gr = clamp(AUTO_CAL.targetWhite / Math.max(1, white.r), 0.72, 1.38);
+  const gg = clamp(AUTO_CAL.targetWhite / Math.max(1, white.g), 0.72, 1.38);
+  const gb = clamp(AUTO_CAL.targetWhite / Math.max(1, white.b), 0.72, 1.38);
+
+  return {
+    r: Math.round(clamp(raw.r * gr)),
+    g: Math.round(clamp(raw.g * gg)),
+    b: Math.round(clamp(raw.b * gb))
+  };
+}
+
+function getQuality(frames, labs) {
+  const validWhite = frames.filter(f => f.white).length;
+  const whiteRatio = validWhite / Math.max(1, frames.length);
+  const lStd = stdev(labs.map(l => l.L));
+  const avgWhiteCount = mean(frames.map(f => f.whiteCount || 0));
+
+  let score = 100;
+  if (torchSupported && !torchOn) score -= 12;
+  if (whiteRatio < 0.8) score -= 28;
+  if (avgWhiteCount < AUTO_CAL.minWhitePixels * 1.5) score -= 14;
+  if (lStd > 1.5) score -= 18;
+  if (lStd > 3.0) score -= 22;
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  let label = 'LOW';
+  if (score >= 78) label = 'HIGH';
+  else if (score >= 55) label = 'MID';
+
+  const messages = [];
+  messages.push(validWhite > 0 ? '흰 컵 기준 보정' : '흰 기준 부족');
+  messages.push(`흔들림 ±${lStd.toFixed(1)}`);
+  if (torchSupported && !torchOn) messages.push('플래시 미사용');
+
+  return { score, label, text: messages.join(' · '), validWhite, whiteRatio, lStd, avgWhiteCount };
+}
+
+async function captureAutoCalibrated() {
+  const frames = [];
+  const btn = document.getElementById('measureBtn');
+  btn.disabled = true;
+  btn.textContent = 'CALIBRATING';
+  setStatus('active', 'CALIBRATING');
+
+  // 카메라 자동 노출이 안정될 시간을 조금 준다.
+  await sleep(250);
+
+  for (let i = 0; i < AUTO_CAL.frames; i++) {
+    const f = sampleFrame();
+    if (f) frames.push(f);
+    await sleep(AUTO_CAL.frameGap);
+  }
+
+  if (frames.length < Math.max(10, AUTO_CAL.frames * 0.45)) {
+    btn.disabled = false;
+    btn.textContent = 'MEASURE';
+    setStatus('error', 'RETRY');
+    alert('측정 가능한 프레임이 부족합니다. 카메라를 원두 표면 위에 고정하고 다시 측정해 주세요.');
+    return null;
+  }
+
+  const rawColor = robustRGB(frames.map(f => f.raw));
+  const colors = frames.map(f => f.corrected);
+  const color = robustRGB(colors);
+  const rawLab = rgbToLab(rawColor.r, rawColor.g, rawColor.b);
+  const lab = rgbToLab(color.r, color.g, color.b);
+  const frameLabs = frames.map(f => rgbToLab(f.corrected.r, f.corrected.g, f.corrected.b));
+  const quality = getQuality(frames, frameLabs);
+  const whiteFrames = frames.filter(f => f.white);
+  const whiteColor = whiteFrames.length ? robustRGB(whiteFrames.map(f => f.white)) : null;
+  const diagnostics = {
+    frames: frames.length,
+    requestedFrames: AUTO_CAL.frames,
+    avgSampleCount: Math.round(mean(frames.map(f => f.sampleCount || 0))),
+    avgWhiteCount: Math.round(mean(frames.map(f => f.whiteCount || 0))),
+    correctionDeltaE: deltaE76(rawLab, lab)
+  };
+
+  btn.disabled = false;
+  btn.classList.add('captured');
+  btn.textContent = 'CAPTURED';
+  setStatus('active', quality.label);
+  setTimeout(() => { btn.classList.remove('captured'); btn.textContent = 'MEASURE'; }, 900);
+
+  return { color, rawColor, lab, rawLab, quality, white: frames.find(f => f.white)?.white || null, whiteColor, diagnostics };
+}
+
+function rgbToLab(r, g, b) {
+  const lin = c => { c/=255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  const lr=lin(r), lg=lin(g), lb=lin(b);
+  const X=lr*0.4124564+lg*0.3575761+lb*0.1804375;
+  const Y=lr*0.2126729+lg*0.7151522+lb*0.0721750;
+  const Z=lr*0.0193339+lg*0.1191920+lb*0.9503041;
+  const f=t=>t>0.008856?Math.cbrt(t):7.787*t+16/116;
+  const fx=f(X/0.95047), fy=f(Y/1.00000), fz=f(Z/1.08883);
+  return {
+    L: parseFloat((116*fy-16).toFixed(2)),
+    a: parseFloat((500*(fx-fy)).toFixed(2)),
+    b: parseFloat((200*(fy-fz)).toFixed(2))
+  };
+}
+
+function deltaE76(a, b) {
+  return Math.sqrt((a.L-b.L)**2 + (a.a-b.a)**2 + (a.b-b.b)**2);
+}
+
+function estimateAgtron(L) {
+  return Math.max(25, Math.min(95, Math.round(L*1.35+6.5)));
+}
+
+function rgbStyle(color) {
+  return color ? `rgb(${color.r},${color.g},${color.b})` : '#202020';
+}
+
+function rgbText(color) {
+  return color ? `${color.r}, ${color.g}, ${color.b}` : '없음';
+}
+
+function renderCheckPanel(result, agtron, roast) {
+  const panel = document.getElementById('checkPanel');
+  if (!panel) return;
+
+  const { color, rawColor, whiteColor, lab, quality, diagnostics } = result;
+  const badge = document.getElementById('checkBadge');
+  const label = quality.label.toLowerCase();
+  const whitePct = Math.round(quality.whiteRatio * 100);
+  const correction = diagnostics.correctionDeltaE;
+
+  let statusMain = '환경 보정 필요';
+  if (quality.label === 'HIGH') statusMain = '대략 확인 가능';
+  else if (quality.label === 'MID') statusMain = '반복 비교 권장';
+
+  let shakeState = '안정';
+  if (quality.lStd > 3.0) shakeState = '불안정';
+  else if (quality.lStd > 1.5) shakeState = '주의';
+
+  let correctionState = '작음';
+  if (correction > 8) correctionState = '큼';
+  else if (correction > 3) correctionState = '보통';
+
+  panel.style.display = 'block';
+  document.getElementById('checkStatusMain').textContent = statusMain;
+  document.getElementById('checkStatusSub').textContent = `SCORE ${quality.score}/100 · L* ${lab.L.toFixed(1)}`;
+  badge.textContent = quality.label;
+  badge.className = `check-badge ${label}`;
+
+  document.getElementById('swatchRaw').style.background = rgbStyle(rawColor);
+  document.getElementById('swatchCorrected').style.background = rgbStyle(color);
+  document.getElementById('swatchWhite').style.background = rgbStyle(whiteColor);
+  document.getElementById('textRaw').textContent = rgbText(rawColor);
+  document.getElementById('textCorrected').textContent = rgbText(color);
+  document.getElementById('textWhite').textContent = rgbText(whiteColor);
+
+  document.getElementById('checkWhite').textContent =
+    quality.validWhite > 0
+      ? `${whitePct}% · ${quality.validWhite}/${diagnostics.frames}프레임 · ${diagnostics.avgWhiteCount}px`
+      : '기준 부족';
+  document.getElementById('checkShake').textContent = `${shakeState} · ±${quality.lStd.toFixed(1)} L*`;
+  document.getElementById('checkFrames').textContent = `${diagnostics.frames}/${diagnostics.requestedFrames}프레임 · 샘플 ${diagnostics.avgSampleCount}px`;
+  document.getElementById('checkCorrection').textContent = `ΔE ${correction.toFixed(1)} · ${correctionState}`;
+  document.getElementById('checkEstimate').textContent = `${roast.kr} / ${roast.en} · #${agtron}`;
+
+  document.getElementById('checkNote').textContent =
+    quality.label === 'HIGH'
+      ? '흰 기준과 프레임 안정성이 확보되었습니다. 동일 조건 반복 비교에 적합합니다.'
+      : '기준 장비값이 아닌 카메라 추정입니다. 흰 기준, 흔들림, 보정 강도를 함께 확인하세요.';
+}
+
+function getRoastLevel(agtron) {
+  if (agtron>=85) return { kr:'라이트',       en:'LIGHT' };
+  if (agtron>=70) return { kr:'미디엄 라이트', en:'MEDIUM-LIGHT' };
+  if (agtron>=55) return { kr:'미디엄',        en:'MEDIUM' };
+  if (agtron>=45) return { kr:'미디엄 다크',   en:'MEDIUM-DARK' };
+  if (agtron>=35) return { kr:'다크',          en:'DARK' };
+  return               { kr:'베리 다크',      en:'VERY DARK' };
+}
+
+function startLiveSampling() {
+  function loop(ts) {
+    if (!lastLiveTs || ts - lastLiveTs >= AUTO_CAL.liveInterval) {
+      const f = sampleFrame();
+      if (f) {
+        const c = f.corrected;
+        const lab = rgbToLab(c.r, c.g, c.b);
+        const refText = f.white ? 'REF OK' : 'NO REF';
+        document.getElementById('hudColor').style.background = `rgb(${c.r},${c.g},${c.b})`;
+        document.getElementById('hudL').textContent = `L* ${lab.L.toFixed(1)} · ${refText}`;
+      }
+      lastLiveTs = ts;
+    }
+    animFrameId = requestAnimationFrame(loop);
+  }
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  animFrameId = requestAnimationFrame(loop);
+}
+
+async function capture() {
+  const result = await captureAutoCalibrated();
+  if (!result) return;
+
+  const { color, lab, quality } = result;
+  const agtron = estimateAgtron(lab.L);
+  const roast = getRoastLevel(agtron);
+
+  document.getElementById('valL').textContent = lab.L.toFixed(1);
+  document.getElementById('valA').textContent = lab.a.toFixed(1);
+  document.getElementById('valB').textContent = lab.b.toFixed(1);
+  document.getElementById('valAgtron').textContent = '#' + agtron;
+  document.getElementById('valConfidence').textContent = quality.label;
+  document.getElementById('valQuality').textContent = quality.text;
+  document.getElementById('roastKr').textContent = roast.kr;
+  document.getElementById('roastEn').textContent = roast.en;
+
+  const pct = ((agtron-25)/70)*100;
+  document.getElementById('scaleMarker').style.left = pct + '%';
+  renderCheckPanel(result, agtron, roast);
+
+  const ts = new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  history.unshift({ lab, agtron, roast, color, ts, quality });
+  if (history.length>5) history.pop();
+  renderHistory();
+  document.getElementById('historySection').style.display = 'block';
+}
+
+function renderHistory() {
+  document.getElementById('historyList').innerHTML = history.map(m => `
+    <div class="history-item">
+      <div class="history-swatch" style="background:rgb(${m.color.r},${m.color.g},${m.color.b});"></div>
+      <div class="history-info">
+        <div class="history-roast">${m.roast.kr} <span style="color:#505050;">#${m.agtron}</span> <span style="color:#888;">${m.quality ? m.quality.label : ''}</span></div>
+        <div class="history-values">L* ${m.lab.L.toFixed(1)} · a* ${m.lab.a.toFixed(1)} · b* ${m.lab.b.toFixed(1)}</div>
+      </div>
+      <div class="history-time">${m.ts}</div>
+    </div>
+  `).join('');
+}
+
+
+function stopCamera() {
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    videoTrack = null;
+  }
+  torchOn = false;
+  torchSupported = false;
+  const video = document.getElementById('video');
+  if (video) {
+    video.srcObject = null;
+    video.style.display = 'none';
+  }
+  const torchBtn = document.getElementById('torchBtn');
+  if (torchBtn) {
+    torchBtn.textContent = 'FLASH OFF';
+    torchBtn.classList.remove('on');
+  }
+  const ring = document.getElementById('sampleRing');
+  if (ring) ring.classList.remove('scanning');
+}
+
+
+function setStatus(type, label) {
+  const dot = document.getElementById('statusDot');
+  const lab = document.getElementById('statusLabel');
+  if (dot) dot.className = 'status-dot ' + (type || '');
+  if (lab) lab.textContent = label || 'STANDBY';
+}
+
+</script>
+</body>
+</html>
